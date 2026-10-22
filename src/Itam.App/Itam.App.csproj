@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- IT Assets application: rules, data store, API and pages. Hosted by its own site (production) or the local demo. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.1" />
+    <!-- PDFsharp (MIT licence): only to join PDFs (the uploaded PO document with the pages IT Assets writes). -->
+    <PackageReference Include="PDFsharp" Version="6.2.2" />
+    <EmbeddedResource Include="Assets/*" />
+    <EmbeddedResource Include="../../db/pending/*.sql" Link="Migrations/%(Filename)%(Extension)" />
+    <!-- Pinned: PDFsharp brings 9.0.4, which has known security advisories (GHSA-2fmv-rv2c-59x7, GHSA-846f-f764-76mx). -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
+  </ItemGroup>
+</Project>

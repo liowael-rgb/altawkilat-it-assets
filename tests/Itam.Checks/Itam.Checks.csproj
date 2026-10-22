@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- IT Assets checks on a throwaway LocalDB database (invented data only). -->
+  <PropertyGroup><OutputType>Exe</OutputType><IsPackable>false</IsPackable></PropertyGroup>
+  <ItemGroup><ProjectReference Include="..\..\src\Itam.App\Itam.App.csproj" /></ItemGroup>
+</Project>

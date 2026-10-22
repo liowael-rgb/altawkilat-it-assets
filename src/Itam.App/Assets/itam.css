@@ -1,0 +1,314 @@
+/* IT Assets: same look as the platform systems (CMS, FMMS). No inline styles: CSP is style-src 'self'. */
+:root{--ink:#283e50;--navy:#143550;--blue:#2466a5;--muted:#62778b;--line:#dfe7ef;--bg:#f3f6fa;--card:#fff;--ok:#1f7a4c;--okbg:#e7f6ed;--warn:#9a5b00;--warnbg:#fff4e0;--bad:#962b2b;--badbg:#fff0ef;--info:#174b80;--infobg:#eaf2fa}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.5 'Segoe UI',Arial,sans-serif}
+a{color:var(--blue)}
+button,input,select,textarea{font:inherit;color:var(--ink)}
+button{cursor:pointer;border:1px solid #d4dfeb;border-radius:7px;background:#fff;color:var(--blue);font-weight:600;padding:8px 14px}
+button.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+button.danger{background:#fff;border-color:#e3b4b0;color:var(--bad)}
+button.secondary{background:#fff}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.link{border:0;background:none;padding:0;color:var(--blue);font-weight:600}
+input,select,textarea{display:block;width:100%;margin-top:5px;border:1px solid #d4dfeb;border-radius:7px;background:#fff;padding:8px 10px}
+input[type=checkbox],input[type=radio]{display:inline-block;width:auto;margin:0 6px 0 0}
+input[type=file]{padding:6px}
+textarea{min-height:76px;resize:vertical;direction:rtl;text-align:right}
+label{display:block;color:var(--navy);font-weight:600;font-size:12px}
+label.inline{display:inline-flex;align-items:center;font-weight:400;margin:4px 14px 4px 0}
+:focus-visible{outline:3px solid #3e90d4;outline-offset:2px}
+[hidden]{display:none!important}
+
+/* Header */
+/* Page shell like CMS: navy left pane with the pages, white header with the system name and the signed-in person. */
+.it-shell{display:grid;grid-template-columns:224px minmax(0,1fr);min-height:100vh}
+.it-sidebar{position:sticky;top:0;display:flex;flex-direction:column;height:100vh;padding:22px 12px 14px;overflow-y:auto;background:var(--navy);color:#fff;scrollbar-width:thin}
+.it-brand{display:flex;flex-direction:column;align-items:flex-start;gap:11px;padding:0 12px 20px;color:#fff;text-decoration:none}
+.it-brand{gap:18px;margin:0 4px 14px;padding:4px 10px 20px;border-bottom:1px solid #ffffff1f}
+/* Logo in white on the dark pane, as in CMS. */
+.it-brand img{display:block;width:170px;height:auto;filter:invert(1);opacity:.95}
+.it-brand-name{display:flex;flex-direction:column;line-height:1.2}.it-brand-name strong{font-size:18px;letter-spacing:.5px}.it-brand-name small{font-size:10px;color:#a9bfd0;text-transform:uppercase;letter-spacing:.08em}
+.it-platform{display:flex;align-items:center;gap:9px;min-height:38px;margin:0 3px 18px;padding:8px 10px;border:1px solid #ffffff29;border-radius:7px;color:#e5eef5;text-decoration:none;font-size:12px}
+.it-platform:hover{background:#ffffff12;color:#fff}
+.it-sidebar svg{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.it-nav-label{margin:10px 12px 6px;color:#a9bfd0;font-size:9px;font-weight:650;letter-spacing:.12em;text-transform:uppercase}
+.it-sidebar nav{display:grid;gap:3px}
+.it-sidebar nav a{display:flex;align-items:center;gap:10px;min-height:38px;padding:8px 11px;border-radius:7px;color:#d4e0e9;text-decoration:none;font-size:12px;font-weight:500}
+.it-sidebar nav a:hover{background:#ffffff12;color:#fff}
+.it-sidebar nav a.is-current{background:#27669f;box-shadow:inset 3px 0 0 #91c8f0;color:#fff;font-weight:650}
+.it-subnav{display:grid;gap:1px;margin:2px 0 6px 18px;padding-left:8px;border-left:1px solid #ffffff26}
+.it-subnav button{display:block;width:100%;text-align:left;border:0;background:none;color:#c3d3e0;font-size:11.5px;font-weight:500;padding:6px 10px;border-radius:6px;min-height:0}
+.it-subnav button:hover{background:#ffffff12;color:#fff}
+.it-subnav button[aria-selected=true]{background:#27669f;color:#fff;font-weight:650}
+.it-side-footer{margin-top:auto;padding:22px 12px 2px;color:#a9bfd0;font-size:10px}
+.it-main{min-width:0}
+.it-top{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:16px;min-height:64px;padding:0 28px;border-bottom:1px solid #e8edf3;background:#fff;box-shadow:0 2px 8px #17385404}
+.it-system{display:flex;align-items:baseline;gap:12px;color:var(--navy)}.it-system strong{font-size:22px;font-weight:800;letter-spacing:-.5px}
+.it-system span{padding-left:12px;border-left:1px solid #dce5ef;color:#60758a;font-size:11px}
+.it-top .who{margin-left:auto;font-size:12px;color:#60758a;text-align:right}.it-top .who-name{color:var(--navy);font-weight:700}
+.it-toggle{display:none}.it-backdrop{display:none}
+.admin-layout:not(:has(#side)){display:block}
+@media(max-width:900px){
+ .it-shell{grid-template-columns:1fr}
+ .it-sidebar{position:fixed;z-index:42;top:0;bottom:0;left:0;width:min(290px,86vw);height:100dvh;transform:translateX(-102%);transition:transform .18s ease;box-shadow:8px 0 24px #0003}
+ .it-shell[data-nav-open="true"] .it-sidebar{transform:translateX(0)}
+ .it-toggle{display:inline-flex;align-items:center;min-height:35px;padding:7px 10px;border:1px solid #dce5ef;border-radius:7px;background:#fff;color:var(--navy);font-weight:650}
+ .it-backdrop:not([hidden]){display:block;position:fixed;inset:0;z-index:41;border:0;border-radius:0;background:#10283e66}
+ .it-top{padding:0 14px}.it-system span{display:none}
+}
+main{max-width:1400px;margin:0 auto;padding:18px 16px 48px}
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:6px 0 12px}
+.page-head h1{margin:0;font-size:22px;color:var(--navy)}
+.page-head p{margin:2px 0 0;color:var(--muted)}
+.eyebrow{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin:0}
+
+/* Cards and grids */
+.card{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:18px 20px;margin:0 0 14px;box-shadow:0 2px 9px #14355008}
+.card h2{margin:0 0 10px;font-size:15px;color:var(--navy)}
+.card h3{margin:14px 0 6px;font-size:13px;color:var(--navy)}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.grid.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+.grid .wide{grid-column:1/-1}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,320px);gap:16px;align-items:start}
+/* The action column stays on the right and in view while the request is read. */
+.layout>.side-col{position:sticky;top:76px;max-height:calc(100vh - 88px);overflow:auto}
+.actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.hint{color:var(--muted);font-size:12px;margin:4px 0 0}
+dl.kv{display:grid;grid-template-columns:170px 1fr;gap:6px 12px;margin:0}
+dl.kv dt{color:var(--muted)}
+dl.kv dd{margin:0;white-space:pre-wrap;word-break:break-word}
+
+/* Messages */
+.msg{padding:10px 12px;border-radius:7px;margin:0 0 12px}
+.msg.ok{background:var(--okbg);color:var(--ok)}
+.msg.error{background:var(--badbg);color:var(--bad)}
+.msg.warn{background:var(--warnbg);color:var(--warn)}
+.msg.info{background:var(--infobg);color:var(--info);border-color:#c9dcef}
+.msg:empty{display:none}
+.error{color:var(--bad)}
+
+/* Tables */
+.table-wrap{overflow:auto}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;vertical-align:top;padding:8px 10px;border-bottom:1px solid #e5ebf2}
+th{background:#f5f8fb;color:var(--navy);font-size:12px;white-space:nowrap}
+tr.clickable{cursor:pointer}
+tr.clickable:hover td{background:#f7fafd}
+td.num,th.num{text-align:right}
+.empty{color:var(--muted);text-align:center;padding:22px}
+
+/* Tabs and filters */
+/* Same look as the CMS complaint tabs: blue tabs on a blue line, the selected tab green. */
+.tabs{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 14px;padding:0 0 0 2px;border-bottom:3px solid #215e9b}
+.tabs button{display:inline-flex;align-items:center;gap:7px;min-height:36px;margin:0 0 -1px;padding:7px 13px;border:1px solid #9fc0dd;border-bottom:0;border-radius:8px 8px 0 0;
+  background:linear-gradient(#3f86c4,#215e9b);color:#fff;font-size:12px;font-weight:600;box-shadow:none;cursor:pointer}
+.tabs button:not([aria-selected=true]):hover{background:linear-gradient(#4c95d4,#286aab)}
+.tabs button[aria-selected=true]{border-color:#5e9f2f;background:linear-gradient(#86c454,#5a9b2c);color:#fff}
+.tabs button:focus-visible{outline:3px solid #9cc8f0;outline-offset:2px}
+.filters{display:grid;grid-template-columns:2fr repeat(4,minmax(0,1fr)) auto;gap:10px;align-items:end;margin-bottom:12px}
+
+/* Stage pills */
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;background:var(--infobg);color:var(--info)}
+.pill.Closed{background:var(--okbg);color:var(--ok)}
+.pill.Rejected,.pill.Cancelled{background:var(--badbg);color:var(--bad)}
+.pill.MCOApproval,.pill.Approval1,.pill.Approval2{background:var(--warnbg);color:var(--warn)}
+.pill.after{background:#f1edf9;color:#5b3e96}
+
+/* Stage strip and timeline */
+.strip{display:flex;gap:4px;flex-wrap:wrap;margin:6px 0 2px}
+.strip span{flex:1 1 90px;text-align:center;padding:6px 4px;border-radius:6px;background:#eef2f7;color:var(--muted);font-size:11px;font-weight:600}
+.strip span.done{background:var(--okbg);color:var(--ok)}
+.strip span.now{background:var(--blue);color:#fff}
+.strip span.skip{opacity:.45}
+.timeline{list-style:none;margin:0;padding:0}
+.timeline li{position:relative;padding:0 0 12px 22px;border-left:2px solid var(--line);margin-left:6px}
+.timeline li::before{content:"";position:absolute;left:-7px;top:3px;width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid var(--blue)}
+.timeline li.open::before{background:var(--blue)}
+.timeline li.Rejected::before,.timeline li.Returned::before,.timeline li.Cancelled::before{border-color:var(--bad)}
+.timeline .when{color:var(--muted);font-size:12px}
+.timeline .dur{font-weight:600;color:var(--navy)}
+
+/* Stats */
+.stats{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.stat{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px}
+.stat b{display:block;font-size:22px;color:var(--navy)}
+.stat span{color:var(--muted);font-size:12px}
+.bar{height:8px;border-radius:4px;background:#e8eef5;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--blue)}
+.bar.w0 i{width:0}.bar.w10 i{width:10%}.bar.w20 i{width:20%}.bar.w30 i{width:30%}.bar.w40 i{width:40%}.bar.w50 i{width:50%}
+.bar.w60 i{width:60%}.bar.w70 i{width:70%}.bar.w80 i{width:80%}.bar.w90 i{width:90%}.bar.w100 i{width:100%}
+
+/* Admin */
+.admin-layout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:16px;align-items:start}
+.side{background:#fff;border:1px solid var(--line);border-radius:11px;padding:8px}
+.side button{display:block;width:100%;text-align:left;border:0;background:none;color:var(--ink);font-weight:600;padding:8px 10px}
+.side button[aria-selected=true]{background:var(--infobg);color:var(--info)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;background:#eef2f7;border-radius:999px;padding:3px 10px;font-size:12px}
+.chip button{border:0;background:none;padding:0;color:var(--bad);font-weight:700}
+dialog{border:1px solid var(--line);border-radius:12px;padding:20px;max-width:720px;width:calc(100% - 32px);box-shadow:0 20px 60px #14355033}
+dialog::backdrop{background:#14355055}
+.ar{direction:rtl;font-family:'Segoe UI',Tahoma,Arial,sans-serif}
+
+/* One-click approval page */
+body.link-page{display:flex;justify-content:center;padding:40px 16px}
+.link-card{max-width:520px;width:100%;background:#fff;border:1px solid var(--line);border-radius:14px;padding:26px;box-shadow:0 6px 24px #14355012}
+.link-card h1{margin:6px 0 8px;font-size:24px}
+.link-card h1.ok{color:var(--ok)}.link-card h1.warn{color:var(--bad)}.link-card h1.info{color:var(--info)}
+.link-card form{margin-top:14px;display:flex;flex-direction:column;gap:10px}
+.link-card form .hint{margin:0}
+
+/* Print summary */
+.print-only{display:none}
+@media print{.it-sidebar,.it-top,.it-backdrop,.no-print,.actions{display:none!important}.print-only{display:block}main{padding:0}.card{box-shadow:none;border:0;padding:0}body{background:#fff}}
+.summary-table td{border:1px solid #c7d3e0}
+.summary-table td.en{width:28%;font-weight:600;color:var(--navy)}
+.summary-table td.ar{width:22%;text-align:right;font-weight:600;color:var(--navy)}
+
+@media(max-width:1000px){.admin-layout{grid-template-columns:1fr}.stats{grid-template-columns:repeat(3,minmax(0,1fr))}.filters{grid-template-columns:1fr 1fr}}
+@media(max-width:640px){.layout{grid-template-columns:1fr}.layout>.side-col{order:-1;position:static;max-height:none}.grid,.grid.two,.grid.four{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}dl.kv{grid-template-columns:1fr}main{padding:12px}.filters{grid-template-columns:1fr}}
+/* Request list: the action column on the right. */
+th.act,td.act{text-align:right;white-space:nowrap;position:sticky;right:0;background:#fff}
+th.act{background:#f5f8fb}
+a.button-link{display:inline-block;padding:5px 12px;border:1px solid #d4dfeb;border-radius:7px;background:#fff;color:var(--blue);font-weight:600;text-decoration:none}
+a.button-link:hover{background:var(--infobg)}
+
+/* Maintenance Request Form: the familiar layout of the old form (a navy bar per stage, the same field names, two
+   columns), with larger, calmer type: labels in soft navy, values in light boxes, the current stage outlined in blue. */
+.mrf-form{background:#fff;border:1px solid var(--line);border-radius:14px;padding:22px 24px 14px;margin-bottom:16px;box-shadow:0 4px 18px #1435500d}
+.mrf-head{margin-bottom:18px}
+.mrf-title{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.mrf-title h2{margin:0;font-size:21px;font-weight:700;letter-spacing:-.2px;color:var(--navy)}
+.mrf-title::after{content:'';flex:1;height:2px;border-radius:2px;background:linear-gradient(90deg,var(--navy),#2466a533 60%,transparent)}
+.mrf-grid.three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:0}
+.mrf-head .mrf-field{display:flex;flex-direction:column;gap:4px;padding:11px 14px;border:1px solid #dbe5ef;border-radius:10px;background:linear-gradient(180deg,#f8fbfe,#f1f6fb)}
+.mrf-head .mrf-label{padding:0;font-size:11px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:#1f5fa8}
+.mrf-head .mrf-value{padding:0;min-height:0;border:0;background:none;font-size:16px;font-weight:700;color:var(--navy)}
+.mrf-head .mrf-field:first-child .mrf-value{font-size:20px;letter-spacing:.3px}
+.mrf-head .mrf-value .pill{font-size:12px;padding:3px 11px}
+
+.mrf-section{margin:0 0 14px;border:1px solid #d3deea;border-radius:12px;overflow:hidden;background:#fff}
+.mrf-section.now{border-color:#5d97cf;box-shadow:0 0 0 3px #2466a51f,0 6px 18px #2466a514}
+.mrf-section.skip{opacity:.55}
+.mrf-bar{display:flex;align-items:center;gap:11px;min-height:44px;padding:0 14px;background:linear-gradient(90deg,#143550,#1d4a70);color:#fff;font-size:14.5px;font-weight:700;letter-spacing:.2px}
+.mrf-section.now .mrf-bar{background:linear-gradient(90deg,#1d4f80,#2466a5)}
+.mrf-step{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:#ffffff1f;border:1px solid #ffffff40;font-size:12px;font-weight:700}
+.mrf-mark{margin-left:auto;min-width:26px;height:26px;border-radius:13px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;padding:0 10px;color:#c9d7e6}
+.mrf-mark.done{width:26px;padding:0;background:#2e9e5b;color:#fff;font-size:15px;box-shadow:0 0 0 3px #2e9e5b33}
+.mrf-mark.current{background:#ffc94d;color:#3d2b00;letter-spacing:.04em;text-transform:uppercase;font-size:11px}
+
+.mrf-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 22px;padding:16px 18px 14px}
+.mrf-field{display:grid;grid-template-columns:128px minmax(0,1fr);gap:10px;align-items:start}
+.mrf-field.wide{grid-column:1/-1}
+.mrf-label{padding-top:7px;color:#1f5fa8;font-size:12.5px;font-weight:600;line-height:1.35}
+.mrf-value{min-height:34px;padding:6px 11px;border:1px solid #d9e3ed;border-radius:7px;background:#f7f9fc;color:#14273a;font-size:13.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.mrf-field.wide .mrf-value{min-height:42px;text-align:right}
+.mrf-value a{color:var(--blue);font-weight:600}
+/* Date and "by" of the stage: the last line of the section, as in the old form. */
+.mrf-field.sign{margin-top:4px;padding-top:12px;border-top:1px dashed #d3deea}
+.mrf-field.sign-start{grid-column:1}
+.mrf-field.sign .mrf-label{color:#4f80b8;font-size:12px}
+.mrf-field.sign .mrf-value{min-height:0;padding:6px 0;border:0;background:none;color:#33495f;font-weight:600}
+.mrf-grid .hint{grid-column:1/-1;margin:0;padding:8px 12px;border-radius:8px;background:#f4f7fb;color:#5d7287}
+@media(max-width:900px){
+ .mrf-form{padding:16px 14px 8px}
+ .mrf-grid,.mrf-grid.three{grid-template-columns:1fr}
+ .mrf-field{grid-template-columns:1fr;gap:4px}.mrf-label{padding-top:0}
+}
+@media print{.mrf-form,.mrf-section{box-shadow:none}.mrf-bar,.mrf-mark,.mrf-head .mrf-field{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+
+/* Dropdowns in the action box, like the old form. */
+.choice-label{display:block;color:var(--navy);font-weight:600;font-size:12px;margin:8px 0 2px}
+#action-card .actions button{min-height:44px;font-size:14px;padding:10px 18px}
+#action-hint{font-size:13.5px;color:#1d3a57;background:#e6f0fa;border-left:4px solid #2466a5;border-radius:8px;padding:10px 12px}
+#action-hint .ar{display:block;direction:rtl;text-align:right}
+/* One column (like the old form): the action box sits inside the current stage section. */
+.mrf-action{margin:0 18px 18px;padding:16px 18px;border:1.5px solid #5d97cf;border-radius:12px;background:#f5f9fe}
+.mrf-action h2{margin:0 0 8px;font-size:16.5px;color:var(--navy)}
+.mrf-action form{display:block}
+.mrf-action label,.mrf-action .choice-label{margin-top:8px}
+#action-card .actions button{min-height:44px;font-size:14px;padding:10px 18px}
+/* Multi-line text (explanations, comments, statements) reads right to left, as in the old form. */
+.mrf-field.wide .mrf-value{text-align:right}
+/* Action fields in two columns, like the old form; long text, files, checkboxes and buttons take the full width. */
+#action{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 18px;align-items:start}
+#action>div:not([class]){display:contents}
+#action label:has(textarea),#action label:has(input[type=file]),#action label.inline,#action .actions,#action>p,#action>div:not([class])>p{grid-column:1/-1}
+@media(max-width:640px){#action{grid-template-columns:1fr}}
+.mrf-bar .mrf-mark{margin-left:auto}
+/* Work type: an open box of tick boxes on the left, as in the old form. */
+.checklist{border:1px solid #b9c7d6;border-radius:7px;padding:6px 10px;background:#fff;margin-top:4px}
+.checklist label{display:flex;font-weight:400;margin:4px 0}
+#action .work-cell{grid-column:1;grid-row:span 3}
+/* Assignment: technicians one under another in a box on the left, as in the old form. */
+#action .tech-cell{grid-column:1/-1}
+.tech-list{display:flex;flex-direction:column;gap:4px;max-width:calc(50% - 9px);border:1px solid #b9c7d6;border-radius:7px;padding:6px 10px;background:#fff;margin-top:4px}
+.tech-list label{display:flex;font-weight:400;margin:0}
+@media(max-width:640px){.tech-list{max-width:none}}
+/* Closure: the request's files across the full width. */
+#action .wide-cell{grid-column:1/-1}
+#action .wide-cell .button-link{display:inline-block;margin:8px 0 4px}
+#attachments .button-link{display:inline-block;margin:8px 0 4px}
+/* Table search: one text box and a dropdown per column with repeating values. */
+.table-filters{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:4px 0 10px}
+.table-filters input,.table-filters select{display:inline-block;width:auto;min-width:150px;max-width:260px;margin-top:0;padding:6px 8px}
+.table-filters input{min-width:200px}
+.csv-bar{justify-content:flex-end;margin:0 0 10px}
+@media print{.it-shell{display:block}}
+/* New maintenance request: the first section of the Maintenance Request Form, with large, clear fields. */
+.new-mrf{max-width:960px}
+.new-how{margin:-4px 0 16px;padding:10px 14px;border-left:4px solid #2466a5;border-radius:8px;background:#e6f0fa;color:#1d3a57;font-size:14px}
+.new-body{padding:18px 22px 20px}
+.new-sub{display:flex;align-items:center;gap:9px;margin:4px 0 12px;color:var(--navy);font-size:14px;font-weight:700}
+.new-sub span{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#e6f0fa;color:#1d4f80;font-size:12px}
+.new-sub:not(:first-child){margin-top:22px;padding-top:18px;border-top:1px dashed #d3deea}
+.new-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 22px}
+.new-body label{color:#4a6178;font-size:12.5px;font-weight:600;margin-top:12px}
+.new-grid label{margin-top:0}
+.new-body input,.new-body select,.new-body textarea{min-height:42px;margin-top:6px;padding:9px 12px;border:1px solid #cfdbe7;border-radius:8px;background:#fbfcfe;font-size:14px;color:#14273a}
+.new-body textarea{min-height:120px}
+.new-body input:focus,.new-body select:focus,.new-body textarea:focus{outline:none;border-color:#2466a5;box-shadow:0 0 0 3px #2466a526;background:#fff}
+.new-info{display:flex;flex-wrap:wrap;gap:8px 22px;margin:14px 0 0;padding:10px 14px;border-radius:8px;background:#f4f7fb}
+.new-info:empty{display:none}
+.new-info dt{color:#6a8097;font-size:11px;font-weight:650;letter-spacing:.06em;text-transform:uppercase}
+.new-info dd{margin:0 10px 0 0;color:#14273a;font-weight:600}
+.new-files .hint{display:block;font-weight:400}
+.new-files input[type=file]{padding:14px 12px;border:1.5px dashed #a9bfd4;background:#f7fafd;cursor:pointer}
+.new-actions{display:flex;align-items:center;gap:16px;margin:4px 0 6px}
+.new-actions button{min-height:46px;padding:0 30px;font-size:15px;border-radius:9px}
+@media(max-width:700px){.new-grid{grid-template-columns:1fr}.new-body{padding:14px}}
+/* Field titles in blue across the Maintenance Request Form: the stages, the action box and the new request. */
+.mrf-action label,.mrf-action .choice-label,.new-body label,#attachments label,#cancel label,#unevaluated label,#delete label{color:#1f5fa8}
+.mrf-action label.inline,.checklist label,.tech-list label{color:var(--ink)}
+/* My Roles & Locations (as in VTMS) */
+.access-identity h2{margin:2px 0 0;font-size:19px;color:var(--navy)}
+.access-title{display:flex;align-items:center;gap:8px;margin:0 0 10px}.access-title h2{margin:0}
+.access-count{min-width:22px;padding:1px 8px;border-radius:999px;background:var(--infobg);color:var(--info);font-size:11px;font-weight:700;text-align:center}
+.access-list{list-style:none;margin:0;padding:0}
+.access-list li{display:flex;justify-content:space-between;align-items:baseline;gap:14px;padding:9px 0;border-top:1px solid var(--line)}
+.access-list li:first-child{border-top:0}.access-list span{color:var(--muted);text-align:right}
+.access-chips{display:flex;flex-wrap:wrap;gap:6px}
+.access-chips span{border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:12px;background:#f7f9fc}
+.access-places{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin:0 0 8px}
+.access-place{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:#fbfcfe}
+.access-place.is-inactive{opacity:.7}
+.access-place-head{display:flex;justify-content:space-between;align-items:center;gap:8px}.access-place h3{margin:0 0 4px}
+.access-place p{margin:2px 0;color:var(--muted);font-size:12px}
+.access-empty{color:var(--muted);margin:4px 0}
+.access-help{margin:4px 2px 18px}
+/* Request page: Cancel request and Delete request sit in the right column under the stage times; on phones the column's
+   cards become part of the page flow so the stage times stay first and the two actions come after the form. */
+@media(max-width:640px){.layout>.side-col{display:contents}.layout>.side-col>.side-time{order:-1}.layout>.side-col>.side-actions{order:1}}
+.icon-btn{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;padding:0;margin-left:6px;vertical-align:middle;border-radius:8px}
+.icon-btn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+.icon-btn.danger-soft{color:#b42318;border-color:#f1c7c3;background:#fff}.icon-btn.danger-soft:hover{background:#fdecea}
+/* IT Assets additions */
+.c2c{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border:1px solid var(--line);border-radius:999px;color:var(--ink);text-decoration:none;font-weight:600;white-space:nowrap;background:#fff}
+.tag{display:inline-block;margin:1px 3px 1px 0;padding:1px 8px;border-radius:999px;background:#eef3f8;color:#264763;font-size:12px;font-weight:600;white-space:nowrap}
+.tag.off{background:#f1f1f1;color:#666}.tag.ok{background:var(--okbg);color:var(--ok)}.tag.warn{background:var(--warnbg);color:var(--warn)}
+.list-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin:4px 0 10px}.list-filters label{min-width:150px}
+.stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:14px}
+.stat{background:#fff;border:1px solid var(--line);border-radius:11px;padding:12px 14px}.stat b{display:block;font-size:24px}
+.devices td input,.devices td select{min-width:120px}
+.mono{font-family:Consolas,monospace}

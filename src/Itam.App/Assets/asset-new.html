@@ -1,0 +1,7 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>IT Assets · Register an asset</title><link rel="stylesheet" href="/itam.css"></head>
+<body><main>
+<div class="page-head"><div><p class="eyebrow">Asset register</p><h1>Register an asset</h1><p>The Asset No. is given by the system when you save (product code and the next number). Devices bought on a recorded PO are received on the PO instead.</p></div><div class="actions"><a href="/"><button type="button">All assets</button></a></div></div>
+<p id="message" role="status"></p>
+<form id="asset-form" class="card"><div id="fields" class="grid two"></div><div class="actions"><button class="primary" type="submit">Register</button></div></form>
+<dialog id="dialog"><form id="dialog-form" method="dialog"><h2 id="dialog-title"></h2><div id="dialog-body" class="grid two"></div><label class="wide" id="reason-label">Reason (kept in the audit log)<input id="dialog-reason" maxlength="1000"></label><div class="actions"><button class="primary" id="dialog-save" type="submit">Save</button><button type="button" id="dialog-cancel">Cancel</button></div></form></dialog>
+</main><script type="module" src="/asset-new.js"></script></body></html>

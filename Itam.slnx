@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Itam.App/Itam.App.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Itam.Demo/Itam.Demo.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Itam.Checks/Itam.Checks.csproj" />
+  </Folder>
+</Solution>
