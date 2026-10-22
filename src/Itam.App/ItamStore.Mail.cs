@@ -59,13 +59,15 @@ public sealed partial class ItamStore
 
     /// <summary>Writes one email to the outbox (once per event key). Approval emails also go to the approvers' backups on leave.</summary>
     async Task Notify(DbConnection c, DbTransaction? tx, string code, string key, string reference, List<Rcpt> to, List<Rcpt> cc, string action,
-        (string, string?)[] details, string path, string linkText, Guid? actor, (string, string)[]? sections = null, bool approval = false)
+        (string, string?)[] details, string path, string linkText, Guid? actor, (string, string)[]? sections = null, bool approval = false, (string Kind, int Id, string Stage)? decide = null)
     {
         if (approval) { to = L(to, await Backups(c, tx, to)); to = to.Where(p => p.Id != actor).ToList(); }
         var toList = to.GroupBy(p => p.Id).Select(g => g.First()).ToList();
         var ccList = cc.GroupBy(p => p.Id).Select(g => g.First()).Where(p => toList.All(t => t.Id != p.Id)).ToList();
         var actorName = actor is Guid a ? await Scalar(c, tx, "SELECT display_name FROM itam_access.employee WHERE employee_id=@a", default, ("@a", a)) as string : null;
-        var view = new ItamMailView(code, MailNames[code], reference, toList.Count == 1 ? toList[0].Name : "Colleagues", action, details, sections ?? [], SiteUrl + path, linkText, actorName);
+        var links = decide is { } dl ? DecisionLinks(dl.Kind, dl.Id, dl.Stage) : default;
+        var view = new ItamMailView(code, MailNames[code], reference, toList.Count == 1 ? toList[0].Name : "Colleagues", action, details, sections ?? [], SiteUrl + path, linkText, actorName,
+            decide is null ? null : links.Approve, decide is null ? null : links.Reject);
         var toMails = toList.Where(p => !string.IsNullOrWhiteSpace(p.Email)).Select(p => p.Email!.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var ccMails = ccList.Where(p => !string.IsNullOrWhiteSpace(p.Email)).Select(p => p.Email!.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Where(m => !toMails.Contains(m, StringComparer.OrdinalIgnoreCase)).ToList();
         var status = toMails.Count == 0 ? "NoRecipient" : "Queued";
@@ -96,15 +98,15 @@ public sealed partial class ItamStore
         (string, string)[] desc = [("Request details", q.Description)];
         switch (what)
         {
-            case "created": await Notify(c, tx, "IT-EM-31", $"IT-EM-31|{q.No}", q.No, manager, employee, $"{q.EmployeeName} has requested an IT device; IT starts only after your approval.", details, path, "Open the request to approve or reject", actor, desc, approval: true); break;
+            case "created": await Notify(c, tx, "IT-EM-31", $"IT-EM-31|{q.No}", q.No, manager, employee, $"{q.EmployeeName} has requested an IT device; IT starts only after your approval.", details, path, "Open the request to approve or reject", actor, desc, approval: true, decide: ("request", id, "WaitingRequestApproval")); break;
             case "approved": await Notify(c, tx, "IT-EM-18", $"IT-EM-18|{q.No}", q.No, officers, L(employee, manager), $"The manager approved {q.No}: choose the source (stock, new device or IT accessory).", details, path, "Open the request", actor, desc); break;
             case "rejected": case "cost-rejected": case "expired":
                 await Notify(c, tx, "IT-EM-15", $"IT-EM-15|{q.No}|{what}", q.No, employee, L(manager, what == "cost-rejected" ? officers : []),
                     what == "expired" ? $"{q.No} was cancelled automatically: the manager did not decide within {ApprovalDays} days." : $"{q.No} was rejected{(q.RejectReason is null ? "." : ": " + q.RejectReason)}", details, path, "Open the request", actor); break;
             case "stock": await Notify(c, tx, "IT-EM-58", $"IT-EM-58|{q.No}", q.No, L(await People(c, tx, q.Assigned), q.Assigned is null ? officers : []), L(officers, employee), $"{q.No} is allocated from stock: install and deliver it to {q.EmployeeName}.", details, path, "Open the request", actor); break;
             case "pricing": await Notify(c, tx, "IT-EM-54", $"IT-EM-54|{q.No}", q.No, await People(c, tx, q.Assigned), officers, $"Price the IT accessory of {q.No} with a local shop, for the manager's cost approval.", details, path, "Open the request", actor, desc); break;
-            case "cost-new": await Notify(c, tx, "IT-EM-26", $"IT-EM-26|{q.No}", q.No, manager, employee, $"IT has priced the new device for {q.No}; please approve or reject the cost.", details, path, "Open the cost table to approve or reject", actor, approval: true); break;
-            case "cost-accessory": await Notify(c, tx, "IT-EM-28", $"IT-EM-28|{q.No}", q.No, manager, L(employee, officers), $"IT has priced the IT accessory for {q.No}; please approve or reject the cost.", details, path, "Open the cost table to approve or reject", actor, approval: true); break;
+            case "cost-new": await Notify(c, tx, "IT-EM-26", $"IT-EM-26|{q.No}", q.No, manager, employee, $"IT has priced the new device for {q.No}; please approve or reject the cost.", details, path, "Open the cost table to approve or reject", actor, approval: true, decide: ("request", id, "WaitingCostApproval")); break;
+            case "cost-accessory": await Notify(c, tx, "IT-EM-28", $"IT-EM-28|{q.No}", q.No, manager, L(employee, officers), $"IT has priced the IT accessory for {q.No}; please approve or reject the cost.", details, path, "Open the cost table to approve or reject", actor, approval: true, decide: ("request", id, "WaitingCostApproval")); break;
             case "cost-approved":
                 if (q.Source == "Accessory") await Notify(c, tx, "IT-EM-55", $"IT-EM-55|{q.No}", q.No, await People(c, tx, q.Assigned), L(officers, employee, manager), $"The cost of {q.No} is approved: buy the accessory (petty cash, with the receipt) and hand it over.", details, path, "Open the request", actor);
                 else await Notify(c, tx, "IT-EM-15", $"IT-EM-15|{q.No}|cost-approved", q.No, officers, L(employee, manager), $"The manager approved the cost of {q.No}: order the device.", details, path, "Open the request", actor);
@@ -125,7 +127,7 @@ public sealed partial class ItamStore
         switch (what)
         {
             case "created": await Notify(c, tx, "IT-EM-30", $"IT-EM-30|{k.No}", k.No, handlers, [], $"{k.Name} asked for ink: check the printer and send the request for approval.", details, "/ink.html", "Open the ink requests", actor); break;
-            case "sent": await Notify(c, tx, "IT-EM-29", $"IT-EM-29|{k.No}|{DateTime.UtcNow:yyyyMMddHHmm}", k.No, await People(c, tx, k.Manager), employee, $"{k.Name} asked for ink; please approve or reject.", details, "/ink.html", "Open the ink request to approve or reject", actor, approval: true); break;
+            case "sent": await Notify(c, tx, "IT-EM-29", $"IT-EM-29|{k.No}|{DateTime.UtcNow:yyyyMMddHHmm}", k.No, await People(c, tx, k.Manager), employee, $"{k.Name} asked for ink; please approve or reject.", details, "/ink.html", "Open the ink request to approve or reject", actor, approval: true, decide: ("ink", id, "WaitingApproval")); break;
             case "decided": await Notify(c, tx, "IT-EM-59", $"IT-EM-59|{k.No}", k.No, handlers, L(employee, await People(c, tx, k.Manager)),
                 k.Status == "Approved" ? $"{k.No} is approved: deliver the toner from the shelf or order it." : $"{k.No} was rejected{(k.Reason is null ? "." : ": " + k.Reason)}", details, "/ink.html", "Open the ink requests", actor); break;
         }
@@ -177,7 +179,7 @@ public sealed partial class ItamStore
         switch (what)
         {
             case "created": await Notify(c, tx, "IT-EM-09", $"IT-EM-09|{o.No}", o.No, await RoleHolders(c, tx, null, ItamRoles.ItManager, ItamRoles.TeamLeader, ItamRoles.SystemAdministrator), creator,
-                $"Maintenance order {o.No} for {o.Asset} waits for approval, with the supplier's quotation.", details, "/maintenance.html", "Open the order to approve or reject", actor, [("Maintenance details", o.Details)], approval: true); break;
+                $"Maintenance order {o.No} for {o.Asset} waits for approval, with the supplier's quotation.", details, "/maintenance.html", "Open the order to approve or reject", actor, [("Maintenance details", o.Details)], approval: true, decide: ("maintenance", id, "WaitingApproval")); break;
             case "decided": await Notify(c, tx, "IT-EM-51", $"IT-EM-51|{o.No}", o.No, L(officers, creator), regional,
                 o.Status == "Approved" ? $"{o.No} is approved: send {o.Asset} to {o.Supplier} and record the dispatch." : $"{o.No} was rejected{(o.Reason is null ? "." : ": " + o.Reason)}", details, "/maintenance.html", "Open the maintenance orders", actor); break;
             case "returned": await Notify(c, tx, "IT-EM-53", $"IT-EM-53|{o.No}", o.No, L(officers, creator), regional, $"{o.Asset} is back from {o.Supplier}: {(o.Outcome == "Repaired" ? "repaired" : "not repairable")}.", details, "/maintenance.html", "Open the maintenance orders", actor, [("Repair details", o.Repair ?? "")]); break;
@@ -201,7 +203,7 @@ public sealed partial class ItamStore
         switch (what)
         {
             case "created" when m.Kind != "Warehouse": await Notify(c, tx, "IT-EM-19", $"IT-EM-19|{m.No}", m.No, await RoleHolders(c, tx, null, ItamRoles.TeamLeader, ItamRoles.SystemAdministrator, ItamRoles.ItManager), requester,
-                $"Gate pass {m.No} waits for approval.", details, path, "Open the gate pass to approve or reject", actor, approval: true); break;
+                $"Gate pass {m.No} waits for approval.", details, path, "Open the gate pass to approve or reject", actor, approval: true, decide: ("movement", id, "Submitted")); break;
             case "created": case "approved":
                 if (what == "approved") await Notify(c, tx, "IT-EM-20", $"IT-EM-20|{m.No}", m.No, requester, await LineManager(c, tx, m.Emp ?? m.Req), $"{m.No} is approved: print the pass for Security and dispatch within its validity.", details, path, "Open the gate pass", actor);
                 if (m.Kind != "Exit" || what == "approved")
@@ -233,7 +235,7 @@ public sealed partial class ItamStore
         var requester = await People(c, tx, d.By); var officers = await RoleHolders(c, tx, null, ItamRoles.AssetsOfficer); var managers = await RoleHolders(c, tx, null, ItamRoles.ItManager); var regional = await RoleHolders(c, tx, d.Region, ItamRoles.SupportSpecialist);
         switch (what)
         {
-            case "created": await Notify(c, tx, "IT-EM-10", $"IT-EM-10|{d.No}", d.No, managers, requester, $"Disposal {d.No} of {d.Asset} waits for your approval. Approval alone does not dispose.", details, "/disposals.html", "Open the disposals to approve or reject", actor, approval: true); break;
+            case "created": await Notify(c, tx, "IT-EM-10", $"IT-EM-10|{d.No}", d.No, managers, requester, $"Disposal {d.No} of {d.Asset} waits for your approval. Approval alone does not dispose.", details, "/disposals.html", "Open the disposals to approve or reject", actor, approval: true, decide: ("disposal", id, "WaitingApproval")); break;
             case "decided":
                 await Notify(c, tx, "IT-EM-47", $"IT-EM-47|{d.No}", d.No, L(requester, officers), L(regional, managers), d.Status == "Approved" ? $"{d.No} is approved." : $"{d.No} was rejected{(d.Reject is null ? "." : ": " + d.Reject)} The asset is back In Store.", details, "/disposals.html", "Open the disposals", actor);
                 if (d.Status == "Approved") await Notify(c, tx, "IT-EM-48", $"IT-EM-48|{d.No}", d.No, officers, L(regional, managers), $"{d.No} is approved and waits for its completion: record the date, method and evidence when {d.Asset} is disposed.", details, "/disposals.html", "Open the disposals", actor);

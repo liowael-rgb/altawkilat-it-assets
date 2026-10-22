@@ -94,6 +94,8 @@ public static class ItamApi
         api.MapGet("/requests/{id:int}/pack.pdf", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Pdf(await store.RequestPack(u, id, ctx.RequestAborted))));
         api.MapGet("/requests/{id:int}/files/{which}", (HttpContext ctx, ItamStore store, int id, string which) => Guard(ctx, async u => { var f = await store.RequestFile(u, id, which, ctx.RequestAborted); return Results.File(f.Content, f.MediaType, f.FileName); }));
         api.MapGet("/movements", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Movements(u, ctx.RequestAborted))));
+        api.MapGet("/quick-decision", (HttpContext ctx, ItamStore store, string? k, int id, string? s) => Guard(ctx, async u => Results.Ok(await store.QuickDecisionInfo(u, k, id, s, ctx.RequestAborted))));
+        api.MapPost("/quick-decision", (HttpContext ctx, ItamStore store, ItamQuickDecision input) => Guard(ctx, async u => Results.Ok(await store.QuickDecide(u, input, ctx.RequestAborted))));
         api.MapGet("/dashboard", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Dashboard(u, ctx.RequestAborted))));
         api.MapGet("/mail", (HttpContext ctx, ItamStore store, string? status) => Guard(ctx, async u => Results.Ok(await store.MailOutbox(u, status, ctx.RequestAborted))));
         api.MapGet("/mail/{id:long}/html", (HttpContext ctx, ItamStore store, long id) => Guard(ctx, async u =>

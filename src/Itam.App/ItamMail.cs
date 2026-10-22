@@ -15,7 +15,8 @@ public interface IItamMailer { Task Send(ItamMailMessage message, CancellationTo
 
 /// <summary>What an email shows: the action sentence, the details table, extra sections and the link to the record.</summary>
 public sealed record ItamMailView(string Template, string Name, string Reference, string Greeting, string ActionLine,
-    IReadOnlyList<(string Label, string? Value)> Details, IReadOnlyList<(string Title, string Text)> Sections, string Link, string LinkText, string? ActionBy);
+    IReadOnlyList<(string Label, string? Value)> Details, IReadOnlyList<(string Title, string Text)> Sections, string Link, string LinkText, string? ActionBy,
+    string? ApproveLink = null, string? RejectLink = null);
 
 /// <summary>The IT Assets email layout, the same as the CMS emails (owner, 22 October 2026): a centred white card on a light
 /// background, the logo, the system name underlined in navy, the automatic-notification line, "Dear ..." in red, the
@@ -53,7 +54,8 @@ public static class ItamMailLayout
             "<div style=\"text-align:center;color:" + Navy + ";font-size:19px;font-weight:bold;margin:6px 0 0;padding-bottom:10px;border-bottom:3px solid " + Navy + "\">IT Assets Management System</div>" +
             "<div style=\"color:#6b7280;font-size:12px;margin:8px 0 14px\">This is an automatic notification, please don't reply to it.</div>" +
             "<div style=\"color:" + Red + ";font-weight:bold;font-size:15px;margin-bottom:6px\">Dear " + E(v.Greeting) + ",</div>" +
-            "<div style=\"margin-bottom:14px\">" + E(v.ActionLine) + " Please action as appropriate by clicking the link below.</div>" +
+            "<div style=\"margin-bottom:14px\">" + E(v.ActionLine) + (v.ApproveLink is null ? " Please action as appropriate by clicking the link below." : " One click on Approve records your approval (you may be asked to sign in); Reject asks for a short reason.") + "</div>" +
+            Buttons(v) +
             details + sections +
             "<div style=\"margin-top:16px;color:" + Red + ";font-weight:bold\">Best Regards</div>" +
             (string.IsNullOrWhiteSpace(v.ActionBy) ? "" : "<div style=\"font-weight:bold;color:" + Navy + "\">" + E(v.ActionBy) + "</div>") +
@@ -68,6 +70,15 @@ public static class ItamMailLayout
          .Append("px;max-width:100%;background:#ffffff;border:1px solid #d5dce6\"><tr><td style=\"padding:22px 24px 20px;").Append(Font).Append("\">").Append(body).Append("</td></tr></table>")
          .Append("<div style=\"font-family:Calibri,Arial,sans-serif;font-size:11px;color:#8a94a6;padding-top:10px\">IT Assets Management System · Altawkilat · ").Append(E(v.Template)).Append("</div>");
         return h.Append("</td></tr></table></body></html>").ToString();
+    }
+
+    // Approve (green) and Reject (red) as in the owner's IT-EM-31 template; table-based so Outlook shows them as buttons.
+    static string Buttons(ItamMailView v)
+    {
+        if (v.ApproveLink is null || v.RejectLink is null) return "";
+        string B(string href, string text, string colour) => "<td style=\"padding:0 12px 0 0\"><table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\"><tr><td bgcolor=\"" + colour + "\" style=\"background:" + colour + ";padding:9px 26px;border-radius:4px\">" +
+            "<a href=\"" + WebUtility.HtmlEncode(href) + "\" style=\"font-family:Calibri,Arial,sans-serif;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;display:inline-block\">" + text + "</a></td></tr></table></td>";
+        return "<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"margin:0 0 16px\"><tr>" + B(v.ApproveLink, "Approve", "#2E7D32") + B(v.RejectLink, "Reject", "#C00000") + "</tr></table>";
     }
 
     public static string Date(DateOnly? d) => d?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "—";

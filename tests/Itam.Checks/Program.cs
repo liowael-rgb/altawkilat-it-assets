@@ -670,6 +670,19 @@ try
     var body31 = await Scalar("SELECT TOP 1 body_html FROM itam_data.mail_outbox WHERE template=N'IT-EM-31' ORDER BY mail_id") as string;
     Check(em31 is not null && em31.StartsWith("u12@example.invalid; u3@example.invalid|[IT Assets] Device request approval by the manager - PR-") && body31!.Contains("Dear Colleagues,") && body31.Contains("cid:logo")
         && body31.Contains("IT Assets Management System") && !body31.Contains("<script"), "A device request writes IT-EM-31 to the direct manager and the manager's backup on leave, in the CMS layout");
+    // One-click approval from the email: links only read; the decision is a signed-in check of the approver and of the step.
+    var qpr = JsonSerializer.SerializeToElement(await store.CreateRequest(U(10), new(null, "New", null, "A docking station"), null, default)).GetProperty("id").GetInt32();
+    var qBody = await Scalar($"SELECT body_html FROM itam_data.mail_outbox WHERE template=N'IT-EM-31' AND event_key LIKE N'%|PR-%' ORDER BY mail_id DESC") as string;
+    var qInfo = JsonSerializer.SerializeToElement(await store.QuickDecisionInfo(U(1), "request", qpr, "WaitingRequestApproval", default));
+    Check(qBody!.Contains($"decide.html?k=request&amp;id={qpr}&amp;s=WaitingRequestApproval&amp;a=approve") && qBody.Contains("#2E7D32") && qInfo.GetProperty("waiting").GetBoolean() && !qInfo.GetProperty("eligible").GetBoolean()
+        && await Throws<ItamAccessDenied>(() => store.QuickDecide(U(1), new("request", qpr, "WaitingRequestApproval", true, null), default))
+        && await Throws<ArgumentException>(() => store.QuickDecide(U(12), new("request", qpr, "WaitingCostApproval", true, null), default))
+        && await Throws<ArgumentException>(() => store.QuickDecide(U(12), new("request", qpr, "WaitingRequestApproval", false, null), default)),
+        "Approval emails carry Approve and Reject; only the approver decides, only at the step the email was for, and a rejection needs a reason");
+    var qDone = JsonSerializer.SerializeToElement(await store.QuickDecide(U(12), new("request", qpr, "WaitingRequestApproval", true, null), default));
+    Check(!qDone.GetProperty("waiting").GetBoolean() && await Scalar($"SELECT status FROM itam_data.request WHERE request_id={qpr}") as string == "InReview"
+        && await Throws<ArgumentException>(() => store.QuickDecide(U(12), new("request", qpr, "WaitingRequestApproval", true, null), default)),
+        "One click on Approve records the approval; the same email cannot act twice");
     foreach (var t in new[] { "IT-EM-18", "IT-EM-26", "IT-EM-19", "IT-EM-20", "IT-EM-32", "IT-EM-09", "IT-EM-10", "IT-EM-41", "IT-EM-42", "IT-EM-44", "IT-EM-11", "IT-EM-64", "IT-EM-01", "IT-EM-02", "IT-EM-13" })
         Check(Convert.ToInt32(await Scalar($"SELECT COUNT(*) FROM itam_data.mail_outbox WHERE template=N'{t}'")) > 0, $"{t} is written by its action");
     Check(Convert.ToInt32(await Scalar("SELECT COUNT(*) FROM (SELECT event_key FROM itam_data.mail_outbox GROUP BY event_key HAVING COUNT(*)>1) x")) == 0, "Each event writes its email once");

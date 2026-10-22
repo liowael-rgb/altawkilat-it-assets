@@ -464,3 +464,11 @@ Emails and the weekly summary (IT-EM-12, IT-EM-61) will use the same list when t
   "Run reminders now" on the outbox page runs them on demand.
 - Not sent (paper signing chosen): 03, 06, 07 (electronic acceptance); 60 (delegation returned) not built. Reminder timings
   above are defaults to confirm with the owner.
+- **One-click approval from the email** (owner, 22 October 2026): the approval emails (IT-EM-31 request, 26/28 cost, 29 ink,
+  09 maintenance, 19 gate pass, 10 disposal) carry green **Approve** and red **Reject** buttons (as in the owner's IT-EM-31
+  template). They open the decision page of IT Assets with the record and the approval step. Opening the link never decides
+  (a mail scanner or preview only reads). For the signed-in eligible approver (or backup on leave), Approve is recorded at
+  once from the visible page, with no other click; Reject asks for the reason. The server accepts the decision only while
+  the record is still at that step, so an old email, a second click or another step does nothing ("Already decided"),
+  and anyone else sees "Not your decision". The same rules as on the record's page apply. Loss decisions need the signed
+  decision file, so their email links to the case.
