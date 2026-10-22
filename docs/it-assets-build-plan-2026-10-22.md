@@ -271,7 +271,8 @@ email step.
 ## Step 3b (My IT Assets and device and accessory requests) — built 22 October 2026
 
 - **My IT Assets** (every employee, first menu item; employees without an IT role land here): Waiting for your decision
-  (request and cost approvals as the direct manager or the backup on leave; link to ink approvals), My assets (custody, with
+  (request and cost approvals as the direct manager, or as the IT Manager for every request (owner, 22 October 2026), or a
+  backup on leave; never their own request; link to ink approvals), My assets (custody, with
   the delivery note PDF and whether the signed copy is in), My requests, My documents (delivery and receipt notes), My team
   (managers: each direct report's assets, open requests and notes not yet signed). No costs, keys or supplier details.
   Delivery notes stay paper-signed (no electronic Accept); gate passes and transfers come with step 4.

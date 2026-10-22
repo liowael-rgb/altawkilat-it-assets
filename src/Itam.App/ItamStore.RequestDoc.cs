@@ -91,8 +91,8 @@ public sealed partial class ItamStore
         doc.Fit($"Amount in words: {AmountInWords(grand)}", M + 6, doc.Y, 9, W - 2 * M - 12, ink); doc.Y -= 18;
         // Approvals recorded electronically
         Section("Approvals recorded in IT Assets", "الموافقات المسجلة في النظام");
-        var steps = new List<(string Step, string? Who, string Decision, DateTime? When)> { ("Submitted", q.requestedBy, "Request", (DateTime?)q.requestedAt), ("Request approved (direct manager)", q.approvedBy, "Approved", (DateTime?)q.approvedAt),
-            ("Priced", q.pricedBy, accessory ? "Priced in region" : "Cost table", (DateTime?)q.pricedAt), ("Cost approved (direct manager)", q.costApprovedBy, "Approved", (DateTime?)q.costApprovedAt) };
+        var steps = new List<(string Step, string? Who, string Decision, DateTime? When)> { ("Submitted", q.requestedBy, "Request", (DateTime?)q.requestedAt), ("Request approved (manager / IT Manager)", q.approvedBy, "Approved", (DateTime?)q.approvedAt),
+            ("Priced", q.pricedBy, accessory ? "Priced in region" : "Cost table", (DateTime?)q.pricedAt), ("Cost approved (manager / IT Manager)", q.costApprovedBy, "Approved", (DateTime?)q.costApprovedAt) };
         foreach (var st in steps.Where(x => x.Who is not null))
         { doc.Text(st.Step, M + 8, doc.Y, 9, false, muted); doc.Fit(st.Who, M + 210, doc.Y, 9.5, 170, ink); doc.Text(st.Decision, M + 385, doc.Y, 9, false, ink); doc.Text(At(st.When), W - M - 8, doc.Y, 9, true, ink); doc.Y -= 5; doc.Line(M, doc.Y, W - M, doc.Y); doc.Y -= 11; }
         // Signatures by hand and the QR code to check the request

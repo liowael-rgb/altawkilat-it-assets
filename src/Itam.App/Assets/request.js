@@ -31,9 +31,9 @@ async function load(note){
     ['Device being replaced',r.replaced],['Technical assessment',r.assessmentNo||(r.hasAssessmentFile?file('Attached file','assessment'):null)],['What is needed and why',r.description],
     ['Asked',`${when(r.requestedAt)} by ${r.requestedBy||''}`],['Direct manager',r.manager]])));
   // Steps with who and when (approvals recorded electronically).
-  const steps=[['Submitted',r.requestedBy,r.requestedAt],['Request approved by the direct manager',r.approvedBy,r.approvedAt],
+  const steps=[['Submitted',r.requestedBy,r.requestedAt],['Request approved (direct manager or IT Manager)',r.approvedBy,r.approvedAt],
     ...(r.source?[[`Source: ${r.sourceLabel}`+(r.reserved?` · ${r.reserved}`:'')+(r.assignedTo?` · assigned to ${r.assignedTo}`:''),null,null]]:[]),
-    ['Priced',r.pricedBy,r.pricedAt],['Cost approved by the direct manager',r.costApprovedBy,r.costApprovedAt],['Ordered'+(r.po?` on PO ${r.po}`:''),null,r.orderedAt],
+    ['Priced',r.pricedBy,r.pricedAt],['Cost approved (direct manager or IT Manager)',r.costApprovedBy,r.costApprovedAt],['Ordered'+(r.po?` on PO ${r.po}`:''),null,r.orderedAt],
     ['Fulfilled'+(r.deliveryNo?` · delivery note ${r.deliveryNo}`:r.paidAmount!=null?` · bought for ${money(r.paidAmount)} on ${date(r.purchaseDate)}`:''),null,r.fulfilledAt],
     ...(r.accountingSentOn?[[`Sent to Accounting on ${date(r.accountingSentOn)}`,null,null]]:[]),
     ...(r.status==='Rejected'?[[`Rejected by ${r.rejectedBy||''}: ${r.rejectReason||''}`,null,null]]:[]),...(r.status==='Cancelled'?[[`Cancelled${r.cancelledReason?': '+r.cancelledReason:''}`,null,null]]:[])]
@@ -82,7 +82,7 @@ function costForm(){
       const lines=[...rows.children].map(tr=>{const [i,s,q,u]=tr.querySelectorAll('input');return {item:i.value,specification:s.value,quantity:Number(q.value)||null,unitCost:u.value===''?null:Number(u.value)};});
       await api(`/requests/${id}/cost`,{method:'POST',body:form({supplierId:Number(sup.value)||null,shop:shop.value,lines},f.files[0])});await load('Cost table sent to the direct manager for approval.');}catch(e){fail(e);}},'primary','doc');
   const acts=el('div',null,'actions');acts.append(btn('Add a line',()=>add(null),'','plus'),save,btn('Cancel',()=>load()));
-  $('view').replaceChildren(card(`Cost table for ${r.no}`,nd?'New device: the supplier\'s prices before VAT, with the quotation. The employee\'s direct manager approves the cost.':'IT accessory: local prices in the employee\'s region before VAT. The employee\'s direct manager approves the cost.',grid,wrap,sum,acts));
+  $('view').replaceChildren(card(`Cost table for ${r.no}`,nd?'New device: the supplier\'s prices before VAT, with the quotation. The employee\'s direct manager or the IT Manager approves the cost.':'IT accessory: local prices in the employee\'s region before VAT. The employee\'s direct manager approves the cost.',grid,wrap,sum,acts));
 }
 function ordered(){
   edit('Ordered',[{key:'po',label:'PO',type:'select',wide:true,options:[['','Not recorded yet'],...d.pos.map(p=>[p.id,p.no])],hint:'The PO the device is ordered on; receive the device on the PO as usual, then deliver it to the employee.'}],

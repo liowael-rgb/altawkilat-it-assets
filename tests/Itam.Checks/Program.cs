@@ -403,20 +403,21 @@ try
     await store.ReviewRequest(U(1), pr2, new("NewDevice", null, null, null), default);
     Check(await Throws<ArgumentException>(() => store.SubmitCost(U(1), pr2, new(1, null, [new("Monitor 24", "IPS", 1, 600m)]), null, default)), "A new device needs the supplier's quotation");
     await store.SubmitCost(U(1), pr2, new(1, null, [new("Monitor 24", "IPS", 1, 600m), new("Cable", null, 2, 25m)]), qFile, default);
-    Check(await Throws<ItamAccessDenied>(() => store.DecideCost(U(1), pr2, new(true, null), default)), "The cost is approved by the direct manager, not IT");
+    Check(await Throws<ItamAccessDenied>(() => store.DecideCost(U(1), pr2, new(true, null), default)), "The cost is approved by the direct manager or the IT Manager, not other IT");
     await store.DecideCost(U(12), pr2, new(true, null), default);
     var prDoc = await store.RequestPdf(U(1), pr2, default);
     Check(System.Text.Encoding.ASCII.GetString(prDoc.Content, 0, 5) == "%PDF-" && await Scalar($"SELECT status FROM itam_data.request WHERE request_id={pr2}") as string == "Approved"
         && ItamStore.AmountInWords(747.50m) == "Seven hundred forty-seven riyals and fifty halalas only", "Approved cost; request document with the amount in words (650 + VAT = 747.50)");
     await store.MarkOrdered(U(1), pr2, new(null), default); await store.RequestAccounting(U(1), pr2, new(null), default);
     var pr3 = JsonSerializer.SerializeToElement(await store.CreateRequest(U(10), new(null, "New", null, "A wireless mouse"), null, default)).GetProperty("id").GetInt32();
-    await store.DecideRequest(U(12), pr3, new(true, null), default);
+    Check(await Throws<ItamAccessDenied>(() => store.DecideRequest(U(5), pr3, new(true, null), default)), "The System Administrator does not approve device requests");
+    await store.DecideRequest(U(2), pr3, new(true, null), default);
     await store.ReviewRequest(U(1), pr3, new("Accessory", null, G(9), null), default);
     await store.SubmitCost(U(9), pr3, new(null, "Local shop", [new("Wireless mouse", null, 1, 100m)]), null, default);
-    await store.DecideCost(U(12), pr3, new(true, null), default);
+    await store.DecideCost(U(2), pr3, new(true, null), default);
     var rcpt = new ItamUpload("receipt.pdf", "application/pdf", qFile.Content);
     Check(await Scalar($"SELECT status FROM itam_data.request WHERE request_id={pr3}") as string == "CashPurchase"
-        && await Throws<ArgumentException>(() => store.RecordCashPurchase(U(9), pr3, new("Local shop", rToday, 116m), rcpt, default)), "Accessory: priced in the region, approved, bought for no more than the approved total (115)");
+        && await Throws<ArgumentException>(() => store.RecordCashPurchase(U(9), pr3, new("Local shop", rToday, 116m), rcpt, default)), "Accessory approved by the IT Manager (request and cost): priced in the region, bought for no more than the approved total (115)");
     await store.RecordCashPurchase(U(9), pr3, new("Local shop", rToday, 115m), rcpt, default);
     var my = JsonSerializer.SerializeToElement(await store.MyItAssets(U(10), default));
     var boss = JsonSerializer.SerializeToElement(await store.MyItAssets(U(12), default));

@@ -36,8 +36,13 @@ public sealed partial class ItamStore
             r => new ReqRow(r.GetInt32(0), r.GetString(1), r.GetGuid(2), r.GetGuid(3), r.GetString(4), I(r, 5), r.GetString(6), r.IsDBNull(7) ? null : r.GetGuid(7), S(r, 8),
                 r.IsDBNull(9) ? null : r.GetGuid(9), I(r, 10), Utc(r, 11), S(r, 12)), token, ("@i", id))).SingleOrDefault() ?? throw new ArgumentException("The request was not found.");
 
+    /// <summary>The employee's direct manager (or the manager's backup during leave), or the IT Manager (or the IT Manager's backup
+    /// during leave) for every request (owner, 22 October 2026); never for their own request or one they raised.</summary>
     static async Task<bool> ManagerOf(DbConnection c, DbTransaction? tx, ItamScope s, ReqRow r, CancellationToken token)
-        => s.Id != r.Employee && s.Id != r.RequestedBy && r.Manager is Guid m && await ActsFor(c, tx, s.Id, m, token);
+        => s.Id != r.Employee && s.Id != r.RequestedBy && (s.Manager || r.Manager is Guid m && await ActsFor(c, tx, s.Id, m, token)
+           || await Scalar(c, tx, "SELECT TOP 1 1 FROM itam_access.leave_backup b JOIN itam_access.role_assignment ra ON ra.employee_id=b.person_id AND ra.role_code=N'ItManager' " +
+               "WHERE b.backup_employee_id=@me AND b.cancelled_at_utc IS NULL AND b.person_id NOT IN(@e,@q) AND CAST(DATEADD(hour,3,SYSUTCDATETIME()) AS date) BETWEEN b.leave_from AND b.leave_to",
+               token, ("@me", s.Id), ("@e", r.Employee), ("@q", r.RequestedBy)) is not null);
 
     // Create and the request approval ------------------------------------------------------------------------------------------------------
     public async Task<object> CreateRequest(ItamUser user, ItamRequestInput x, ItamUpload? assessment, CancellationToken token)
@@ -82,7 +87,7 @@ public sealed partial class ItamStore
         await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var s = await Scope(c, tx, user, token);
         var r = await LoadRequest(c, tx, id, token);
-        Require(await ManagerOf(c, tx, s, r, token), "Only the employee's direct manager, or the manager's backup during leave, decides this request.");
+        Require(await ManagerOf(c, tx, s, r, token), "Only the employee's direct manager or the IT Manager (or their backup during leave) decides this request.");
         if (r.Status != "WaitingRequestApproval") throw new ArgumentException($"{r.No} is {RequestStatusLabel(r.Status)}.");
         var reason = x.Approve ? null : Text(x.Reason, "Reason for the rejection", 500);
         await Exec(c, tx, x.Approve ? "UPDATE itam_data.request SET status=N'InReview',approved_by=@b,approved_at_utc=SYSUTCDATETIME() WHERE request_id=@i"
@@ -175,7 +180,7 @@ public sealed partial class ItamStore
         await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var s = await Scope(c, tx, user, token);
         var r = await LoadRequest(c, tx, id, token);
-        Require(await ManagerOf(c, tx, s, r, token), "Only the employee's direct manager, or the manager's backup during leave, approves the cost.");
+        Require(await ManagerOf(c, tx, s, r, token), "Only the employee's direct manager or the IT Manager (or their backup during leave) approves the cost.");
         if (r.Status != "WaitingCostApproval") throw new ArgumentException($"{r.No} is {RequestStatusLabel(r.Status)}.");
         var reason = x.Approve ? null : Text(x.Reason, "Reason for the rejection", 500);
         var next = x.Approve ? r.Source == "Accessory" ? "CashPurchase" : "Approved" : "Rejected";
@@ -412,7 +417,7 @@ public sealed partial class ItamStore
     internal static async Task<int> RequestApprovalsCount(DbConnection c, ItamScope s, CancellationToken token)
     {
         var n = 0;
-        foreach (var id in await Rows(c, null, "SELECT request_id FROM itam_data.request WHERE status IN(N'WaitingRequestApproval',N'WaitingCostApproval') AND manager_id IS NOT NULL", r => r.GetInt32(0), token))
+        foreach (var id in await Rows(c, null, "SELECT request_id FROM itam_data.request WHERE status IN(N'WaitingRequestApproval',N'WaitingCostApproval')", r => r.GetInt32(0), token))
             if (await ManagerOf(c, null, s, await LoadRequest(c, null, id, token), token)) n++;
         return n;
     }

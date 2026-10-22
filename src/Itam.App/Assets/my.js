@@ -17,7 +17,7 @@ async function load(note){
   $('head-actions').replaceChildren(btn('Ask for a device',ask,'primary','plus'),btn('Ask for ink',()=>location.assign('/ink.html'),'','ink'));
   const parts=[];
   if(d.waiting.length||d.inkApprovals){
-    const c=card('Waiting for your decision','As the direct manager (or the manager\'s backup during leave). A rejection needs a reason.');
+    const c=card('Waiting for your decision','As the direct manager, or as the IT Manager for every request (or a backup during leave). A rejection needs a reason.');
     if(d.waiting.length)c.append(table(['Request','Employee','What','Step','Cost','Time left'],d.waiting,
       r=>[el('span',r.no,'mono'),two(r.employee,r.department||''),two(what(r),r.description),r.status==='WaitingCostApproval'?`Cost approval${r.sourceLabel?' · '+r.sourceLabel:''}`:'Request approval',r.status==='WaitingCostApproval'?money(r.grand):'',timeLeft(r.waitingSince,d.approvalDays)],
       r=>[['Open',()=>go(r)],['Approve',()=>decide(r,true)],['Reject',()=>decide(r,false)]]));
