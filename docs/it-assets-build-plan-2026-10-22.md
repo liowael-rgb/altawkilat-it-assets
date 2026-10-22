@@ -277,7 +277,9 @@ email step.
   Delivery notes stay paper-signed (no electronic Accept); gate passes and transfers come with step 4.
 - **Device requests PR-n**: New or Replacement (the device replaced from the person's custody; its technical assessment is
   linked when recorded, otherwise attached); a manager can ask for a team member. The direct manager (or backup) approves;
-  nobody approves their own request. The IT Assets Officer chooses the source:
+  nobody approves their own request. The manager decides within 3 days (request approval, and again for the cost
+  approval, counted from when it reached the manager); otherwise the request is cancelled automatically (a timer every 15
+  minutes, and every page and decision checks first); the pages show the time left. The IT Assets Officer chooses the source:
   - From stock: reserves an In Store device (one request per device) and assigns an IT Support Specialist, who delivers it
     from the asset page and links the delivery note: Fulfilled.
   - New device: cost table (item, specification, quantity, unit cost before VAT; subtotal, VAT 15%, grand total) with the

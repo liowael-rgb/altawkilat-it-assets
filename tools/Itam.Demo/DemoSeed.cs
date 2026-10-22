@@ -148,6 +148,8 @@ static class DemoSeed
         await store.SubmitCost(Who(4), r3, new(null, "Abha Computer Shop (demo)", [new("Wireless mouse and keyboard set", null, 1, 95m)]), null, default);
         await store.DecideCost(Who(2), r3, new(true, null), default);
         await store.CreateRequest(Who(10), new(null, "New", null, "A second monitor for reports"), null, default);
+        // PR-2's cost approval close to its 3-day deadline, to show the countdown (about 10 hours left).
+        await using (var late = new SqlConnection(cs)) { await late.OpenAsync(); using var u = new SqlCommand("UPDATE itam_data.request SET priced_at_utc=DATEADD(hour,-62,SYSUTCDATETIME()) WHERE request_id=@i", late); u.Parameters.AddWithValue("@i", r2); await u.ExecuteNonQueryAsync(); }
         Console.WriteLine("IT Assets demo data seeded.");
     }
 }

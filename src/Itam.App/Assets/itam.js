@@ -143,4 +143,9 @@ export function buttons(...list){const a=el('div',null,'actions');for(const b of
 export function call(number){if(!number)return '';const a=el('a',null,'c2c');a.href='tel:'+String(number).replace(/[^0-9+]/g,'');a.dataset.call=number;a.append(svg('phone'),el('span',number));return a;}
 // Where a supplier invoice stands with Accounting (payment pack sent and paid dates).
 export function accounting(x){if(x.paidOn)return el('span','Paid '+date(x.paidOn),'tag ok');if(x.sentOn)return el('span','Sent to Accounting '+date(x.sentOn),'tag ok');if(x.pack)return el('span',x.pack+': not sent to Accounting','tag warn');return el('span','Not in a payment pack','tag warn');}
+// Time left for the manager to decide (requests are cancelled automatically after the approval time); updates every minute.
+export function timeLeft(since,days){if(!since)return '';const end=new Date(since).getTime()+days*864e5;const s=el('span','','tag');
+  const tick=()=>{const ms=end-Date.now();if(ms<=0){s.textContent='Time is up: cancelled';s.className='tag bad';return;}const h=Math.floor(ms/36e5),mi=Math.floor(ms%36e5/6e4);
+    s.textContent=(h>=24?`${Math.floor(h/24)} day${Math.floor(h/24)>1?'s':''} ${h%24} h`:h>0?`${h} h ${mi} min`:`${mi} min`)+' left';s.className='tag '+(h<6?'bad':h<24?'warn':'');s.title='Cancelled automatically on '+when(new Date(end).toISOString());};
+  tick();const t=setInterval(()=>{if(!s.isConnected){clearInterval(t);return;}tick();},6e4);return s;}
 export function dl(pairs){const l=el('dl',null,'kv');for(const [k,v] of pairs){if(v===null||v===undefined||v==='')continue;l.append(el('dt',k));const dd=el('dd');dd.append(v instanceof Node?v:document.createTextNode(String(v)));l.append(dd);}return l;}

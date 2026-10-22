@@ -16,6 +16,7 @@ public static class ItamServices
     {
         var pdf = new ItamPdf(pdfFont, pdfLatinFont, pdfLatinBoldFont);
         services.AddScoped(sp => new ItamStore(() => connections(sp), sp.GetRequiredService<IItamSecrets>(), sp.GetService<TimeProvider>()) { Pdf = pdf, LabelBaseUrl = labelBaseUrl ?? "https://hub.altawkilat.com/itasm/a/" });
+        services.AddHostedService<ItamRequestTimer>();
         return services;
     }
 }

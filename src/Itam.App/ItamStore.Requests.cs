@@ -77,6 +77,7 @@ public sealed partial class ItamStore
     /// <summary>The direct manager (or the backup on leave) approves the request before IT starts, or rejects it with a reason.</summary>
     public async Task DecideRequest(ItamUser user, int id, ItamDecision x, CancellationToken token)
     {
+        await Expire(token);
         await using var c = await Open(token);
         await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var s = await Scope(c, tx, user, token);
@@ -169,6 +170,7 @@ public sealed partial class ItamStore
 
     public async Task DecideCost(ItamUser user, int id, ItamDecision x, CancellationToken token)
     {
+        await Expire(token);
         await using var c = await Open(token);
         await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var s = await Scope(c, tx, user, token);
@@ -301,7 +303,8 @@ public sealed partial class ItamStore
             reserved = S(r, 21), supplier = S(r, 22), shop = S(r, 23), pricedBy = S(r, 24), pricedAt = T(25), costApprovedBy = S(r, 26), costApprovedAt = T(27), po = S(r, 28), orderedAt = T(29),
             paidAmount = r.IsDBNull(30) ? (decimal?)null : r.GetDecimal(30), purchaseDate = Day(r, 31), deliveryNo = S(r, 32), fulfilledAt = T(33), accountingSentOn = Day(r, 34), assessmentNo = S(r, 35),
             cancelledReason = S(r, 36), requestedById = r.GetGuid(37), managerId = r.IsDBNull(38) ? (Guid?)null : r.GetGuid(38), hasAssessmentFile = r.GetInt32(39) == 1, hasQuotation = r.GetInt32(40) == 1,
-            hasReceipt = r.GetInt32(41) == 1, reservedId = I(r, 42), deliveryId = I(r, 43), net, vat, grand = net + vat
+            hasReceipt = r.GetInt32(41) == 1, reservedId = I(r, 42), deliveryId = I(r, 43), net, vat, grand = net + vat,
+            waitingSince = r.GetString(8) == "WaitingRequestApproval" ? Utc(r, 10) : r.GetString(8) == "WaitingCostApproval" && !r.IsDBNull(25) ? Utc(r, 25) : (DateTime?)null
         };
     }
 
@@ -312,6 +315,7 @@ public sealed partial class ItamStore
 
     public async Task<object> Request(ItamUser user, int id, CancellationToken token)
     {
+        await Expire(token);
         await using var c = await Open(token);
         var s = await Scope(c, null, user, token);
         var r = await LoadRequest(c, null, id, token);
@@ -335,7 +339,7 @@ public sealed partial class ItamStore
         var st = r.Status;
         return new
         {
-            request = q, lines, stock, specialists, deliveries, pos,
+            request = q, lines, stock, specialists, deliveries, pos, approvalDays = ApprovalDays,
             can = new
             {
                 decideRequest = manager && st == "WaitingRequestApproval", decideCost = manager && st == "WaitingCostApproval",
@@ -351,12 +355,13 @@ public sealed partial class ItamStore
 
     public async Task<object> Requests(ItamUser user, CancellationToken token)
     {
+        await Expire(token);
         await using var c = await Open(token);
         var s = await Scope(c, null, user, token);
         Require(s.Officer || s.ViewsAll || s.Specialist, "You cannot see the requests list.");
         var all = await Rows(c, null, RequestSelect + "ORDER BY q.request_id DESC", MapRequest, token);
         var visible = s.Officer || s.ViewsAll ? all : all.Where(x => ((dynamic)x).assignedToId == s.Id || (((dynamic)x).region is string g && s.Regions.Contains(g))).ToList();
-        return new { requests = visible, isOfficer = s.Officer };
+        return new { requests = visible, isOfficer = s.Officer, approvalDays = ApprovalDays };
     }
 
     public async Task<ItamUpload> RequestFile(ItamUser user, int id, string which, CancellationToken token)
@@ -373,6 +378,7 @@ public sealed partial class ItamStore
     /// <summary>My IT Assets: my assets and documents, my requests, what waits for my decision, and my team (managers).</summary>
     public async Task<object> MyItAssets(ItamUser user, CancellationToken token)
     {
+        await Expire(token);
         await using var c = await Open(token);
         var s = await Scope(c, null, user, token);
         async Task<List<object>> Held(Guid who) => await Rows(c, null, "SELECT d.delivery_id,a.asset_no,t.name_en,CONCAT(m.name_en,' ',mo.name_en),COALESCE(a.serial_no,a.service_tag),d.computer_name,d.delivered_on,d.delivery_no," +
@@ -399,7 +405,7 @@ public sealed partial class ItamStore
             team.Add(new { id = p.Id, name = p.Name, title = p.Title, assets = await Held(p.Id), requests = open, notSigned });
         }
         var notSignedMine = assets.Count(a => !((dynamic)a).signed);
-        return new { me = s.Id, assets, documents, requests = mine, waiting, team, notSigned = notSignedMine, inkApprovals = await PendingApprovals(c, s, token) };
+        return new { me = s.Id, assets, documents, requests = mine, waiting, team, notSigned = notSignedMine, inkApprovals = await PendingApprovals(c, s, token), approvalDays = ApprovalDays };
     }
 
     internal static async Task<int> RequestApprovalsCount(DbConnection c, ItamScope s, CancellationToken token)
@@ -417,5 +423,35 @@ public sealed partial class ItamStore
         await Scope(c, null, user, token);
         var id = await Scalar(c, null, "SELECT request_id FROM itam_data.request WHERE request_no=@n", token, ("@n", (no ?? "").Trim().ToUpperInvariant())) as int? ?? throw new ArgumentException("The request was not found.");
         return new { id };
+    }
+
+    // Approval deadline (owner, 22 October 2026): the direct manager decides within ApprovalDays, counted from when the request
+    // (or the cost table) reached the manager; otherwise the request is cancelled automatically.
+    public int ApprovalDays { get; init; } = 3;
+    const string ExpiredReason = "Cancelled automatically: the manager did not decide within the approval time";
+
+    /// <summary>Cancels every request whose manager decision is overdue; returns how many. Run by the background timer and at the
+    /// start of every request page and decision, so an overdue request is never approved late.</summary>
+    public async Task<int> ExpireRequests(CancellationToken token)
+    {
+        await using var c = await Open(token);
+        await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
+        var limit = UtcNow.AddDays(-ApprovalDays);
+        var due = await Rows(c, tx, "SELECT request_id,request_no,status FROM itam_data.request WITH (UPDLOCK) WHERE (status=N'WaitingRequestApproval' AND requested_at_utc<@l) OR (status=N'WaitingCostApproval' AND priced_at_utc<@l)",
+            r => (Id: r.GetInt32(0), No: r.GetString(1), Status: r.GetString(2)), token, ("@l", limit));
+        foreach (var r in due)
+        {
+            await Exec(c, tx, "UPDATE itam_data.request SET status=N'Cancelled',cancelled_reason=@r,reserved_asset_id=NULL WHERE request_id=@i", token,
+                ("@r", $"{ExpiredReason} ({ApprovalDays} days, {(r.Status == "WaitingCostApproval" ? "cost approval" : "request approval")})."), ("@i", r.Id));
+            await Audit(c, tx, Guid.Empty, "request", r.No, "Expired", null, new { r.Status, days = ApprovalDays }, "Not decided within the approval time", token);
+        }
+        await tx.CommitAsync(token);
+        return due.Count;
+    }
+    async Task Expire(CancellationToken token) { if (await ExpireCheck(token)) await ExpireRequests(token); }
+    async Task<bool> ExpireCheck(CancellationToken token)
+    {
+        await using var c = await Open(token);
+        return await Scalar(c, null, "SELECT TOP 1 1 FROM itam_data.request WHERE (status=N'WaitingRequestApproval' AND requested_at_utc<@l) OR (status=N'WaitingCostApproval' AND priced_at_utc<@l)", token, ("@l", UtcNow.AddDays(-ApprovalDays))) is not null;
     }
 }

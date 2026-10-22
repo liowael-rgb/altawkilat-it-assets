@@ -12,6 +12,7 @@ public sealed partial class ItamStore
     // The signed-in person and the lists the forms use ------------------------------------------------------------------
     public async Task<object> Me(ItamUser user, CancellationToken token)
     {
+        await Expire(token);
         await using var c = await Open(token);
         var s = await Scope(c, null, user, token);
         var roles = await Rows(c, null, "SELECT role_code,region_code FROM itam_access.role_assignment WHERE employee_id=@i ORDER BY role_code,region_code", r => new { code = r.GetString(0), label = ItamRoles.Label(r.GetString(0)), region = S(r, 1) }, token, ("@i", s.Id));

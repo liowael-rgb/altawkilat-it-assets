@@ -2,7 +2,7 @@
 // actions the signed-in person may take now: the manager approves the request and the cost; the IT Assets Officer chooses the
 // source, prices a new device, records the order, the delivery and the date sent to Accounting; the assigned IT Support
 // Specialist prices an accessory, records the cash purchase or links the delivery.
-import {$,el,api,shell,fail,message,date,when,money,card,table,edit,form,option,svg,dl} from '/itam.js';
+import {$,el,api,shell,fail,message,date,when,money,card,table,edit,form,option,svg,dl,timeLeft} from '/itam.js';
 const q=new URLSearchParams(location.search);let id=Number(q.get('id'));let m,d;
 const open=href=>window.open(href,'_blank');
 const btn=(text,fn,cls,icon)=>{const b=el('button',null,cls||'');b.type='button';if(icon)b.append(svg(icon));b.append(text);b.onclick=fn;return b;};
@@ -12,7 +12,7 @@ const file=(text,which)=>{const a=el('a',text);a.href=`/api/requests/${id}/files
 async function load(note){
   d=await api('/requests/'+id);const r=d.request,can=d.can;
   document.title='IT Assets · '+r.no;$('title').textContent=r.no;$('eyebrow').textContent=r.type==='Replacement'?'Device request · Replacement':'Device request · New';
-  $('subtitle').replaceChildren(el('span',r.statusLabel,'tag '+(r.status==='Fulfilled'?'ok':r.status==='Rejected'||r.status==='Cancelled'?'off':r.status.startsWith('Waiting')?'warn':'')),` · ${r.employee}${r.department?' · '+r.department:''}`);
+  $('subtitle').replaceChildren(el('span',r.statusLabel,'tag '+(r.status==='Fulfilled'?'ok':r.status==='Rejected'||r.status==='Cancelled'?'off':r.status.startsWith('Waiting')?'warn':'')),` · ${r.employee}${r.department?' · '+r.department:''}`,...(r.waitingSince?[' · time left for the manager: ',timeLeft(r.waitingSince,d.approvalDays),' (then cancelled automatically)']:[]));
   const acts=[];
   if(can.decideRequest)acts.push(btn('Approve the request',()=>decide('decision',true),'primary','check'),btn('Reject',()=>decide('decision',false)));
   if(can.decideCost)acts.push(btn('Approve the cost',()=>decide('cost-decision',true),'primary','check'),btn('Reject',()=>decide('cost-decision',false)));

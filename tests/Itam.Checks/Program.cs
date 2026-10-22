@@ -417,6 +417,20 @@ try
     Check(my.GetProperty("assets").GetArrayLength() >= 1 && my.GetProperty("requests").GetArrayLength() == 3 && boss.GetProperty("team").EnumerateArray().Any(t => t.GetProperty("name").GetString() == "Person 10")
         && System.Text.Encoding.ASCII.GetString((await store.DeliveryNote(U(10), rDl, default)).Content, 0, 5) == "%PDF-" && await Throws<ItamAccessDenied>(() => store.DeliveryNote(U(4), rDl, default)),
         "My IT Assets: my assets, requests and delivery notes; the manager sees the team; others cannot read the note");
+    // Approval deadline: not decided by the manager within 3 days (request or cost approval) -> cancelled automatically.
+    var late = JsonSerializer.SerializeToElement(await store.CreateRequest(U(10), new(null, "New", null, "A headset"), null, default)).GetProperty("id").GetInt32();
+    var fresh = JsonSerializer.SerializeToElement(await store.CreateRequest(U(10), new(null, "New", null, "A webcam"), null, default)).GetProperty("id").GetInt32();
+    var lateCost = JsonSerializer.SerializeToElement(await store.CreateRequest(U(10), new(null, "New", null, "A dock"), null, default)).GetProperty("id").GetInt32();
+    await store.DecideRequest(U(12), lateCost, new(true, null), default); await store.ReviewRequest(U(1), lateCost, new("NewDevice", null, null, null), default);
+    await store.SubmitCost(U(1), lateCost, new(1, null, [new("Dock", null, 1, 300m)]), qFile, default);
+    await Exec($"UPDATE itam_data.request SET requested_at_utc=DATEADD(hour,-73,SYSUTCDATETIME()) WHERE request_id={late}; UPDATE itam_data.request SET requested_at_utc=DATEADD(hour,-47,SYSUTCDATETIME()) WHERE request_id={fresh}; " +
+        $"UPDATE itam_data.request SET priced_at_utc=DATEADD(hour,-73,SYSUTCDATETIME()) WHERE request_id={lateCost}");
+    Check(await store.ExpireRequests(default) == 2 && await Scalar($"SELECT status FROM itam_data.request WHERE request_id={late}") as string == "Cancelled"
+        && await Scalar($"SELECT status FROM itam_data.request WHERE request_id={lateCost}") as string == "Cancelled" && await Scalar($"SELECT status FROM itam_data.request WHERE request_id={fresh}") as string == "WaitingRequestApproval"
+        && await Throws<ArgumentException>(() => store.DecideRequest(U(12), late, new(true, null), default)), "Not decided within 3 days (request or cost): cancelled automatically; a 2-day-old request still waits");
+    await Exec($"UPDATE itam_data.request SET requested_at_utc=DATEADD(hour,-80,SYSUTCDATETIME()) WHERE request_id={fresh}");
+    Check(await Throws<ArgumentException>(() => store.DecideRequest(U(12), fresh, new(true, null), default)) && await Scalar($"SELECT status FROM itam_data.request WHERE request_id={fresh}") as string == "Cancelled",
+        "A late decision is refused: the request is cancelled first, even between timer runs");
     Console.WriteLine("PASS ink and invoices");
 
     // ---- My Backup ----------------------------------------------------------------------------------------------------------------
