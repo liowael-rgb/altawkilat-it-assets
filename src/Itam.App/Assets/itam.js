@@ -91,7 +91,7 @@ export async function shell(current){
   if(m.can.ownBackup||m.can.backupsView)link(nav,'backups','My Backup','/backups.html');
   if(m.can.admin){adminH.hidden=false;link(adminNav,'admin','Administration Center','/admin.html');const areas=$('side');if(areas&&current==='admin'){areas.className='it-subnav';adminNav.append(areas);}}
   const roles=[...new Set(m.roles.map(r=>r.label))].join(', ')||'Employee';
-  const who=el('div');who.append(el('b',m.name),el('small',roles+(m.viewsAll?' · All regions':m.regions.length?' · '+m.regions.join(', '):'')));meBox.append(el('span',initials(m.name),'x-avatar'),who);
+  const who=el('div');const regs=[...new Set([...(m.regions||[]),...(m.inkRegions||[])])];who.append(el('b',m.name),el('small',roles+(m.viewsAll?' · All regions':regs.length?' · '+regs.join(', '):'')));meBox.append(el('span',initials(m.name),'x-avatar'),who);
   return m;
 }
 

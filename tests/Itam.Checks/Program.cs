@@ -54,6 +54,11 @@ try
     Check(await Throws<ArgumentException>(() => store.Change(U(2), new("role", "save", E(new { employee = G(9), role = "SupportSpecialist" }), null), default)), "An IT Support Specialist needs a region");
     await store.Change(U(2), new("role", "save", E(new { employee = G(9), role = "SupportSpecialist", region = "Central" }), null), default);
     Check(await Throws<ArgumentException>(() => store.Change(U(2), new("role", "save", E(new { employee = G(9), role = "SupportSpecialist", region = "Central" }), null), default)), "The same role twice is refused");
+    // Several roles per person (owner's structure): the IT Manager is also the System Administrator; rights add up.
+    await store.Change(U(2), new("role", "save", E(new { employee = G(7), role = "SystemAdministrator" }), null), default);
+    var me7 = JsonSerializer.SerializeToElement(await store.Me(U(7), default), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+    Check(me7.GetProperty("roles").GetArrayLength() == 2 && me7.GetProperty("can").GetProperty("masterData").GetBoolean() && me7.GetProperty("can").GetProperty("tasks").GetBoolean(),
+        "IT Manager and System Administrator together: both sets of rights");
     Check(await Throws<ArgumentException>(() => store.Change(U(2), new("role", "save", E(new { employee = G(9), role = "InkOfficer" }), null), default)), "An Ink Officer needs a region");
     await store.Change(U(2), new("role", "save", E(new { employee = G(9), role = "InkOfficer", region = "Central" }), null), default);
     Check(await Throws<ItamAccessDenied>(() => store.Change(U(1), new("role", "save", E(new { employee = G(10), role = "TeamLeader" }), null), default)), "Only the IT Manager gives roles");

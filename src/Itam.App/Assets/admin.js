@@ -9,13 +9,37 @@ const add=(text,fn)=>buttons([text,fn,'primary']);
 const kindLabel=k=>k==='ITWarehouse'?'IT warehouse':'Branch';
 
 const render={
-  roles:()=>{const form=()=>edit('Give a role',[{key:'employee',label:'Person',type:'person',required:true,hint:'Type part of the name, then choose.'},
-      {key:'role',label:'Role',type:'select',options:d.roleCodes.map(r=>[r.code,r.label])},
-      {key:'region',label:'Region (IT Support Specialist and Ink Officer)',type:'select',options:[['',''],...L().regions.filter(r=>r.active).map(r=>[r.code,r.name])],hint:'An IT Support Specialist or Ink Officer gets one row per region.'}],
-      (x,r)=>change('role',{employee:x.employee,role:x.role,region:x.region},r),{done:reload('Role given.')});
-    return [card('Roles','IT roles and the regions of each IT Support Specialist and Ink Officer. A person can hold several roles; their rights add up. Employees come from Active Directory.',
-      table(['Person','Role','Region','Since'],d.roles,x=>[x.name+(x.enabled?'':' (disabled in AD)'),x.roleLabel,x.region||'All',when(x.since)],d.can.roles?x=>[['Remove',()=>edit(`Remove ${x.roleLabel} from ${x.name}?`,[],(y,r)=>change('role',{id:x.id},r,'delete'),{button:'Remove',done:reload('Role removed.')})]]:null),
-      d.can.roles&&add('Give a role',async()=>{await people('');form();}))];},
+  roles:()=>{
+    // Several roles per person (owner, 22 October 2026: the IT Manager is also the System Administrator; the Ink Officer and
+    // the IT Assets Officer are IT Support Specialists): tick the roles, and the regions for the per-region roles.
+    const perRegion=c=>c==='SupportSpecialist'||c==='InkOfficer';
+    const regs=L().regions.filter(r=>r.active);
+    const form=(who)=>edit(who?`Give roles to ${who.name}`:'Give roles',[
+      ...(who?[]:[{key:'employee',label:'Person',type:'person',required:true,wide:true,hint:'Type part of the name, then choose.'}]),
+      ...d.roleCodes.map(r=>({key:'r_'+r.code,label:r.label+(perRegion(r.code)?' (per region)':''),type:'checkbox',
+        value:!!who&&d.roles.some(x=>x.employee===who.id&&x.role===r.code),onchange:i=>showRegions(i)})),
+      ...regs.map(g=>({key:'g_'+g.code,label:'Region: '+g.name,type:'checkbox',value:!!who&&d.roles.some(x=>x.employee===who.id&&perRegion(x.role)&&x.region===g.code)}))],
+      async(x,reason)=>{
+        const person=who?who.id:x.employee;if(!person)throw Error('Choose the person.');
+        const picked=d.roleCodes.filter(r=>x['r_'+r.code]).map(r=>r.code);const regions=regs.filter(g=>x['g_'+g.code]).map(g=>g.code);
+        if(!picked.length)throw Error('Tick at least one role.');
+        if(picked.some(perRegion)&&!regions.length)throw Error('Tick the regions of the IT Support Specialist or Ink Officer.');
+        const has=(role,region)=>d.roles.some(y=>y.employee===person&&y.role===role&&(y.region||'')===(region||''));
+        let added=0;
+        for(const role of picked)for(const region of perRegion(role)?regions:[null])if(!has(role,region)){await change('role',{employee:person,role,region},reason);added++;}
+        if(!added)throw Error('The person already has these roles.');
+      },{done:reload('Roles given.'),hint:'A person can hold several roles; their rights add up. Untick nothing here to remove a role: use Remove on the role.'});
+    function showRegions(i){const any=d.roleCodes.some(r=>perRegion(r.code)&&i['r_'+r.code]?.checked);for(const g of regs)i['g_'+g.code].closest('label').hidden=!any;}
+    // One row per person with all their roles.
+    const holders=[...new Map(d.roles.map(x=>[x.employee,{id:x.employee,name:x.name,enabled:x.enabled}])).values()].sort((a,b)=>a.name.localeCompare(b.name));
+    const cell=p=>{const s=el('div',null,'x-roles');for(const x of d.roles.filter(y=>y.employee===p.id)){const t=el('span',null,'tag');t.append(x.roleLabel+(x.region?` (${x.region})`:''));
+        if(d.can.roles){const b=el('button','×','x-tag-x');b.type='button';b.title=`Remove ${x.roleLabel}${x.region?' for '+x.region:''}`;
+          b.onclick=()=>edit(`Remove ${x.roleLabel}${x.region?' ('+x.region+')':''} from ${x.name}?`,[],(y,r)=>change('role',{id:x.id},r,'delete'),{button:'Remove',done:reload('Role removed.')});t.append(b);}
+        s.append(t);}return s;};
+    return [card('Roles','IT roles of each person; a person can hold several roles (for example IT Manager and System Administrator, or IT Support Specialist and Ink Officer) and their rights add up. Employees come from Active Directory.',
+      table(['Person','Roles','Since'],holders,p=>[p.name+(p.enabled?'':' (disabled in AD)'),cell(p),when(d.roles.filter(y=>y.employee===p.id).map(y=>y.since).sort()[0])],
+        d.can.roles?p=>[['Give more roles',()=>form(p)]]:null),
+      d.can.roles&&add('Give roles',async()=>{await people('');form(null);}))];},
   types:()=>[card('Asset types','The short code starts every Asset No. (PC-822); it never changes.',
     table(['Code','Name','Order','Active'],L().types,t=>[t.code,t.name,String(t.sort),yes(t.active)],d.can.masterData?t=>[['Edit',()=>ref('type',t,[['code','Short code',true,true],['name','Name'],['sort','Order','number']])]]:null),
     d.can.masterData&&add('Add a type',()=>ref('type',null,[['code','Short code'],['name','Name'],['sort','Order','number']])))],
@@ -54,6 +78,6 @@ function ref(a,x,fields,list){
 async function load(msg){d=await api('/admin');
   $('side').replaceChildren(...AREAS.filter(([k])=>k!=='audit'||d.can.audit).map(([k,t])=>{const b=el('button',t);b.type='button';b.setAttribute('aria-selected',String(k===area));b.onclick=()=>{area=k;history.replaceState(null,'','?area='+k);load();};return b;}));
   $('panel').replaceChildren(...render[area]().filter(Boolean));
-  if(!d.can.masterData&&area!=='roles'&&area!=='audit')message('Read only: master data is changed by the IT Administrator.','info');else message(msg||'');
+  if(!d.can.masterData&&area!=='roles'&&area!=='audit')message('Read only: master data is changed by the IT Manager.','info');else message(msg||'');
 }
 try{await shell('admin');await load();}catch(e){fail(e);}

@@ -40,7 +40,7 @@ function sent(k){edit('Sent to Accounting',[{key:'on',label:'Date sent',type:'da
 // Receive devices against one line: one row per device with the fields of its type.
 function receiveCard(lines){
   const L=m.lists;const box=el('div');const lineSel=document.createElement('select');for(const l of lines)lineSel.append(option(l.id,`Line ${l.no}: ${l.typeName} ${[l.manufacturer,l.model].filter(Boolean).join(' ')} — ${l.toCome} to come`));
-  const onlySpecialist=m.roles.every(r=>r.code==='SupportSpecialist');
+  const onlySpecialist=!m.viewsAll&&m.roles.some(r=>r.code==='SupportSpecialist');
   const locSel=document.createElement('select');locSel.append(option('','Choose'),...L.locations.filter(x=>x.active&&(!onlySpecialist||m.regions.includes(x.region))).map(x=>option(x.id,`${x.region} · ${x.name}`)));
   const at=document.createElement('input');at.type='datetime-local';const inv=document.createElement('input');inv.maxLength=60;inv.value=d.po.invoiceNo||'';
   const ev=document.createElement('input');ev.type='file';ev.accept='application/pdf,image/png,image/jpeg';const note=document.createElement('input');note.maxLength=500;

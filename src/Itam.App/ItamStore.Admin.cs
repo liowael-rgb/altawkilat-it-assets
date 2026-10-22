@@ -21,7 +21,7 @@ public sealed partial class ItamStore
             id = s.Id, name = s.Name, roles,
             can = new { viewAssets = s.CanViewAny, register = s.CanRegisterAny, poView = s.PoView, poManage = s.PoManage, rolesManage = s.RolesManage, masterData = s.MasterData,
                 auditView = s.AuditView, backupsView = s.BackupsView, ownBackup = s.OwnBackup, keys = s.SysAdmin || s.Officer || s.Manager || s.Specialist, handover = s.HandoverView || s.AdTasks || s.CucmTasks, tasks = s.AdTasks || s.CucmTasks || s.TasksView, invoices = s.InvoicesView, suppliers = s.InvoicesView || s.SuppliersManage, maintenance = s.MaintenanceView || s.MaintenanceApproverRole, requests = s.Officer || s.ViewsAll || s.Specialist, admin = s.MasterData || s.RolesManage || s.AuditView },
-            lists = await Lists(c, token), regions = s.Regions, viewsAll = s.ViewsAll, openTasks = await OpenTaskCount(c, s, token), pendingApprovals = await PendingApprovals(c, s, token), maintenanceApprovals = await MaintenanceApprovalsCount(c, s, token), requestApprovals = await RequestApprovalsCount(c, s, token)
+            lists = await Lists(c, token), regions = s.Regions, inkRegions = s.InkRegions, viewsAll = s.ViewsAll, openTasks = await OpenTaskCount(c, s, token), pendingApprovals = await PendingApprovals(c, s, token), maintenanceApprovals = await MaintenanceApprovalsCount(c, s, token), requestApprovals = await RequestApprovalsCount(c, s, token)
         };
     }
 

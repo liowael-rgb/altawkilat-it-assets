@@ -25,7 +25,12 @@ static class DemoSeed
                  ('00000000-0000-0000-0000-000000000006','SystemAdministrator',NULL,'00000000-0000-0000-0000-000000000002'),
                  ('00000000-0000-0000-0000-000000000007','VoiceAdministrator',NULL,'00000000-0000-0000-0000-000000000002'),
                  ('00000000-0000-0000-0000-000000000008','SupportSpecialist','South','00000000-0000-0000-0000-000000000002'),
-                 ('00000000-0000-0000-0000-000000000013','InkOfficer','South','00000000-0000-0000-0000-000000000002');
+                 ('00000000-0000-0000-0000-000000000013','InkOfficer','South','00000000-0000-0000-0000-000000000002'),
+                 -- Several roles (owner's structure): the IT Manager is the System Administrator; the Ink Officer and the IT Assets
+                 -- Officer are IT Support Specialists.
+                 ('00000000-0000-0000-0000-000000000002','SystemAdministrator',NULL,'00000000-0000-0000-0000-000000000002'),
+                 ('00000000-0000-0000-0000-000000000013','SupportSpecialist','South','00000000-0000-0000-0000-000000000002'),
+                 ('00000000-0000-0000-0000-000000000001','SupportSpecialist','Central','00000000-0000-0000-0000-000000000002');
                 INSERT itam_ref.location(name_en,kind,region_code,city) VALUES
                  (N'Riyadh IT Warehouse (demo)','ITWarehouse','Central',N'Riyadh'),(N'Jeddah IT Warehouse (demo)','ITWarehouse','West',N'Jeddah'),
                  (N'Dammam IT Warehouse (demo)','ITWarehouse','East',N'Dammam'),(N'Abha Branch (demo)','Branch','South',N'Abha'),

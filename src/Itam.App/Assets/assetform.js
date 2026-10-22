@@ -31,7 +31,8 @@ export function labelCard(){
  *  the checklist), onProgress(left) after each change. */
 export function assetForm(box,m,{asset,attributes={},keys=[],phoneOnly=false,side,onProgress}={}){
   const L=m.lists;const isNew=!asset;
-  const onlySpecialist=m.roles.length>0&&m.roles.every(r=>r.code==='SupportSpecialist');
+  // People without a role that works in every region (or the Voice Administrator) register in their own regions only.
+  const onlySpecialist=!m.viewsAll&&!m.roles.some(r=>r.code==='VoiceAdministrator')&&m.roles.some(r=>r.code==='SupportSpecialist');
   const locs=L.locations.filter(l=>(l.active||l.id===asset?.locationId)&&(!onlySpecialist||m.regions.includes(l.region)));
   const i={};
   i.type=select(L.types.filter(t=>t.active).map(t=>[t.code,`${t.name} (${t.code})`]),asset?.type??'',isNew?'Choose':undefined);i.type.disabled=!isNew;

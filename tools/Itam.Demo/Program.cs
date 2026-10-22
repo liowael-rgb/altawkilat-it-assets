@@ -82,8 +82,8 @@ static class DemoPeople
     static Guid G(int n) => new($"00000000-0000-0000-0000-{n:000000000000}");
     public static readonly DemoPerson[] All =
     [
-        new(G(1), "demo.assets", "Demo Assets Officer", "IT Assets Officer", "Registers assets, records POs and receives devices, prints the PO pack, sees keys"),
-        new(G(2), "demo.manager", "Demo IT Manager", "IT Manager", "Sees everything, gives roles, reads the audit log"),
+        new(G(1), "demo.assets", "Demo Assets Officer", "IT Assets Officer + IT Support Specialist (Central)", "Registers assets, records POs and receives devices, prints the PO pack, sees keys"),
+        new(G(2), "demo.manager", "Demo IT Manager", "IT Manager + System Administrator", "Sees everything, gives roles, reads the audit log; approves maintenance; AD and CUCM tasks"),
         new(G(3), "demo.leader", "Demo Team Leader", "IT Helpdesk Team Leader", "All regions; records POs and receives devices"),
         new(G(4), "demo.west", "Demo Specialist West", "IT Support Specialist (West)", "Assets of the West region only"),
         new(G(5), "demo.central", "Demo Specialist Central and East", "IT Support Specialist (Central, East)", "Two regions in one list"),
@@ -93,7 +93,7 @@ static class DemoPeople
         new(G(9), "demo.employee4", "Demo Employee Four", "Employee", null),
         new(G(10), "demo.employee", "Demo Employee", "Employee (no IT role)", "No IT role: sees no assets yet (My IT Assets comes in step 3)"),
         new(G(11), "demo.employee2", "Demo Employee Two", "Employee", null), new(G(12), "demo.employee3", "Demo Employee Three", "Employee", null),
-        new(G(13), "demo.ink", "Demo Ink Officer", "Ink Officer (South)", "Sends ink requests for approval, orders and delivers ink, records toner invoices", "/ink.html")
+        new(G(13), "demo.ink", "Demo Ink Officer", "Ink Officer + IT Support Specialist (South)", "Sends ink requests for approval, orders and delivers ink, records toner invoices", "/ink.html")
     ];
     public static DemoPerson? Find(string? id) => Guid.TryParse(id, out var g) ? All.FirstOrDefault(p => p.Id == g) : null;
 }

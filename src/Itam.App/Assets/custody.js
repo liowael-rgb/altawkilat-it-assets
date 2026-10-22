@@ -69,7 +69,7 @@ function signed(d,reload){
 }
 
 function receive(m,asset,h,d,reload){
-  const onlySpecialist=m.roles.length>0&&m.roles.every(r=>r.code==='SupportSpecialist');
+  const onlySpecialist=!m.viewsAll&&m.roles.some(r=>r.code==='SupportSpecialist');
   const locs=m.lists.locations.filter(l=>l.active&&(!onlySpecialist||m.regions.includes(l.region)));
   edit(`Receive ${asset.assetNo} back from ${d.employee}`,[
     {key:'at',label:'Received on',type:'datetime-local',hint:'Empty = now.'},

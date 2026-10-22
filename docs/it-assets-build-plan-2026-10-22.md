@@ -305,3 +305,7 @@ and the applied matrix is regenerated as "IT Assets - Permission Matrix (applied
   their regions; parts invoices; link or register printers; add suppliers; create and follow maintenance orders.
 - Maintenance orders are approved by the Team Leader, the System Administrator or the IT Manager (or a backup on leave),
   never by the person who created the order.
+- **Several roles per person** (owner, 22 October 2026: the IT Manager is the System Administrator; the Ink Officer and the
+  IT Assets Officer are IT Support Specialists): the Roles page lists one row per person with all their roles; "Give roles"
+  and "Give more roles" tick several roles and the regions of the per-region roles at once; each role is removed on its
+  own. Rights add up; the region lists on the forms follow the widest role the person holds.
