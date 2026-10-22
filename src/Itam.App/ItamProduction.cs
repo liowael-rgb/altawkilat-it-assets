@@ -6,9 +6,9 @@ using Microsoft.AspNetCore.Http;
 
 namespace Itam.App;
 
-/// <summary>Windows sign-in (production): IIS authenticates the person (Windows authentication, no anonymous access); IT Assets
-/// finds the enabled employee with the same account in its copy of Active Directory. Nobody signs in with a password in
-/// IT Assets. A disabled account, or an account not yet copied from AD, is not let in.</summary>
+/// <summary>The signed-in person (production): the sign-in page (ItamSignIn) checks the AD username and password and keeps the
+/// account in the site cookie; on every request IT Assets finds the enabled employee with that account in its copy of Active
+/// Directory, so a disabled account, or one not yet copied from AD, is not let in. Also works with Windows authentication.</summary>
 public sealed class ItamWindowsSession(ItamStore store) : IItamSession
 {
     public async Task<ItamUser?> Current(HttpContext context, CancellationToken token)

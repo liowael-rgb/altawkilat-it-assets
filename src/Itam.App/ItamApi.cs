@@ -34,7 +34,7 @@ public static class ItamApi
         try
         {
             var user = await ctx.RequestServices.GetRequiredService<IItamSession>().Current(ctx, ctx.RequestAborted);
-            if (user is null) return Results.Json(new { error = "Sign in with your Windows account." }, statusCode: 401);
+            if (user is null) return Results.Json(new { error = "Sign in first." }, statusCode: 401);
             if (!HttpMethods.IsGet(ctx.Request.Method)) await ctx.RequestServices.GetRequiredService<IAntiforgery>().ValidateRequestAsync(ctx);
             return await action(user);
         }

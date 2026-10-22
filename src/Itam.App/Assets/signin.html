@@ -1,0 +1,17 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>IT Assets · Sign in</title><link rel="stylesheet" href="/itam.css"></head>
+<body class="x x-signin-page"><main class="x-signin">
+<section class="x-signin-card" aria-labelledby="signin-title">
+<img class="x-signin-logo" src="/company-logo.png" alt="ALTAWKILAT">
+<div class="x-app"><span class="x-app-mark" id="mark"></span><div><b>IT Assets</b><small>Asset management</small></div></div>
+<h1 id="signin-title">Sign in</h1>
+<p class="x-signin-sub">Use the same username and password you use to sign in to your computer.</p>
+<p id="message" role="alert"></p>
+<form id="signin" novalidate>
+<label>Username<input id="account" name="username" autocomplete="username" maxlength="100" placeholder="For example ahmed.ali" required autofocus></label>
+<label>Password<input id="password" name="password" type="password" autocomplete="current-password" maxlength="256" required></label>
+<label class="x-signin-show"><input id="show" type="checkbox"> Show password</label>
+<button class="primary" id="go" type="submit">Sign in</button>
+</form>
+<p class="x-signin-help">Forgot your password or your account is locked? Contact the IT Helpdesk.</p>
+</section>
+</main><script type="module" src="/signin.js"></script></body></html>

@@ -57,6 +57,28 @@ public sealed class ItamLdapDirectory(DirectorySettings settings) : IItamCompute
     }
 }
 
+/// <summary>The sign-in page's password check: a bind to the domain controller over LDAPS (636) with the typed username and
+/// password (Negotiate). The password is used for that one bind only; it is never stored or logged.</summary>
+public sealed class ItamLdapPasswordCheck(DirectorySettings settings) : IItamPasswordCheck
+{
+    /// <summary>DC=altawkilat,DC=com to altawkilat.com.</summary>
+    public static string Domain(string baseDn) => string.Join('.', baseDn.Split(',').Select(p => p.Trim()).Where(p => p.StartsWith("DC=", StringComparison.OrdinalIgnoreCase)).Select(p => p[3..]));
+
+    public Task<bool> Check(string account, string password, CancellationToken token)
+    {
+        // An empty password would be an anonymous bind, which AD accepts: never a sign-in.
+        if (string.IsNullOrEmpty(password) || string.IsNullOrWhiteSpace(account)) return Task.FromResult(false);
+        return Task.Run(() =>
+        {
+            using var c = new LdapConnection(new LdapDirectoryIdentifier(settings.Host, 636))
+            { AuthType = AuthType.Negotiate, Credential = new NetworkCredential(account, password, Domain(settings.DomainBaseDn)), Timeout = TimeSpan.FromSeconds(15) };
+            c.SessionOptions.ProtocolVersion = 3; c.SessionOptions.SecureSocketLayer = true; c.SessionOptions.ReferralChasing = ReferralChasingOptions.None;
+            try { c.Bind(); return true; }
+            catch (LdapException ex) when (ex.ErrorCode == 49) { return false; } // invalid credentials (also disabled, locked or expired)
+        }, token);
+    }
+}
+
 /// <summary>Copies the users OU into IT Assets every hour (names, departments, managers, enabled). A read that would disable more
 /// than half of the enabled employees is refused (a wrong OU or a partial read), and nothing changes.</summary>
 public sealed class ItamEmployeeSync(IServiceScopeFactory scopes, ItamLdapDirectory directory, DirectorySettings settings, ILogger<ItamEmployeeSync> log) : BackgroundService

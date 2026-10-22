@@ -1,4 +1,8 @@
 using System.Text.Json;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Itam.App;
 using Microsoft.Data.SqlClient;
 using PdfSharp.Pdf.IO;
@@ -732,6 +736,46 @@ try
     Check(ItamWindowsSession.Account(@"ALTAWKILAT\U10") == "u10" && ItamWindowsSession.Account("u10@altawkilat.com") == "u10" && (await SignIn(@"ALTAWKILAT\u10"))?.Id == G(10)
         && await SignIn(@"ALTAWKILAT\u11") is null && await SignIn(@"ALTAWKILAT\nobody") is null && await new ItamWindowsSession(store).Current(new Microsoft.AspNetCore.Http.DefaultHttpContext(), default) is null,
         "Windows sign-in: the enabled employee with the same account; a disabled or unknown account is not let in");
+    // The sign-in page end to end (loopback web server, test password check: "right-pass").
+    {
+        var web = WebApplication.CreateSlimBuilder();
+        web.WebHost.UseUrls("http://127.0.0.1:0");
+        web.Logging.ClearProviders();
+        web.Services.AddAntiforgery(o => { o.HeaderName = "X-CSRF-TOKEN"; o.Cookie.SecurePolicy = Microsoft.AspNetCore.Http.CookieSecurePolicy.SameAsRequest; });
+        web.Services.AddScoped(_ => new ItamStore(Runtime, new FakeSecrets()) { Pdf = pdf });
+        web.Services.AddScoped<IItamSession, ItamWindowsSession>();
+        web.Services.AddSingleton<IItamPasswordCheck, TestPasswords>();
+        web.Services.AddItamSignIn(httpsOnly: false);
+        await using var site = web.Build();
+        site.UseAuthentication(); site.MapItamSignIn(); site.MapItam();
+        await site.StartAsync();
+        using var http = new HttpClient(new HttpClientHandler { CookieContainer = new System.Net.CookieContainer(), AllowAutoRedirect = false }) { BaseAddress = new Uri(site.Urls.First()) };
+        var token = JsonDocument.Parse(await http.GetStringAsync("/api/signin")).RootElement.GetProperty("csrf").GetString();
+        async Task<(int Status, string Body)> Post(string path, object? body)
+        {
+            using var m = new HttpRequestMessage(HttpMethod.Post, path) { Content = System.Net.Http.Json.JsonContent.Create(body) };
+            m.Headers.Add("X-CSRF-TOKEN", token);
+            using var r = await http.SendAsync(m); return ((int)r.StatusCode, await r.Content.ReadAsStringAsync());
+        }
+        var noCsrf = (int)(await http.PostAsync("/api/signin", System.Net.Http.Json.JsonContent.Create(new { account = "u10", password = "right-pass" }))).StatusCode;
+        var signedOut = (int)(await http.GetAsync("/api/me")).StatusCode;
+        var empty = await Post("/api/signin", new { account = "u10", password = "" });
+        var wrong = new List<int>(); for (var i = 0; i < 5; i++) wrong.Add((await Post("/api/signin", new { account = "u12", password = "wrong" })).Status);
+        var locked = await Post("/api/signin", new { account = "u12", password = "right-pass" });
+        var disabled = await Post("/api/signin", new { account = "u11", password = "right-pass" });
+        var good = await Post("/api/signin", new { account = @"ALTAWKILAT\U10", password = "right-pass", @return = "/request.html?no=PR-1" });
+        var meAfter = await http.GetStringAsync("/api/me");
+        token = JsonDocument.Parse(meAfter).RootElement.GetProperty("csrf").GetString();
+        var outStatus = (await Post("/api/signout", null)).Status;
+        var after = (int)(await http.GetAsync("/api/me")).StatusCode;
+        await site.StopAsync();
+        Check(noCsrf == 400 && signedOut == 401 && empty.Status == 400 && wrong.All(s => s == 401) && locked.Status == 429 && disabled.Status == 403
+            && good.Status == 200 && good.Body.Contains("/request.html?no=PR-1") && meAfter.Contains(G(10).ToString()) && outStatus == 200 && after == 401,
+            $"Sign-in page: needs the page token; wrong passwords refused, then the account waits (AD is not asked); a disabled employee is not let in; the right password signs in, returns to the page and Sign out ends it ({noCsrf} {signedOut} {empty.Status} {string.Join(',', wrong)} {locked.Status} {disabled.Status} {good.Status} {outStatus} {after})");
+        Check(ItamSignIn.ReturnTo("//evil.example/x") == "/" && ItamSignIn.ReturnTo(@"/\evil") == "/" && ItamSignIn.ReturnTo("https://evil.example") == "/" && ItamSignIn.ReturnTo("/signin.html") == "/"
+            && ItamSignIn.ReturnTo("/movement.html?no=GP-1") == "/movement.html?no=GP-1" && ItamSignIn.Account(" u10@altawkilat.com ") == "u10" && ItamSignIn.Account("  ") is null,
+            "Sign-in page: returns only to a page of this site; the username may be typed as user, DOMAIN\\user or user@domain");
+    }
     var adUser = new Dictionary<string, string?> { ["sAMAccountName"] = "Ahmed.Ali", ["displayName"] = "Ahmed Ali", ["mail"] = "ahmed.ali@example.invalid", ["description"] = "Accountant", ["department"] = "Finance",
         ["company"] = "Demo Co", ["physicalDeliveryOfficeName"] = "Head Office", ["postalCode"] = "Central", ["postOfficeBox"] = "HR-1", ["streetAddress"] = "SAP-9", ["mobile"] = "0500000000", ["ipPhone"] = "4100",
         ["manager"] = "CN=Boss,OU=Users,DC=x", ["userAccountControl"] = "514", ["extensionAttribute6"] = "1234567890" };
@@ -823,4 +867,9 @@ sealed class TestMailer : IItamMailer
 sealed class FailingMailer : IItamMailer
 {
     public Task Send(ItamMailMessage message, CancellationToken token) => throw new InvalidOperationException("SMTP not reachable (test)");
+}
+
+sealed class TestPasswords : IItamPasswordCheck
+{
+    public Task<bool> Check(string account, string password, CancellationToken token) => Task.FromResult(password == "right-pass");
 }

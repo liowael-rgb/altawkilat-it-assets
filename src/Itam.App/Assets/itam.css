@@ -541,3 +541,19 @@
 .x tr.x-total td{font-weight:800;color:var(--title);background:var(--thbg)}
 .x .x-mail-frame{display:block;width:100%;border:1px solid var(--line);border-radius:10px;background:#eef1f5;margin-top:10px}
 .x .x-mail-meta{display:grid;grid-template-columns:110px minmax(0,1fr);gap:4px 12px;font-size:13px;margin:4px 0 8px}.x .x-mail-meta b{color:var(--title)}
+/* Sign-in page (owner, 22 Oct 2026): one card in the middle, AD username and password. */
+.x.x-signin-page{min-width:0;background:radial-gradient(1200px 600px at 15% -10%,#dbe8ff 0,transparent 60%),radial-gradient(900px 500px at 110% 110%,#d8f3f8 0,transparent 55%),var(--bg)}
+.x-signin{display:grid;place-items:center;min-height:100vh;padding:24px 16px}
+.x-signin-card{width:100%;max-width:420px;padding:32px 32px 26px;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:var(--sh2)}
+.x-signin-logo{display:block;width:160px;height:auto;margin:0 0 20px}
+.x-signin-card .x-app{padding-bottom:20px;border-bottom:1px solid var(--line)}
+.x-signin-card h1{margin:22px 0 4px;font-size:22px;letter-spacing:-.01em}
+.x-signin-sub{margin:0 0 20px;color:var(--sub);font-size:13.5px}
+.x-signin-card form{display:grid;gap:16px}
+.x-signin-card label{display:grid;gap:6px;font-weight:650;font-size:13px}
+.x .x-signin-card label.x-signin-show{display:flex;align-items:center;gap:0;font-weight:500;color:var(--sub)}
+.x-signin-card button.primary{width:100%;height:46px;margin-top:4px;font-size:15px}
+.x-signin-help{margin:20px 0 0;padding-top:16px;border-top:1px solid var(--line);color:var(--faint);font-size:12.5px;text-align:center}
+.x-signout{margin-left:auto;padding:6px;border:0;border-radius:8px;background:none;color:var(--faint);cursor:pointer}
+.x .x-me .x-signout{height:auto;box-shadow:none}
+.x .x-me .x-signout:hover{background:var(--fill);color:var(--bad)}

@@ -3,9 +3,9 @@ using Itam.Host;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.SqlClient;
 
-// IT Assets production host (test and production sites on IIS). Windows authentication is done by IIS (web.config: Windows
-// authentication on, anonymous off). Run once with --install-database (as an account allowed to change the database) to apply
-// the database scripts; the site itself refuses to start while scripts are pending.
+// IT Assets production host (IIS). People sign in on the sign-in page with their AD username and password (owner, 22 October
+// 2026); IIS allows anonymous access to the site and IT Assets checks every API call. Run once with --install-database (as an
+// account allowed to change the database) to apply the database scripts; the site refuses to start while scripts are pending.
 var builder = WebApplication.CreateBuilder(args);
 var settings = builder.Configuration.GetSection("ItamHost").Get<ItamHostSettings>() ?? throw new InvalidOperationException("The ItamHost settings are missing.");
 settings.Validate();
@@ -29,10 +29,12 @@ builder.Services.AddItam(_ => new SqlConnection(cs), Font("arial.ttf"), settings
 builder.Services.AddDataProtection().SetApplicationName("IT Assets").PersistKeysToFileSystem(new DirectoryInfo(settings.KeysPath)).ProtectKeysWithDpapi(protectToLocalMachine: true);
 builder.Services.AddSingleton<IItamSecrets>(sp => new HostSecrets(sp.GetRequiredService<IDataProtectionProvider>().CreateProtector("Itam.Keys.v1")));
 builder.Services.AddScoped<IItamSession, ItamWindowsSession>();
+builder.Services.AddItamSignIn();
 if (settings.Directory.Enabled)
 {
     builder.Services.AddSingleton(settings.Directory);
     builder.Services.AddSingleton<ItamLdapDirectory>();
+    builder.Services.AddSingleton<IItamPasswordCheck, ItamLdapPasswordCheck>();
     builder.Services.AddSingleton<IItamComputerDirectory>(sp => sp.GetRequiredService<ItamLdapDirectory>());
     builder.Services.AddHostedService<ItamEmployeeSync>();
     builder.Services.AddHostedService<ItamAdCompareJob>();
@@ -46,12 +48,14 @@ if (settings.Mail.Enabled)
 
 var app = builder.Build();
 app.UseHsts();
+app.UseAuthentication();
 // A health page for IT monitoring: the site and its database answer (no data shown).
 app.MapGet("/health", async () =>
 {
     try { await using var c = new SqlConnection(cs); await c.OpenAsync(); return Results.Text("OK"); }
     catch (SqlException) { return Results.Text("Database unavailable", statusCode: 503); }
 });
+app.MapItamSignIn();
 app.MapItam();
 app.Logger.LogInformation("IT Assets started: {Database}, AD {Directory}, email {Mail}{Test}.", settings.Database, settings.Directory.Enabled ? "on" : "off",
     settings.Mail.Enabled ? "on" : "off (emails stay in the outbox)", settings.Mail.Enabled && !string.IsNullOrWhiteSpace(settings.Mail.TestRecipient) ? $" (test mailbox {settings.Mail.TestRecipient})" : "");

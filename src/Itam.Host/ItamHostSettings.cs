@@ -34,7 +34,8 @@ public sealed class ItamHostSettings
             throw new InvalidOperationException("ItamHost:SiteUrl must be the https address of the site.");
         if (string.IsNullOrWhiteSpace(KeysPath) || !Path.IsPathRooted(KeysPath))
             throw new InvalidOperationException("ItamHost:KeysPath must be a full folder path outside the site folder.");
-        if (Directory.Enabled) Directory.Validate();
+        if (!Directory.Enabled) throw new InvalidOperationException("ItamHost:Directory:Enabled must be true: people sign in with their AD username and password.");
+        Directory.Validate();
         if (Mail.Enabled) Mail.Validate();
     }
 }

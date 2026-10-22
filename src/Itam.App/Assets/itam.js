@@ -8,6 +8,7 @@ export async function api(path,options={}){
   const opts={cache:'no-store',...options,headers:{...(options.headers||{})}};
   if(opts.method&&opts.method!=='GET'){opts.headers['X-CSRF-TOKEN']=csrf;if(opts.json!==undefined){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(opts.json);delete opts.json;}}
   const r=await fetch('/api'+path,opts);
+  if(r.status===401&&!location.pathname.startsWith('/signin')){location.assign('/signin.html?return='+encodeURIComponent(location.pathname+location.search));await new Promise(()=>{});}
   const body=r.headers.get('content-type')?.includes('json')?await r.json().catch(()=>({})):null;
   if(!r.ok)throw Error(body?.error||`The request failed (HTTP ${r.status}).`);
   return body;
@@ -58,6 +59,7 @@ export const ICONS={
   requests:'<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4M10 12h5M10 16h5"/>',
   movements:'<path d="M4 8h13l-3-3M20 16H7l3 3"/>',
   plus:'<path d="M12 5v14M5 12h14"/>',
+  signout:'<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 8l-4 4 4 4M6 12h10"/>',
   phone:'<path d="M5 4h3l2 5-2.5 1.5a11 11 0 0 0 6 6L15 14l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>',
   mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
   alerts:'<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
@@ -117,6 +119,8 @@ export async function shell(current){
   if(m.can.admin){adminH.hidden=false;link(adminNav,'admin','Administration Center','/admin.html');const areas=$('side');if(areas&&current==='admin'){areas.className='it-subnav';adminNav.append(areas);}}
   const roles=[...new Set(m.roles.map(r=>r.label))].join(', ')||'Employee';
   const who=el('div');const regs=[...new Set([...(m.regions||[]),...(m.inkRegions||[])])];who.append(el('b',m.name),el('small',roles+(m.viewsAll?' · All regions':regs.length?' · '+regs.join(', '):'')));meBox.append(el('span',initials(m.name),'x-avatar'),who);
+  {const out=el('button',null,'x-signout');out.type='button';out.title='Sign out';out.setAttribute('aria-label','Sign out');out.append(svg('signout'));
+    out.onclick=async()=>{try{await api('/signout',{method:'POST'});}catch{}location.assign('/signin.html');};meBox.append(out);}
   watchTables();
   return m;
 }

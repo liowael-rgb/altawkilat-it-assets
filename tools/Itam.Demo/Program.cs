@@ -22,6 +22,9 @@ builder.Services.AddAntiforgery(o => { o.HeaderName = "X-CSRF-TOKEN"; o.Cookie.H
 builder.Services.AddItam(_ => new SqlConnection(cs), font, BaseUrl + "/a/", calibri, calibriBold);
 builder.Services.AddSingleton<IItamSecrets>(sp => new DemoSecrets(sp.GetRequiredService<IDataProtectionProvider>().CreateProtector("Itam.Keys.v1")));
 builder.Services.AddScoped<IItamSession, DemoSession>();
+// The sign-in page as in production; in the demo any demo account signs in with the password "demo" (no AD).
+builder.Services.AddItamSignIn(httpsOnly: false);
+builder.Services.AddSingleton<IItamPasswordCheck, DemoPasswordCheck>();
 builder.Services.AddSingleton<IItamComputerDirectory, DemoComputers>();
 var app = builder.Build();
 
@@ -60,6 +63,8 @@ app.MapGet("/demo/as/{n:int}", (HttpContext ctx, int n, string? to) =>
     // Optional page to open after choosing the person (local paths only), used for review screenshots.
     return Results.Redirect(to is { Length: > 1 } && to[0] == '/' && to[1] != '/' && to[1] != '\\' ? to : p.Start);
 });
+app.UseAuthentication();
+app.MapItamSignIn();
 app.MapItam();
 Console.WriteLine($"IT Assets demo: {BaseUrl}/demo (invented data, LocalDB; never deployed)");
 await app.RunAsync();
@@ -99,10 +104,16 @@ static class DemoPeople
     public static DemoPerson? Find(string? id) => Guid.TryParse(id, out var g) ? All.FirstOrDefault(p => p.Id == g) : null;
 }
 
-sealed class DemoSession : IItamSession
+// The person chosen on /demo, or else the person signed in on the sign-in page.
+sealed class DemoSession(ItamStore store) : IItamSession
 {
-    public Task<ItamUser?> Current(HttpContext context, CancellationToken token)
-        => Task.FromResult(DemoPeople.Find(context.Request.Cookies["itam-demo-user"]) is { } p ? new ItamUser(p.Id, p.Account) : (ItamUser?)null);
+    public async Task<ItamUser?> Current(HttpContext context, CancellationToken token)
+        => DemoPeople.Find(context.Request.Cookies["itam-demo-user"]) is { } p ? new ItamUser(p.Id, p.Account) : await new ItamWindowsSession(store).Current(context, token);
+}
+
+sealed class DemoPasswordCheck : IItamPasswordCheck
+{
+    public Task<bool> Check(string account, string password, CancellationToken token) => Task.FromResult(password == "demo");
 }
 
 sealed class DemoSecrets(IDataProtector protector) : IItamSecrets
