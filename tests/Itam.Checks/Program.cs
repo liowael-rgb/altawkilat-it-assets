@@ -633,6 +633,24 @@ try
     Check(lic.GetProperty("summary").EnumerateArray().First(x => x.GetProperty("software").GetString() == "Office").GetProperty("seats").GetInt32() == 3 && !lic.ToString().Contains("SECRET-KEY-1") && await Throws<ItamAccessDenied>(() => store.Licenses(U(10), default)),
         "Licenses list: seats and key recorded, never the key itself; IT only");
     Console.WriteLine("PASS end of life");
+    // Reports and dashboard: every report opens for the IT Manager; visibility kept; Excel export is a real workbook.
+    foreach (var key in new[] { "assets", "by-type", "by-location", "employees", "ageing", "unsigned", "leavers", "maintenance", "ink", "pos", "movements", "sales", "disposals", "loss" })
+        Check((await store.Report(U(2), key, null, null, null, default)).Columns.Length > 0, $"Report {key} opens");
+    var westAssets = await store.Report(U(4), "assets", null, null, null, default);
+    var regionCol = Array.IndexOf(westAssets.Columns, "Region");
+    Check(westAssets.Rows.Count > 0 && westAssets.Rows.All(r => (string?)r[regionCol] == "West") && await Throws<ItamAccessDenied>(() => store.Reports(U(10), default))
+        && !(await store.Report(U(6), "assets", null, null, null, default)).Columns.Contains("Unit cost (SAR)") && (await store.Report(U(2), "assets", null, null, null, default)).Columns.Contains("Unit cost (SAR)"),
+        "Reports keep the visibility: a specialist sees their regions, costs only for purchase roles, employees have no reports");
+    var repByType = await store.Report(U(2), "by-type", null, null, null, default);
+    Check((string?)repByType.Rows[^1][0] == "Total" && Convert.ToInt32(repByType.Rows[^1][^1]) == repByType.Rows.Take(repByType.Rows.Count - 1).Sum(r => Convert.ToInt32(r[^1])), "Assets by type: the total row adds up");
+    var xl = await store.ReportExcel(U(2), "assets", null, null, null, default);
+    using (var zipIn = new System.IO.Compression.ZipArchive(new MemoryStream(xl.Content)))
+    {
+        var sheetXml = new StreamReader(zipIn.GetEntry("xl/worksheets/sheet1.xml")!.Open()).ReadToEnd();
+        Check(xl.FileName.EndsWith(".xlsx") && zipIn.GetEntry("xl/workbook.xml") is not null && sheetXml.Contains("Asset No.") && sheetXml.Contains("autoFilter"), "Excel export: a workbook with the heading row and filters");
+    }
+    var dash = JsonSerializer.SerializeToElement(await store.Dashboard(U(2), default));
+    Check(dash.GetProperty("tiles").GetProperty("assets").GetInt32() > 0 && await Throws<ItamAccessDenied>(() => store.Dashboard(U(10), default)), "Dashboard for IT, with the asset counts");
     // Alerts: everything waiting for the person, on one page; the menu shows the same total.
     var alMon = NewId(await store.Register(U(1), A("MON", 1, 2, "ALERT-MON-1"), default));
     var alDs = NewId(await store.RequestDisposal(U(1), new((string)(await Scalar($"SELECT asset_no FROM itam_data.asset WHERE asset_id={alMon}"))!, "Old", "Worn"), default));

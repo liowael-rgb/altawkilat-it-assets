@@ -26,7 +26,7 @@ try{
     api('/assets/choices').then(c=>{for(const p of c.processors)$('processor').append(option(p,p));for(const g of c.memory)$('memory').append(option(g,g+' GB'));}).catch(fail);
     $('filters').onsubmit=e=>{e.preventDefault();page=1;load();};$('clear').onclick=()=>{$('filters').reset();page=1;load();};
     $('prev').onclick=()=>{page--;load();};$('next').onclick=()=>{page++;load();};
-    const p=new URLSearchParams(location.search);if(p.get('q'))$('q').value=p.get('q');
+    const p=new URLSearchParams(location.search);for(const k of ['q','status','type','region'])if(p.get(k))$(k).value=p.get(k);
     await load();
   }
 }catch(e){fail(e);}

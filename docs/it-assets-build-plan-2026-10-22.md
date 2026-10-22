@@ -417,3 +417,18 @@ Emails and the weekly summary (IT-EM-12, IT-EM-61) will use the same list when t
   heading sorts it (dates, amounts and numbers like PC-4816 in their real order), a second click reverses. The search is
   kept when the page redraws the list after an action. Lists that already have their own search (Assets with its full
   search panel, Handover) keep theirs; lists of fewer than three rows have no box.
+
+## Step 6a: dashboard and reports — built 22 October 2026
+
+- **Dashboard** (IT roles; each sees the assets of their own scope): tiles for assets in service, in use, in store, in
+  repair, in transit, pending disposal, lost, delivery notes not signed and alerts (each opens the matching list); money
+  tiles for maintenance cost and sales this year and toner delivered this month (for the roles of those modules); the most
+  urgent alerts; charts of assets by type and by region (in use and in store; a bar opens the Assets list filtered), all
+  assets by status, stock in store per location, ageing from the purchase date, and deliveries per month.
+- **Reports** (14, grouped by area): asset register; by type and status; by region and location; assets per employee;
+  ageing; delivery notes not signed; leavers holding assets; maintenance cost; ink use; purchase orders received;
+  gate passes and transfers; sales; disposals; loss cases. Filters: dates (where the report has a date) and region.
+  Every report keeps the person's visibility (assets by type and region; unit costs only for the purchase roles; module
+  reports only for that module's roles), opens on screen with search and sorting (total rows stay at the bottom), and
+  exports to Excel (.xlsx: heading row frozen, filters, numbers as numbers). Opening a report is in the audit log.
+- Still in step 6: the emails (IT-EM templates) and the SharePoint migration (on hold until the owner says).

@@ -93,6 +93,10 @@ public static class ItamApi
         api.MapGet("/requests/{id:int}/pack.pdf", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Pdf(await store.RequestPack(u, id, ctx.RequestAborted))));
         api.MapGet("/requests/{id:int}/files/{which}", (HttpContext ctx, ItamStore store, int id, string which) => Guard(ctx, async u => { var f = await store.RequestFile(u, id, which, ctx.RequestAborted); return Results.File(f.Content, f.MediaType, f.FileName); }));
         api.MapGet("/movements", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Movements(u, ctx.RequestAborted))));
+        api.MapGet("/dashboard", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Dashboard(u, ctx.RequestAborted))));
+        api.MapGet("/reports", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Reports(u, ctx.RequestAborted))));
+        api.MapGet("/reports/{key}", (HttpContext ctx, ItamStore store, string key, DateOnly? from, DateOnly? to, string? region) => Guard(ctx, async u => Results.Ok(await store.Report(u, key, from, to, region, ctx.RequestAborted))));
+        api.MapGet("/reports/{key}/excel", (HttpContext ctx, ItamStore store, string key, DateOnly? from, DateOnly? to, string? region) => Guard(ctx, async u => { var f = await store.ReportExcel(u, key, from, to, region, ctx.RequestAborted); return Results.File(f.Content, f.MediaType, f.FileName); }));
         api.MapGet("/alerts", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Alerts(u, ctx.RequestAborted))));
         // End of life (step 5): loss cases, disposals, sales, leavers, AD computer comparison, licenses.
         api.MapGet("/loss", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.LossCases(u, ctx.RequestAborted))));
