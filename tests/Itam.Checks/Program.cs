@@ -41,14 +41,14 @@ try
     await Exec($"""
         INSERT itam_access.role_assignment(employee_id,role_code,region_code,created_by) VALUES
          ('{G(1)}','AssetsOfficer',NULL,'{G(2)}'),('{G(2)}','ItManager',NULL,'{G(2)}'),('{G(3)}','TeamLeader',NULL,'{G(2)}'),('{G(4)}','SupportSpecialist','West','{G(2)}'),
-         ('{G(5)}','SystemAdministrator',NULL,'{G(2)}'),('{G(6)}','VoiceAdministrator',NULL,'{G(2)}'),('{G(7)}','ItAdministrator',NULL,'{G(2)}'),('{G(8)}','Auditor',NULL,'{G(2)}');
+         ('{G(5)}','SystemAdministrator',NULL,'{G(2)}'),('{G(6)}','VoiceAdministrator',NULL,'{G(2)}'),('{G(7)}','ItManager',NULL,'{G(2)}');
         INSERT itam_ref.location(name_en,kind,region_code,city) VALUES(N'Riyadh WH','ITWarehouse','Central',N'Riyadh'),(N'Jeddah WH','ITWarehouse','West',N'Jeddah');
         INSERT itam_ref.supplier(name_en) VALUES(N'Supplier One');
         INSERT itam_ref.manufacturer(name_en) VALUES(N'Dell'),(N'Cisco');
         INSERT itam_ref.model(manufacturer_id,type_code,name_en) VALUES(1,'PC',N'Latitude'),(1,'MON',N'P24'),(2,'IP',N'8841');
         """);
     JsonElement E(object o) => JsonSerializer.SerializeToElement(o, new JsonSerializerOptions(JsonSerializerDefaults.Web));
-    Check(await Throws<ItamAccessDenied>(() => store.Change(U(3), new("supplier", "save", E(new { name = "X", active = true }), null), default)), "Only the IT Administrator changes master data");
+    Check(await Throws<ItamAccessDenied>(() => store.Change(U(3), new("supplier", "save", E(new { name = "X", active = true }), null), default)), "Only the IT Manager changes master data");
     await store.Change(U(7), new("supplier", "save", E(new { name = "Supplier Two", vat = "300000000000003", active = true }), "check"), default);
     Check(await Throws<ArgumentException>(() => store.Change(U(7), new("supplier", "save", E(new { name = "Bad VAT", vat = "123", active = true }), null), default)), "Supplier VAT number must be 15 digits");
     Check(await Throws<ArgumentException>(() => store.Change(U(2), new("role", "save", E(new { employee = G(9), role = "SupportSpecialist" }), null), default)), "An IT Support Specialist needs a region");
@@ -56,7 +56,7 @@ try
     Check(await Throws<ArgumentException>(() => store.Change(U(2), new("role", "save", E(new { employee = G(9), role = "SupportSpecialist", region = "Central" }), null), default)), "The same role twice is refused");
     Check(await Throws<ArgumentException>(() => store.Change(U(2), new("role", "save", E(new { employee = G(9), role = "InkOfficer" }), null), default)), "An Ink Officer needs a region");
     await store.Change(U(2), new("role", "save", E(new { employee = G(9), role = "InkOfficer", region = "Central" }), null), default);
-    Check(await Throws<ItamAccessDenied>(() => store.Change(U(1), new("role", "save", E(new { employee = G(10), role = "Auditor" }), null), default)), "Only the IT Manager and IT Administrator give roles");
+    Check(await Throws<ItamAccessDenied>(() => store.Change(U(1), new("role", "save", E(new { employee = G(10), role = "TeamLeader" }), null), default)), "Only the IT Manager gives roles");
     Console.WriteLine("PASS roles and master data");
 
     // ---- Register ----------------------------------------------------------------------------------------------------------------
@@ -78,7 +78,7 @@ try
     Check(await Scalar($"SELECT mac_address FROM itam_data.asset WHERE asset_id={phone.GetProperty("id").GetInt32()}") as string == "AA:BB:CC:DD:EE:FF", "MAC address stored as AA:BB:CC:DD:EE:FF");
     Check(await Throws<ItamAccessDenied>(() => store.Register(U(4), A("MON", 1, 2, "MN-0100"), default)) && (await store.Register(U(4), A("MON", 2, 2, "MN-0101"), default)) is not null,
         "IT Support Specialist registers in own region only");
-    Check(await Throws<ItamAccessDenied>(() => store.Register(U(8), A("MON", 2, 2, "MN-0102"), default)), "The Auditor cannot register");
+    Check(await Throws<ItamAccessDenied>(() => store.Register(U(8), A("MON", 2, 2, "MN-0102"), default)), "An employee without an IT role cannot register");
     // A supplier not in the list is added while registering (old stock bought from a new supplier), and audited.
     var withSupplier = JsonSerializer.SerializeToElement(await store.Register(U(1), A("MON", 1, 2, "MN-0103") with { NewSupplier = "Check New Supplier", NewSupplierVat = "300000000000077" }, default));
     Check(await Scalar($"SELECT s.name_en+'|'+s.vat_no FROM itam_data.asset a JOIN itam_ref.supplier s ON s.supplier_id=a.supplier_id WHERE a.asset_id={withSupplier.GetProperty("id").GetInt32()}") as string == "Check New Supplier|300000000000077"
@@ -95,9 +95,9 @@ try
     // ---- Who sees what -----------------------------------------------------------------------------------------------------------
     string List(int user) => J(store.Assets(U(user), new(null, null, null, null, null), default).Result);
     Check(List(4).Contains("MON-4810") && !List(4).Contains("PC-4809"), "Specialist West sees West assets only");
-    Check(List(5).Contains("PC-4809") && !List(5).Contains("MON-4810"), "System Administrator sees computers only");
+    Check(List(5).Contains("PC-4809") && List(5).Contains("MON-4810"), "System Administrator sees all assets");
     Check(List(6).Contains("IP-") && !List(6).Contains("PC-4809"), "Voice Administrator sees IP phones only");
-    Check(List(8).Contains("PC-4809") && List(8).Contains("MON-4810"), "Auditor sees all assets");
+    Check(List(3).Contains("PC-4809") && List(3).Contains("MON-4810") && List(7).Contains("MON-4810"), "Team Leader and IT Manager see all assets");
     Check(await Throws<ItamAccessDenied>(() => store.Asset(U(4), pc.GetProperty("id").GetInt32(), default)) && await Throws<ItamAccessDenied>(() => store.Assets(U(10), new(null, null, null, null, null), default)),
         "Assets of other regions, and employees without an IT role, are refused");
     Check(J(await store.Assets(U(1), new("tag1", null, null, null, null), default)).Contains("PC-4809"), "Search by service tag");
@@ -124,7 +124,7 @@ try
     var doc = pdf.Start(); doc.Text("Purchase order PO-77 (check document)", 40, doc.Y, 12); var poPdf = doc.Build();
     var poInput = new ItamPoInput("PO-77", new DateOnly(2026, 10, 1), 1, "Procurement", "pr-3", null, null,
         [new(1, "PC", 1, 1, null, "i7", 3, 1000m), new(2, "MON", 1, 2, null, null, 2, 500m)]);
-    Check(await Throws<ItamAccessDenied>(() => store.CreatePo(U(4), poInput, new("po.pdf", "application/pdf", poPdf), default)), "Specialists cannot record POs");
+    Check(await Throws<ItamAccessDenied>(() => store.CreatePo(U(6), poInput, new("po.pdf", "application/pdf", poPdf), default)), "The Voice Administrator cannot record POs");
     Check(await Throws<ArgumentException>(() => store.CreatePo(U(1), poInput, null, default)) && await Throws<ArgumentException>(() => store.CreatePo(U(1), poInput, new("po.png", "image/png", [0x89, 0x50, 0x4E, 0x47, 1, 2]), default)),
         "The PO document (PDF) is required");
     var po = JsonSerializer.SerializeToElement(await store.CreatePo(U(1), poInput, new("po.pdf", "application/pdf", poPdf), default)).GetProperty("id").GetInt32();
@@ -133,6 +133,7 @@ try
     int Line(int no) => (int)Scalar($"SELECT po_line_id FROM itam_data.po_line WHERE po_id={po} AND line_no={no}").Result!;
     ItamDeviceInput Dev(string? serial, string? tag = null) => new(serial, tag, null, null, "New", new() { ["ComputerType"] = "Notebook", ["Processor"] = "Core i7", ["MemoryGb"] = "16", ["CapacityGb"] = "512", ["OperatingSystem"] = "Win11" }, null, null, null);
     var r1 = JsonSerializer.SerializeToElement(await store.Receive(U(1), po, new(Line(1), 1, null, "INV-1", null, [Dev("POSN1", "POTAG1"), Dev("POSN2", "POTAG2")]), null, default));
+    Check(await Throws<ItamAccessDenied>(() => store.Receive(U(4), po, new(Line(1), 1, null, null, null, [Dev("POSN9", "POTAG9")]), null, default)), "Specialists record POs but receive devices into their regions only");
     Check(r1.GetProperty("assets").GetArrayLength() == 2, "Partial receipt: 2 of 3");
     var before = await Scalar("SELECT COUNT(*) FROM itam_data.asset");
     Check((await Error(() => store.Receive(U(1), po, new(Line(1), 1, null, null, null, [Dev("POSN3", "POTAG3"), Dev("POSN4", "POTAG4")]), null, default))).Contains("still to come")
@@ -142,7 +143,7 @@ try
     Check((await Error(() => store.Receive(U(1), po, new(Line(1), 1, null, null, null, [Dev(null, "TAG1")]), null, default))).Contains("Device 1"), "A service tag already in IT Assets is refused, naming the row");
     Check(await Scalar("SELECT COUNT(*) FROM itam_data.asset WHERE po_id IS NOT NULL AND unit_cost=1000 AND supplier_id=1 AND status='InStore'") is 2, "Received devices carry the PO cost and supplier, In Store");
     Check((await Error(() => store.Register(U(1), A("MON", 1, 2, "MN-0500") with { PoNumber = "PO-77" }, default))).Contains("receive the device on the PO"), "Registering by hand against a recorded PO is refused");
-    var view = JsonSerializer.SerializeToElement(await store.Po(U(8), po, default), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+    var view = JsonSerializer.SerializeToElement(await store.Po(U(5), po, default), new JsonSerializerOptions(JsonSerializerDefaults.Web));
     var counts = view.GetProperty("counts");
     Check(counts.GetProperty("ordered").GetInt32() == 5 && counts.GetProperty("received").GetInt32() == 2 && counts.GetProperty("stillToCome").GetInt32() == 3 && counts.GetProperty("inStock").GetInt32() == 2, "PO counts");
     Check(view.GetProperty("totals").GetProperty("total").GetDecimal() == 4600m, "PO total with VAT 15%");
@@ -155,15 +156,15 @@ try
     Console.WriteLine("PASS purchase orders");
 
     // ---- PO pack ------------------------------------------------------------------------------------------------------------------
-    var pack = await store.PoPack(U(8), po, default);
+    var pack = await store.PoPack(U(5), po, default);
     using (var ms = new MemoryStream(pack.Content)) using (var read = PdfReader.Open(ms, PdfDocumentOpenMode.Import))
         Check(read.PageCount == 2, "PO pack: report page + the PO document page");
     Check(await Scalar($"SELECT COUNT(*) FROM itam_data.pack_print WHERE po_id={po}") is 1, "Each print is recorded");
     var print = (int)(await Scalar($"SELECT print_id FROM itam_data.pack_print WHERE po_id={po}"))!;
-    Check(await Throws<ItamAccessDenied>(() => store.MarkSent(U(8), po, print, null, default)), "The Auditor prints but cannot record the sending");
+    Check(await Throws<ItamAccessDenied>(() => store.MarkSent(U(6), po, print, null, default)), "The Voice Administrator cannot record the sending to Accounting");
     await store.MarkSent(U(1), po, print, null, default);
     Check(await Scalar($"SELECT sent_on FROM itam_data.pack_print WHERE print_id={print}") is not null, "Sent to Accounting recorded");
-    Check(await Throws<ItamAccessDenied>(() => store.PoPack(U(4), po, default)), "Specialists cannot print PO documents");
+    Check(await Throws<ItamAccessDenied>(() => store.PoPack(U(6), po, default)), "The Voice Administrator cannot print PO documents");
     var report = await store.PoReport(U(2), po, default);
     Check(System.Text.Encoding.ASCII.GetString(report.Content, 0, 5) == "%PDF-", "PO Delivery Report is a PDF");
     Console.WriteLine("PASS PO pack");
@@ -175,7 +176,7 @@ try
     var handDay = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(3));
     ItamDeliveryInput Dl(Guid? who, string? computer) => new(who, handDay, "Personal", computer, null);
     Check(await Throws<ItamAccessDenied>(() => store.Deliver(U(4), hpc, Dl(G(9), "ATWK-H01"), default)) && await Throws<ItamAccessDenied>(() => store.Deliver(U(8), hpc, Dl(G(9), "ATWK-H01"), default)),
-        "Specialists deliver in their regions only; the Auditor cannot deliver");
+        "Specialists deliver in their regions only; an employee without an IT role cannot deliver");
     Check(await Throws<ArgumentException>(() => store.Deliver(U(1), hpc, Dl(G(11), "ATWK-H01"), default)), "Deliveries go to active employees only");
     Check(await Throws<ArgumentException>(() => store.Deliver(U(1), hpc, Dl(G(9), null), default)) && await Throws<ArgumentException>(() => store.Deliver(U(1), hpc, Dl(G(9), "BAD NAME!"), default)),
         "A computer needs a valid computer name");
@@ -187,10 +188,10 @@ try
         "Delivery note Asset No.-4133; the asset is In Use with the employee; computer name kept");
     Check(await Throws<ArgumentException>(() => store.Deliver(U(1), hpc, Dl(G(10), "ATWK-H09"), default)), "One open custody per asset");
     Check(await Throws<ArgumentException>(() => store.Deliver(U(1), hpc2, Dl(G(10), "ATWK-H01"), default)), "A computer name on an open delivery cannot be reused");
-    var note = await store.DeliveryNote(U(8), dn1Id, default);
-    Check(System.Text.Encoding.ASCII.GetString(note.Content, 0, 5) == "%PDF-", "Delivery note PDF (the Auditor can read it)");
+    var note = await store.DeliveryNote(U(5), dn1Id, default);
+    Check(System.Text.Encoding.ASCII.GetString(note.Content, 0, 5) == "%PDF-", "Delivery note PDF (the System Administrator can read it)");
     var scanPage = pdf.Start(); scanPage.Text("signed", 40, scanPage.Y, 12); var scan = new ItamUpload("signed.pdf", "application/pdf", scanPage.Build());
-    Check(await Throws<ItamAccessDenied>(() => store.UploadSigned(U(8), dn1Id, scan, default)), "The Auditor cannot upload signed copies");
+    Check(await Throws<ItamAccessDenied>(() => store.UploadSigned(U(8), dn1Id, scan, default)), "An employee without an IT role cannot upload signed copies");
     await store.UploadSigned(U(1), dn1Id, scan, default);
     Check(await Throws<ArgumentException>(() => store.UploadSigned(U(1), dn1Id, scan, default)), "The signed copy is kept unchanged once uploaded");
     Check(await Throws<ArgumentException>(() => store.Assess(U(1), dn1Id, new("x", "Reuse"), null, default)), "No technical assessment while the employee still has the asset");
@@ -203,7 +204,7 @@ try
     await store.Deliver(U(1), hpc2, Dl(G(10), "ATWK-H01"), default);
     Check(await Scalar($"SELECT COUNT(*) FROM itam_data.delivery WHERE computer_name='ATWK-H01'") is 2, "The freed computer name can be used again");
     var adTask = (int)(await Scalar($"SELECT task_id FROM itam_data.task WHERE delivery_id={dn1Id} AND kind='RemoveFromAd'"))!;
-    Check(await Throws<ItamAccessDenied>(() => store.TaskDone(U(6), adTask, new(null), default)), "Only the System Administrator confirms the AD and Endpoint Central removal");
+    Check(await Throws<ItamAccessDenied>(() => store.TaskDone(U(6), adTask, new(null), default)), "The Voice Administrator cannot confirm the AD and Endpoint Central removal");
     await store.TaskDone(U(5), adTask, new("Removed"), default);
     Check(await Throws<ArgumentException>(() => store.TaskDone(U(5), adTask, new(null), default)), "A task is done once");
     await store.Assess(U(1), dn1Id, new("Screen and board damaged.", "Dispose"), null, default);
@@ -215,13 +216,13 @@ try
     var phoneDn = JsonSerializer.SerializeToElement(await store.Deliver(U(1), phoneId, Dl(G(9), null), default)).GetProperty("id").GetInt32();
     await store.ReturnAsset(U(1), phoneDn, new(null, "Working", 1, null), default);
     var cucm = (int)(await Scalar($"SELECT task_id FROM itam_data.task WHERE delivery_id={phoneDn} AND kind='RemoveFromCucm'"))!;
-    Check(await Throws<ItamAccessDenied>(() => store.TaskDone(U(5), cucm, new(null), default)), "Only the Voice Administrator confirms the CUCM removal");
+    Check(await Throws<ItamAccessDenied>(() => store.TaskDone(U(3), cucm, new(null), default)), "The Team Leader cannot confirm the CUCM removal (System Administrator and Voice Administrator do)");
     await store.TaskDone(U(6), cucm, new(null), default);
     var sysTasks = JsonSerializer.SerializeToElement(await store.MyTasks(U(5), default)).GetProperty("tasks").EnumerateArray().ToList();
     var voiceTasks = JsonSerializer.SerializeToElement(await store.MyTasks(U(6), default)).GetProperty("tasks").EnumerateArray().ToList();
-    Check(sysTasks.Count > 0 && sysTasks.All(t => t.GetProperty("kind").GetString() == "RemoveFromAd") && voiceTasks.Count > 0 && voiceTasks.All(t => t.GetProperty("kind").GetString() == "RemoveFromCucm")
-        && await Throws<ItamAccessDenied>(() => store.MyTasks(U(4), default)), "Tasks page: the System Administrator sees computer removals, the Voice Administrator extension removals");
-    Check(await Throws<ItamAccessDenied>(() => store.LabelPdf(U(4), hpc2, default)) && await Throws<ItamAccessDenied>(() => store.LabelPdf(U(8), hpc2, default)), "Labels: own regions for specialists; not the Auditor");
+    Check(sysTasks.Any(t => t.GetProperty("kind").GetString() == "RemoveFromAd") && sysTasks.Any(t => t.GetProperty("kind").GetString() == "RemoveFromCucm") && voiceTasks.Count > 0 && voiceTasks.All(t => t.GetProperty("kind").GetString() == "RemoveFromCucm")
+        && await Throws<ItamAccessDenied>(() => store.MyTasks(U(4), default)), "Tasks page: the System Administrator sees both removals, the Voice Administrator extension removals");
+    Check(await Throws<ItamAccessDenied>(() => store.LabelPdf(U(4), hpc2, default)) && await Throws<ItamAccessDenied>(() => store.LabelPdf(U(8), hpc2, default)), "Labels: own regions for specialists; not employees without an IT role");
     var label = await store.LabelPdf(U(7), hpc2, default); var zpl = System.Text.Encoding.UTF8.GetString((await store.LabelZpl(U(1), hpc2, default)).Content);
     Check(System.Text.Encoding.ASCII.GetString(label.Content, 0, 5) == "%PDF-" && zpl.Contains("^BQN", StringComparison.Ordinal) && zpl.Contains("TAGH02", StringComparison.Ordinal), "Label as PDF and Zebra ZPL (QR code, Asset No., service tag)");
     // The PO pack carries the delivery notes: unsigned ones marked, signed ones as uploaded.
@@ -252,9 +253,9 @@ try
     Check(await Scalar($"SELECT toner+'|'+status+'|'+request_no FROM itam_data.ink_request WHERE request_id={ink1}") as string == "W2210A|Submitted|INK-1"
         && await Throws<ItamAccessDenied>(() => store.DecideInk(U(12), ink1, new(true, null), default)), "Ink request INK-1 with the printer toner, waiting for the ink officer");
     // The ink officer (IT of the printer's region) chooses the approving manager: a senior manager, not the AD manager.
-    Check(await Throws<ItamAccessDenied>(() => store.SendInkForApproval(U(4), ink1, new(G(12)), default)) && await Throws<ItamAccessDenied>(() => store.SendInkForApproval(U(3), ink1, new(G(12)), default))
+    Check(await Throws<ItamAccessDenied>(() => store.SendInkForApproval(U(4), ink1, new(G(12)), default))
         && await Throws<ArgumentException>(() => store.SendInkForApproval(U(9), ink1, new(G(10)), default))
-        && await Throws<ArgumentException>(() => store.SendInkForApproval(U(9), ink1, new(G(11)), default)), "Only the region's Ink Officer sends (not a specialist or the Team Leader); the approver is an active employee other than the requester");
+        && await Throws<ArgumentException>(() => store.SendInkForApproval(U(9), ink1, new(G(11)), default)), "A specialist cannot send ink for approval; the approver is an active employee other than the requester");
     await store.SendInkForApproval(U(9), ink1, new(G(12)), default);
     Check(JsonSerializer.SerializeToElement(await store.Me(U(12), default)).GetProperty("pendingApprovals").GetInt32() == 1
         && await Throws<ArgumentException>(() => store.SendInkForApproval(U(9), ink1, new(G(12)), default)) is false, "The chosen manager sees the request; it can be re-sent while it waits");
@@ -295,7 +296,7 @@ try
     Check(await Throws<ArgumentException>(() => store.DeliverInk(U(9), ink2, new(DateOnly.FromDateTime(DateTime.UtcNow.AddHours(3)).AddDays(-1), "Shelf", null), default)), "Ink is not delivered before its approval date");
     await store.DeliverInk(U(9), ink2, new(null, "Shelf", null), default);
     Check(System.Text.Encoding.ASCII.GetString((await store.InkRequestPdf(U(10), ink1, default)).Content, 0, 5) == "%PDF-" && (await store.InkRequestPdf(U(12), ink1, default)).Content.Length > 0
-        && await Throws<ItamAccessDenied>(() => store.InkRequestPdf(U(4), ink1, default)), "The employee and the approver read the ink request document; other regions cannot");
+        && await Throws<ItamAccessDenied>(() => store.InkRequestPdf(U(6), ink1, default)), "The employee and the approver read the ink request document; the Voice Administrator cannot");
     Check(await Scalar($"SELECT CASE WHEN sent_by='{G(9)}' AND sent_at_utc IS NOT NULL THEN 1 ELSE 0 END FROM itam_data.ink_request WHERE request_id={ink1}") is 1, "Who sent the request for approval is recorded");
     var payPack = JsonSerializer.SerializeToElement(await store.CreatePack(U(9), new(1, "Toners", [inv]), default)).GetProperty("id").GetInt32();
     var packFile = await store.PackPdf(U(9), payPack, default);
@@ -327,8 +328,8 @@ try
     // approves; dispatch puts the asset In Repair; the return closes it with the outcome and invoice. IT repairs on the history.
     var pnt = (string)(await Scalar($"SELECT asset_no FROM itam_data.asset WHERE asset_id={printer}"))!;
     var qDoc = pdf.Start(); qDoc.Text("quotation", 40, qDoc.Y, 12); var qFile = new ItamUpload("q.pdf", "application/pdf", qDoc.Build());
-    Check(await Throws<ItamAccessDenied>(() => store.CreateMaintenanceOrder(U(9), new(pnt, 1, "Q1", 100m, "Jam", DateOnly.FromDateTime(DateTime.Today).AddDays(3)), qFile, default))
-        && await Throws<ArgumentException>(() => store.CreateMaintenanceOrder(U(1), new(pnt, 1, "Q1", 100m, "Jam", DateOnly.FromDateTime(DateTime.Today).AddDays(3)), null, default)), "Only the IT Assets Officer creates orders; the quotation file is required");
+    Check(await Throws<ItamAccessDenied>(() => store.CreateMaintenanceOrder(U(6), new(pnt, 1, "Q1", 100m, "Jam", DateOnly.FromDateTime(DateTime.Today).AddDays(3)), qFile, default))
+        && await Throws<ArgumentException>(() => store.CreateMaintenanceOrder(U(1), new(pnt, 1, "Q1", 100m, "Jam", DateOnly.FromDateTime(DateTime.Today).AddDays(3)), null, default)), "The Voice Administrator cannot create orders; the quotation file is required");
     var mo = JsonSerializer.SerializeToElement(await store.CreateMaintenanceOrder(U(1), new(pnt, 1, "Q1", 100m, "Paper jam: replace the fuser", DateOnly.FromDateTime(DateTime.Today).AddDays(3)), qFile, default)).GetProperty("id").GetInt32();
     Check(await Throws<ArgumentException>(() => store.DispatchMaintenance(U(1), mo, new(null), default)) && await Throws<ItamAccessDenied>(() => store.DecideMaintenance(U(9), mo, new(true, null), default))
         && await Throws<ArgumentException>(() => store.DecideMaintenance(U(2), mo, new(false, null), default))
@@ -363,7 +364,7 @@ try
     var newInk = JsonSerializer.SerializeToElement(await store.CreateInkRequest(U(10), new(null, null, 1, "T1", null, "SN-NEW-1", null, "Brother HL-L2350"), default)).GetProperty("id").GetInt32();
     Check(await Scalar($"SELECT ISNULL(region_code,'-')+'|'+employee_location+'|'+CAST(CASE WHEN printer_asset_id IS NULL THEN 0 ELSE 1 END AS varchar(1)) FROM itam_data.ink_request WHERE request_id={newInk}") as string == "Central|Riyadh WH|0"
         && await Throws<ArgumentException>(() => store.SendInkForApproval(U(9), newInk, new(G(12)), default)), "Region from Active Directory, office as the printer location; not sent for approval before the printer is linked");
-    Check(await Throws<ItamAccessDenied>(() => store.RegisterInkPrinter(U(4), newInk, new(1, 1, null, "Brother HL-L2350", "SN-NEW-1", "T1", null, "Used"), default)), "Only the region's Ink Officer registers the printer");
+    Check(await Throws<ItamAccessDenied>(() => store.RegisterInkPrinter(U(6), newInk, new(1, 1, null, "Brother HL-L2350", "SN-NEW-1", "T1", null, "Used"), default)), "The Voice Administrator cannot register the printer (IT handlers and specialists can)");
     var reg = JsonSerializer.SerializeToElement(await store.RegisterInkPrinter(U(9), newInk, new(1, 1, null, "Brother HL-L2350", "SN-NEW-1", "T1", "Room 2", "Used"), default));
     var regId = reg.GetProperty("id").GetInt32();
     Check(await Scalar($"SELECT status FROM itam_data.asset WHERE asset_id={regId}") as string == "InUse" && await Scalar($"SELECT printer_asset_id FROM itam_data.ink_request WHERE request_id={newInk}") is int linked && linked == regId,
@@ -439,7 +440,7 @@ try
     Check(await Throws<ArgumentException>(() => store.SetBackup(U(1), new(null, G(4), today.AddDays(3), today.AddDays(8), null), default)), "Overlapping backups are refused");
     Check(await Throws<ArgumentException>(() => store.SetBackup(U(3), new(null, G(1), today.AddDays(2), today.AddDays(3), null), default)), "A backup on leave the same dates cannot be chosen");
     Check(await Throws<ArgumentException>(() => store.SetBackup(U(1), new(null, G(1), today.AddDays(10), today.AddDays(11), null), default)), "You cannot be your own backup");
-    Check(await Throws<ItamAccessDenied>(() => store.SetBackup(U(1), new(G(3), G(4), today.AddDays(10), today.AddDays(11), null), default)), "Only the IT Manager and IT Administrator set backups for others");
+    Check(await Throws<ItamAccessDenied>(() => store.SetBackup(U(1), new(G(3), G(4), today.AddDays(10), today.AddDays(11), null), default)), "The IT Assets Officer cannot set backups for others (Team Leader, System Administrator and IT Manager do)");
     var mine = JsonSerializer.SerializeToElement(await store.Backups(U(1), default)).GetProperty("items")[0];
     Check(mine.GetProperty("status").GetString() == "Upcoming", "Backup shown as upcoming");
     await store.CancelBackup(U(1), mine.GetProperty("id").GetInt32(), default);

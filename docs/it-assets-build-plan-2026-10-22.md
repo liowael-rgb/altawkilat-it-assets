@@ -290,3 +290,18 @@ email step.
 - **Request document** (bilingual A4 with logo): header, employee information with the cost center, request details, cost
   table with the amount in words, approvals recorded in IT Assets (who and when), IT Manager and Accounting signatures, and
   a QR code to /r/PR-n. No ServiceDesk ticket fields. Emails (IT-EM-15/18/26/27/28/31) come with the email step.
+
+## Permission matrix applied (owner, 22 October 2026)
+
+The owner's edited matrix (IT Assets - Permission Matrix, 22 October 2026) is applied; the system rules are in `ItamScope`
+and the applied matrix is regenerated as "IT Assets - Permission Matrix (applied 22-10-2026).xlsx".
+- The **IT Administrator** and **Auditor** roles are removed: seven IT roles remain. The IT Manager gives roles, keeps
+  master data and reads the audit log.
+- The **System Administrator** and **IT Manager** work in every region: assets, keys, labels, POs, handover, ink handling,
+  invoices of every category, suppliers and maintenance orders; the System Administrator confirms both AD and CUCM removals.
+- The **IT Helpdesk Team Leader** also confirms AD removals, sends ink for approval, approves maintenance orders and sees and
+  sets backups (with the System Administrator and the IT Manager).
+- **IT Support Specialists**: keys and labels in their regions; all POs, receiving only into warehouses and branches of
+  their regions; parts invoices; link or register printers; add suppliers; create and follow maintenance orders.
+- Maintenance orders are approved by the Team Leader, the System Administrator or the IT Manager (or a backup on leave),
+  never by the person who created the order.

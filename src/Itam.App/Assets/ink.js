@@ -33,7 +33,7 @@ function handleCard(){
   const list=d.handle.filter(r=>filter==='all'||r.status===filter);
   const picked=new Set();
   const orderBtn=btn('Put the ticked requests in a supplier order',()=>order([...picked]),'primary');orderBtn.disabled=true;
-  if(filter==='Approved')bar.append(orderBtn);
+  if(filter==='Approved'&&d.canOrder)bar.append(orderBtn);
   const wrap=el('div',null,'table-wrap x-ink-handle');const t=el('table');const hr=el('tr');
   for(const h of ['','Request','Employee','Printer','Toner','Qty','State','Approver / order','Document'])hr.append(el('th',h));
   const th=el('thead');th.append(hr);const tb=el('tbody');
@@ -41,12 +41,13 @@ function handleCard(){
   for(const r of list){
     const tr=el('tr');const cb=document.createElement('input');cb.type='checkbox';cb.disabled=r.status!=='Approved';cb.onchange=()=>{cb.checked?picked.add(r.id):picked.delete(r.id);orderBtn.disabled=!picked.size;};
     const td=x=>{const c=el('td');c.append(x??'');tr.append(c);return c;};
-    td(r.status==='Approved'?cb:'');td(r.no).className='nowrap';td(two(r.employee,r.branch));td(r.registered?two(r.printer,r.printerModel):(()=>{const s=el('span');s.append(el('span','Not registered','tag warn'),el('small',`${r.printerModel||''} · S/N ${r.newSerial}`,'x-sub'));return s;})()).className=r.registered?'nowrap':'';td(r.toner);td(String(r.quantity));const stCell=td(stTag(r));stCell.className='x-state-cell';
+    td(r.status==='Approved'&&d.canOrder?cb:'');td(r.no).className='nowrap';td(two(r.employee,r.branch));td(r.registered?two(r.printer,r.printerModel):(()=>{const s=el('span');s.append(el('span','Not registered','tag warn'),el('small',`${r.printerModel||''} · S/N ${r.newSerial}`,'x-sub'));return s;})()).className=r.registered?'nowrap':'';td(r.toner);td(String(r.quantity));const stCell=td(stTag(r));stCell.className='x-state-cell';
     td(r.orderNo?two(r.orderNo,r.supplier):r.manager?two(r.manager,r.status==='WaitingApproval'?'approver':'approved by'):'');td(docCell(r));
     const act=el('div',null,'x-row-actions');
-    if(r.status==='Submitted'&&!r.registered)act.append(btn('Link printer',()=>linkPrinter(r),'link x-strong'),btn('Register printer',()=>registerPrinter(r),'link'),btn('Cancel',()=>cancel(r),'link'));
-    else if(r.status==='Submitted'||r.status==='WaitingApproval')act.append(btn(r.status==='Submitted'?'Send for approval':'Change approver',()=>send(r),r.status==='Submitted'?'link x-strong':'link'),btn('Cancel',()=>cancel(r),'link'));
-    if(r.status==='Approved'||r.status==='Ordered'){act.append(btn('Deliver',()=>deliver(r),'link'),btn('Cancel',()=>cancel(r),'link'));}
+    // Actions by role (permission matrix): printers by IT handlers, sending for approval also by the Team Leader, ordering, delivering and cancelling by the ink handlers.
+    if(r.status==='Submitted'&&!r.registered){if(d.canPrinter)act.append(btn('Link printer',()=>linkPrinter(r),'link x-strong'),btn('Register printer',()=>registerPrinter(r),'link'));if(d.canOrder)act.append(btn('Cancel',()=>cancel(r),'link'));}
+    else if(r.status==='Submitted'||r.status==='WaitingApproval'){if(d.canSend)act.append(btn(r.status==='Submitted'?'Send for approval':'Change approver',()=>send(r),r.status==='Submitted'?'link x-strong':'link'));if(d.canOrder)act.append(btn('Cancel',()=>cancel(r),'link'));}
+    if((r.status==='Approved'||r.status==='Ordered')&&d.canOrder){act.append(btn('Deliver',()=>deliver(r),'link'),btn('Cancel',()=>cancel(r),'link'));}
     if(act.children.length)stCell.append(act);tb.append(tr);
   }
   if(!list.length){const tr=el('tr');const c=el('td','Nothing here.','empty');c.colSpan=9;tr.append(c);tb.append(tr);}

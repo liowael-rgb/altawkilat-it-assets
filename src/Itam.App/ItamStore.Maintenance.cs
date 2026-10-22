@@ -18,14 +18,14 @@ public sealed record ItamItRepair(string? Details);
 /// technical assessment on its delivery record does. Repairs IT does itself are recorded on the asset history.</summary>
 public sealed partial class ItamStore
 {
-    static string OrderStatusLabel(string s) => s switch { "WaitingApproval" => "Waiting IT Manager approval", "Approved" => "Approved, to send", "WithSupplier" => "With the supplier", _ => s };
-    static bool MaintenanceManage(ItamScope s) => s.Officer;
-    static bool MaintenanceView(ItamScope s) => s.ViewsAll || s.CanHandoverAny || s.Manager;
+    static string OrderStatusLabel(string s) => s switch { "WaitingApproval" => "Waiting approval", "Approved" => "Approved, to send", "WithSupplier" => "With the supplier", _ => s };
+    static bool MaintenanceManage(ItamScope s) => s.MaintenanceManage;
+    static bool MaintenanceView(ItamScope s) => s.MaintenanceView;
 
     /// <summary>True when the person may decide the order: an IT Manager, or the backup of an IT Manager on leave today; never
     /// the person who created it.</summary>
     static async Task<bool> MaintenanceApprover(DbConnection c, DbTransaction? tx, ItamScope s, Guid createdBy, CancellationToken token)
-        => s.Id != createdBy && (s.Manager || await Scalar(c, tx, "SELECT TOP 1 1 FROM itam_access.leave_backup b JOIN itam_access.role_assignment r ON r.employee_id=b.person_id AND r.role_code=N'ItManager' " +
+        => s.Id != createdBy && (s.MaintenanceApproverRole || await Scalar(c, tx, "SELECT TOP 1 1 FROM itam_access.leave_backup b JOIN itam_access.role_assignment r ON r.employee_id=b.person_id AND r.role_code IN(N'ItManager',N'TeamLeader',N'SystemAdministrator') " +
             "WHERE b.backup_employee_id=@me AND b.cancelled_at_utc IS NULL AND b.person_id<>@c AND CAST(DATEADD(hour,3,SYSUTCDATETIME()) AS date) BETWEEN b.leave_from AND b.leave_to", token, ("@me", s.Id), ("@c", createdBy)) is not null);
 
     /// <summary>The asset by its Asset No. (typed or scanned from the label), with the product fields the order shows read-only.</summary>
@@ -33,7 +33,7 @@ public sealed partial class ItamStore
     {
         await using var c = await Open(token);
         var s = await Scope(c, null, user, token);
-        Require(MaintenanceManage(s), "Only the IT Assets Officer creates maintenance orders.");
+        Require(MaintenanceManage(s), "You cannot create maintenance orders.");
         var no = Text(assetNo, "Asset No.", 20).ToUpperInvariant();
         var a = (await Rows(c, null, "SELECT a.asset_id,a.asset_no,t.name_en,m.name_en,mo.name_en,a.service_tag,a.serial_no,a.mac_address,a.status,g.name_en FROM itam_data.asset a JOIN itam_ref.asset_type t ON t.type_code=a.type_code " +
             "JOIN itam_ref.location g ON g.location_id=a.location_id LEFT JOIN itam_ref.manufacturer m ON m.manufacturer_id=a.manufacturer_id LEFT JOIN itam_ref.model mo ON mo.model_id=a.model_id WHERE a.asset_no=@n",
@@ -53,7 +53,7 @@ public sealed partial class ItamStore
         await using var c = await Open(token);
         await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var s = await Scope(c, tx, user, token);
-        Require(MaintenanceManage(s), "Only the IT Assets Officer creates maintenance orders.");
+        Require(MaintenanceManage(s), "You cannot create maintenance orders.");
         var no = Text(x.AssetNo, "Asset No.", 20).ToUpperInvariant();
         var a = (await Rows(c, tx, "SELECT asset_id,status FROM itam_data.asset WITH (UPDLOCK) WHERE asset_no=@n", r => (Id: r.GetInt32(0), Status: r.GetString(1)), token, ("@n", no))).SingleOrDefault();
         if (a.Status is null) throw new ArgumentException($"{no} is not in IT Assets.");
@@ -88,7 +88,7 @@ public sealed partial class ItamStore
         await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var s = await Scope(c, tx, user, token);
         var o = await LoadOrder(c, tx, id, token);
-        Require(await MaintenanceApprover(c, tx, s, o.CreatedBy, token), "Only the IT Manager, or the IT Manager's backup during leave, decides maintenance orders; nobody approves their own order.");
+        Require(await MaintenanceApprover(c, tx, s, o.CreatedBy, token), "Only the IT Helpdesk Team Leader, the System Administrator or the IT Manager (or their backup during leave) decides maintenance orders; nobody approves their own order.");
         if (o.Status != "WaitingApproval") throw new ArgumentException($"{o.No} is {OrderStatusLabel(o.Status)}.");
         var reason = x.Approve ? null : Text(x.Reason, "Reason for the rejection", 500);
         await Exec(c, tx, "UPDATE itam_data.maintenance_order SET status=@st,decided_by=@b,decided_at_utc=SYSUTCDATETIME(),rejection_reason=@r WHERE order_id=@i", token,
@@ -104,7 +104,7 @@ public sealed partial class ItamStore
         await using var c = await Open(token);
         await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var s = await Scope(c, tx, user, token);
-        Require(MaintenanceManage(s), "Only the IT Assets Officer records the dispatch to the supplier.");
+        Require(MaintenanceManage(s), "You cannot record the dispatch to the supplier.");
         var o = await LoadOrder(c, tx, id, token);
         if (o.Status != "Approved") throw new ArgumentException($"{o.No} is {OrderStatusLabel(o.Status)}: only an approved order is sent.");
         var today = DateOnly.FromDateTime(UtcNow.AddHours(3)); var on = x.DispatchedOn ?? today;
@@ -125,7 +125,7 @@ public sealed partial class ItamStore
         await using var c = await Open(token);
         await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var s = await Scope(c, tx, user, token);
-        Require(MaintenanceManage(s), "Only the IT Assets Officer records the return from the supplier.");
+        Require(MaintenanceManage(s), "You cannot record the return from the supplier.");
         var o = await LoadOrder(c, tx, id, token);
         if (o.Status != "WithSupplier") throw new ArgumentException($"{o.No} is {OrderStatusLabel(o.Status)}: only an asset with the supplier comes back.");
         var today = DateOnly.FromDateTime(UtcNow.AddHours(3)); var on = x.ReturnedOn ?? today;
@@ -160,7 +160,7 @@ public sealed partial class ItamStore
         await using var c = await Open(token);
         await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var s = await Scope(c, tx, user, token);
-        Require(MaintenanceManage(s), "Only the IT Assets Officer cancels maintenance orders.");
+        Require(MaintenanceManage(s), "You cannot cancel maintenance orders.");
         var o = await LoadOrder(c, tx, id, token);
         if (o.Status is not ("WaitingApproval" or "Approved")) throw new ArgumentException($"{o.No} is {OrderStatusLabel(o.Status)}: only an order not yet sent is cancelled.");
         var reason = Text(x.Reason, "Reason", 500);
@@ -175,7 +175,7 @@ public sealed partial class ItamStore
         await using var c = await Open(token);
         await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var s = await Scope(c, tx, user, token);
-        Require(MaintenanceManage(s), "Only the IT Assets Officer changes the expected return.");
+        Require(MaintenanceManage(s), "You cannot change the expected return.");
         var o = await LoadOrder(c, tx, id, token);
         if (o.Status is "Closed" or "Rejected" or "Cancelled") throw new ArgumentException($"{o.No} is {OrderStatusLabel(o.Status)}.");
         var today = DateOnly.FromDateTime(UtcNow.AddHours(3));
@@ -240,7 +240,7 @@ public sealed partial class ItamStore
         var a = (await Rows(c, tx, "SELECT a.asset_no,a.type_code,g.region_code FROM itam_data.asset a JOIN itam_ref.location g ON g.location_id=a.location_id WHERE a.asset_id=@a",
             r => (No: r.GetString(0), Type: r.GetString(1), Region: r.GetString(2)), token, ("@a", assetId))).SingleOrDefault();
         if (a.No is null) throw new ArgumentException("The asset was not found.");
-        Require(s.CanHandover(a.Region) || s.ItAdmin, "IT of the asset's region records repairs done by IT.");
+        Require(s.ItRepair(a.Region), "IT of the asset's region records repairs done by IT.");
         var details = Text(x.Details, "Repair done", 1000);
         await Event(c, tx, assetId, s.Id, "IT repair", details, token);
         await Audit(c, tx, s.Id, "asset", a.No, "IT repair", null, new { details }, null, token);
@@ -259,6 +259,6 @@ public sealed partial class ItamStore
         var orders = await Rows(c, null, OrderSelect + "WHERE o.asset_id=@a ORDER BY o.order_id DESC", MapOrder, token, ("@a", assetId));
         var itRepairs = await Rows(c, null, "SELECT v.at_utc,e.display_name,v.detail FROM itam_data.asset_event v LEFT JOIN itam_access.employee e ON e.employee_id=v.actor_id WHERE v.asset_id=@a AND v.kind=N'IT repair' ORDER BY v.event_id DESC",
             r => new { at = Utc(r, 0), by = S(r, 1), details = S(r, 2) }, token, ("@a", assetId));
-        return new { deliveries, orders, itRepairs, canItRepair = s.CanHandover(region) || s.ItAdmin, canOrder = MaintenanceManage(s) };
+        return new { deliveries, orders, itRepairs, canItRepair = s.ItRepair(region), canOrder = MaintenanceManage(s) };
     }
 }

@@ -20,7 +20,7 @@ public sealed partial class ItamStore
         {
             id = s.Id, name = s.Name, roles,
             can = new { viewAssets = s.CanViewAny, register = s.CanRegisterAny, poView = s.PoView, poManage = s.PoManage, rolesManage = s.RolesManage, masterData = s.MasterData,
-                auditView = s.AuditView, backupsView = s.BackupsView, ownBackup = s.OwnBackup, keys = s.CanSeeKeys, handover = s.CanHandoverAny || s.ViewsAll || s.AdTasks || s.CucmTasks, tasks = s.AdTasks || s.CucmTasks || s.ViewsAll, invoices = s.PoView || s.CanHandoverAny || s.CanInkAny, suppliers = s.PoView || s.CanHandoverAny || s.CanInkAny || s.SuppliersManage, maintenance = s.ViewsAll || s.CanHandoverAny || s.Manager, requests = s.Officer || s.ViewsAll || s.Specialist, admin = s.MasterData || s.RolesManage || s.AuditView },
+                auditView = s.AuditView, backupsView = s.BackupsView, ownBackup = s.OwnBackup, keys = s.SysAdmin || s.Officer || s.Manager || s.Specialist, handover = s.HandoverView || s.AdTasks || s.CucmTasks, tasks = s.AdTasks || s.CucmTasks || s.TasksView, invoices = s.InvoicesView, suppliers = s.InvoicesView || s.SuppliersManage, maintenance = s.MaintenanceView || s.MaintenanceApproverRole, requests = s.Officer || s.ViewsAll || s.Specialist, admin = s.MasterData || s.RolesManage || s.AuditView },
             lists = await Lists(c, token), regions = s.Regions, viewsAll = s.ViewsAll, openTasks = await OpenTaskCount(c, s, token), pendingApprovals = await PendingApprovals(c, s, token), maintenanceApprovals = await MaintenanceApprovalsCount(c, s, token), requestApprovals = await RequestApprovalsCount(c, s, token)
         };
     }
@@ -54,7 +54,7 @@ public sealed partial class ItamStore
     {
         await using var c = await Open(token);
         var s = await Scope(c, null, user, token);
-        Require(s.MasterData || s.RolesManage || s.AuditView, "The Administration Center is for the IT Administrator, the IT Manager and the Auditor.");
+        Require(s.MasterData || s.RolesManage || s.AuditView, "The Administration Center is for the IT Manager.");
         var names = await Names(c, null, token);
         string N(Guid g) => names.TryGetValue(g, out var n) ? n : g.ToString();
         return new
@@ -82,15 +82,15 @@ public sealed partial class ItamStore
         Task Log(string key, string action, object? after) => Audit(c, tx, s.Id, change.Area, key, action, null, after, change.Reason, token);
         if (change.Area == "role")
         {
-            Require(s.RolesManage, "Only the IT Manager and the IT Administrator give or remove roles.");
+            Require(s.RolesManage, "Only the IT Manager gives or removes roles.");
             var x = change.Data.Deserialize<RoleIn>(Json) ?? throw new ArgumentException("The request is empty.");
             if (change.Action == "delete")
             {
                 var row = (await Rows(c, tx, "SELECT employee_id,role_code,region_code FROM itam_access.role_assignment WHERE assignment_id=@i", r => (E: r.GetGuid(0), Role: r.GetString(1), Region: S(r, 2)), token, ("@i", x.Id ?? 0))).SingleOrDefault();
                 if (row.Role is null) throw new ArgumentException("The role was not found.");
                 await Exec(c, tx, "DELETE itam_access.role_assignment WHERE assignment_id=@i", token, ("@i", x.Id));
-                if (Convert.ToInt32(await Scalar(c, tx, "SELECT COUNT(*) FROM itam_access.role_assignment WHERE role_code IN(N'ItManager',N'ItAdministrator')", token)) == 0)
-                    throw new ArgumentException("Someone must keep the IT Manager or IT Administrator role, so roles can still be given.");
+                if (Convert.ToInt32(await Scalar(c, tx, "SELECT COUNT(*) FROM itam_access.role_assignment WHERE role_code=N'ItManager'", token)) == 0)
+                    throw new ArgumentException("Someone must keep the IT Manager role, so roles can still be given.");
                 await Log(row.E.ToString(), "Remove role", new { row.Role, row.Region });
             }
             else
@@ -106,7 +106,7 @@ public sealed partial class ItamStore
             await tx.CommitAsync(token);
             return;
         }
-        Require(s.MasterData, "Only the IT Administrator changes master data.");
+        Require(s.MasterData, "Only the IT Manager changes master data.");
         var d = change.Data.Deserialize<RefIn>(Json) ?? throw new ArgumentException("The request is empty.");
         var name = Text(d.Name, "Name", 200);
         switch (change.Area)
@@ -209,7 +209,7 @@ public sealed partial class ItamStore
         var s = await Scope(c, tx, user, token);
         var person = x.PersonId ?? s.Id;
         if (person == s.Id) Require(s.OwnBackup, "My Backup is for people with an IT role.");
-        else Require(s.BackupsAll, "Only the IT Manager and the IT Administrator set a backup for someone else.");
+        else Require(s.BackupsAll, "Only the IT Helpdesk Team Leader, the System Administrator and the IT Manager set a backup for someone else.");
         var backup = x.BackupId ?? throw new ArgumentException("Choose your backup.");
         if (backup == person) throw new ArgumentException("You cannot be your own backup.");
         if (await Scalar(c, tx, "SELECT 1 FROM itam_access.employee WHERE employee_id=@e AND enabled=1", token, ("@e", backup)) is null) throw new ArgumentException("Choose an active employee as backup.");

@@ -20,8 +20,8 @@ public sealed partial class ItamStore
     public static readonly (string Code, string Label)[] InvoiceCategories = [("Toners", "Toners"), ("Devices", "Devices"), ("PartsMaintenance", "Parts and maintenance")];
     static string CategoryLabel(string c) => c == "Mixed" ? "Mixed" : InvoiceCategories.FirstOrDefault(x => x.Code == c).Label ?? c;
     /// <summary>Toner and parts invoices: the regional IT handlers; device invoices (PO receipts): Team Leader and IT Assets Officer.</summary>
-    static bool CanInvoice(ItamScope s, string category) => category switch { "Devices" => s.PoManage, "Toners" => s.CanInkAny, "Mixed" => s.PoManage || s.CanInkAny || s.CanHandoverAny, _ => s.CanHandoverAny };
-    static bool CanSeeInvoices(ItamScope s) => s.PoView || s.CanHandoverAny || s.CanInkAny;
+    static bool CanInvoice(ItamScope s, string category) => category switch { "Devices" => s.InvoiceDevices, "Toners" => s.InvoiceToners, "Mixed" => s.InvoiceDevices || s.InvoiceToners || s.InvoiceParts, _ => s.InvoiceParts };
+    static bool CanSeeInvoices(ItamScope s) => s.InvoicesView;
 
     // Invoices -----------------------------------------------------------------------------------------------------------------------
     public async Task<object> CreateInvoice(ItamUser user, ItamInvoiceInput x, ItamUpload? document, CancellationToken token)
@@ -30,7 +30,7 @@ public sealed partial class ItamStore
         await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var s = await Scope(c, tx, user, token);
         var category = InvoiceCategories.Any(k => k.Code == x.Category) ? x.Category! : throw new ArgumentException("Choose the category: Toners, Devices, or Parts and maintenance.");
-        Require(CanInvoice(s, category), category == "Devices" ? "Only the IT Helpdesk Team Leader and the IT Assets Officer record device invoices." : category == "Toners" ? "Only the Ink Officers and the IT Assets Officer record toner invoices." : "Only IT handlers record parts and maintenance invoices.");
+        Require(CanInvoice(s, category), $"You cannot record {CategoryLabel(category).ToLowerInvariant()} invoices.");
         if (document is null) throw new ArgumentException("Attach the invoice (PDF).");
         var fileType = CheckFile(document, pdfOnly: true);
         if (await Scalar(c, tx, "SELECT 1 FROM itam_ref.supplier WHERE supplier_id=@s", token, ("@s", x.SupplierId ?? 0)) is null) throw new ArgumentException("Choose the supplier.");
@@ -91,7 +91,7 @@ public sealed partial class ItamStore
         var orders = await Rows(c, null, "SELECT o.order_id,o.order_no,o.supplier_id,su.name_en FROM itam_data.supplier_order o JOIN itam_ref.supplier su ON su.supplier_id=o.supplier_id ORDER BY o.order_id DESC",
             r => new { id = r.GetInt32(0), no = r.GetString(1), supplierId = r.GetInt32(2), supplier = r.GetString(3) }, token);
         var pos = s.PoManage ? await Rows(c, null, "SELECT p.po_id,p.po_number,p.supplier_id FROM itam_data.po p ORDER BY p.po_date DESC", r => new { id = r.GetInt32(0), no = r.GetString(1), supplierId = r.GetInt32(2) }, token) : [];
-        return new { invoices = list, packs, orders, pos, categories = InvoiceCategories.Where(k => CanInvoice(s, k.Code)).Select(k => new { code = k.Code, label = k.Label }), canPack = s.CanHandoverAny || s.PoManage || s.CanInkAny };
+        return new { invoices = list, packs, orders, pos, categories = InvoiceCategories.Where(k => CanInvoice(s, k.Code)).Select(k => new { code = k.Code, label = k.Label }), canPack = s.InvoiceDevices || s.InvoiceToners || s.InvoiceParts };
     }
 
     /// <summary>One invoice: lines with what was delivered from each (ink), the requests of its order, or the PO receipts it covers.</summary>
@@ -176,7 +176,7 @@ public sealed partial class ItamStore
         var s = await Scope(c, null, user, token);
         var r = (await Rows(c, null, InkSelect + "WHERE r.request_id=@i", MapInk, token, ("@i", requestId))).SingleOrDefault() ?? throw new ArgumentException("The ink request was not found.");
         var requester = await Scalar(c, null, "SELECT 1 FROM itam_data.ink_request WHERE request_id=@i AND (employee_id=@me OR requested_by=@me OR manager_id=@me OR decided_by=@me)", token, ("@i", requestId), ("@me", s.Id)) is not null;
-        Require(requester || s.CanInk(r.region) || s.ViewsAll || s.PoView, "You cannot see this ink request.");
+        Require(requester || s.CanInkSend(r.region) || s.InkView || s.InvoicesView, "You cannot see this ink request.");
         return new($"Ink request {r.no}.pdf", "application/pdf", await InkRequestDoc(c, r, token));
     }
 

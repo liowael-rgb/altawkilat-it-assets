@@ -24,8 +24,7 @@ static class DemoSeed
                  ('00000000-0000-0000-0000-000000000005','SupportSpecialist','East','00000000-0000-0000-0000-000000000002'),
                  ('00000000-0000-0000-0000-000000000006','SystemAdministrator',NULL,'00000000-0000-0000-0000-000000000002'),
                  ('00000000-0000-0000-0000-000000000007','VoiceAdministrator',NULL,'00000000-0000-0000-0000-000000000002'),
-                 ('00000000-0000-0000-0000-000000000008','ItAdministrator',NULL,'00000000-0000-0000-0000-000000000002'),
-                 ('00000000-0000-0000-0000-000000000009','Auditor',NULL,'00000000-0000-0000-0000-000000000002'),
+                 ('00000000-0000-0000-0000-000000000008','SupportSpecialist','South','00000000-0000-0000-0000-000000000002'),
                  ('00000000-0000-0000-0000-000000000013','InkOfficer','South','00000000-0000-0000-0000-000000000002');
                 INSERT itam_ref.location(name_en,kind,region_code,city) VALUES
                  (N'Riyadh IT Warehouse (demo)','ITWarehouse','Central',N'Riyadh'),(N'Jeddah IT Warehouse (demo)','ITWarehouse','West',N'Jeddah'),

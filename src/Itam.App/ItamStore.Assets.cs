@@ -207,7 +207,8 @@ public sealed partial class ItamStore
         await using var c = await Open(token);
         await using var tx = await c.BeginTransactionAsync(token);
         var s = await Scope(c, tx, user, token);
-        Require(s.CanSeeKeys, "Only the IT Administrator and the IT Assets Officer can see keys.");
+        var keyRegion = await Scalar(c, tx, "SELECT g.region_code FROM itam_data.asset a JOIN itam_ref.location g ON g.location_id=a.location_id WHERE a.asset_id=@a", token, ("@a", id)) as string ?? throw new ArgumentException("The asset was not found.");
+        Require(s.CanSeeKeys(keyRegion), "Only the System Administrator, the IT Assets Officer, the IT Manager and the IT Support Specialists of the region can see keys.");
         var value = await Scalar(c, tx, "SELECT protected_value FROM itam_data.asset_secret WHERE asset_id=@a AND secret_code=@c", token, ("@a", id), ("@c", code)) as string
             ?? throw new ArgumentException("No key is recorded.");
         await Exec(c, tx, "INSERT itam_data.secret_view(asset_id,secret_code,viewer_id) VALUES(@a,@c,@v)", token, ("@a", id), ("@c", code), ("@v", s.Id));
@@ -294,7 +295,7 @@ public sealed partial class ItamStore
         return new
         {
             asset = a, createdByName = N(a.createdBy), receivedByName = N(a.receivedBy), attributes, fields = ItamTypeFields.For(a.type), keys, history, record = await AssetHistory(c, s, id, a.region, token),
-            canEdit = s.CanEdit(a.type, a.region), phoneOnly = !s.CanEdit(a.type, a.region) && s.CanEditPhoneOnly(a.type), canSeeKeys = s.CanSeeKeys
+            canEdit = s.CanEdit(a.type, a.region), phoneOnly = !s.CanEdit(a.type, a.region) && s.CanEditPhoneOnly(a.type), canSeeKeys = s.CanSeeKeys(a.region)
         };
     }
 

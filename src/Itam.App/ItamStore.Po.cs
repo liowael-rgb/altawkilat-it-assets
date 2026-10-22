@@ -20,7 +20,7 @@ public sealed partial class ItamStore
         await using var c = await Open(token);
         await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var s = await Scope(c, tx, user, token);
-        Require(s.PoManage, "Only the IT Helpdesk Team Leader and the IT Assets Officer record purchase orders.");
+        Require(s.PoManage, "You cannot record purchase orders.");
         if (document is null) throw new ArgumentException("Attach the PO document (PDF) sent by Procurement.");
         var type = CheckFile(document, pdfOnly: true);
         var header = await CheckPo(c, tx, x, null, token);
@@ -40,7 +40,7 @@ public sealed partial class ItamStore
         await using var c = await Open(token);
         await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var s = await Scope(c, tx, user, token);
-        Require(s.PoManage, "Only the IT Helpdesk Team Leader and the IT Assets Officer change purchase orders.");
+        Require(s.PoManage, "You cannot change purchase orders.");
         var version = await Scalar(c, tx, "SELECT CONVERT(varchar(30),CONVERT(varbinary(8),version),2) FROM itam_data.po WHERE po_id=@i", token, ("@i", id)) as string ?? throw new ArgumentException("The PO was not found.");
         if (x.Version != version) throw new ItamConflict("Someone changed this PO after you opened it. Reload and try again.");
         var header = await CheckPo(c, tx, x, id, token);
@@ -117,7 +117,7 @@ public sealed partial class ItamStore
         await using var c = await Open(token);
         await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var s = await Scope(c, tx, user, token);
-        Require(s.PoManage, "Only the IT Helpdesk Team Leader and the IT Assets Officer receive devices on a PO.");
+        Require(s.PoManage, "You cannot receive devices on a PO.");
         var head = (await Rows(c, tx, "SELECT po_number,supplier_id,po_date,invoice_no FROM itam_data.po WITH (UPDLOCK) WHERE po_id=@p",
             r => (No: r.GetString(0), Supplier: r.GetInt32(1), Date: Day(r, 2), Invoice: S(r, 3)), token, ("@p", po))).SingleOrDefault();
         if (head.No is null) throw new ArgumentException("The PO was not found.");
@@ -130,6 +130,8 @@ public sealed partial class ItamStore
         var receivedAt = x.ReceivedAt?.ToUniversalTime() ?? UtcNow;
         if (receivedAt > UtcNow.AddMinutes(5)) throw new ArgumentException("The receipt date cannot be in the future.");
         if (await Scalar(c, tx, "SELECT 1 FROM itam_ref.location WHERE location_id=@l AND active=1", token, ("@l", x.LocationId ?? 0)) is null) throw new ArgumentException("Choose the IT warehouse or branch receiving the devices.");
+        var into = await Scalar(c, tx, "SELECT region_code FROM itam_ref.location WHERE location_id=@l", token, ("@l", x.LocationId)) as string;
+        Require(s.CanReceiveInto(into ?? ""), $"You receive devices into IT warehouses and branches of your regions only ({string.Join(", ", s.Regions)}).");
         long? file = evidence is null ? null : await SaveFile(c, tx, evidence, CheckFile(evidence, pdfOnly: false), s.Id, token);
         var receipt = Convert.ToInt32(await Scalar(c, tx, "INSERT itam_data.po_receipt(po_id,location_id,received_at_utc,received_by,invoice_ref,evidence_file_id,note) OUTPUT inserted.receipt_id VALUES(@p,@l,@t,@b,@i,@f,@n)", token,
             ("@p", po), ("@l", x.LocationId ?? 0), ("@t", receivedAt), ("@b", s.Id), ("@i", Optional(x.InvoiceRef, "Invoice reference", 60)), ("@f", file), ("@n", Optional(x.Note, "Note", 500))));
@@ -258,7 +260,7 @@ public sealed partial class ItamStore
         await using var c = await Open(token);
         await using var tx = await c.BeginTransactionAsync(token);
         var s = await Scope(c, tx, user, token);
-        Require(s.PoManage, "Only the IT Helpdesk Team Leader and the IT Assets Officer record what went to Accounting.");
+        Require(s.PoManage, "You cannot record what went to Accounting.");
         var day = on ?? DateOnly.FromDateTime(UtcNow.AddHours(3));
         if (day > DateOnly.FromDateTime(UtcNow.AddHours(3))) throw new ArgumentException("The date cannot be in the future.");
         if (await Exec(c, tx, "UPDATE itam_data.pack_print SET sent_on=@d,sent_by=@b WHERE print_id=@k AND po_id=@p", token, ("@d", DateParam(day)), ("@b", s.Id), ("@k", print), ("@p", po)) == 0)

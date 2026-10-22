@@ -47,7 +47,7 @@ public sealed partial class ItamStore
             "(SELECT COUNT(*) FROM itam_data.ink_request r WHERE r.order_id=o.order_id AND r.status=N'Delivered') FROM itam_data.supplier_order o WHERE o.supplier_id=@s ORDER BY o.order_id DESC",
             r => new { id = r.GetInt32(0), no = r.GetString(1), region = r.GetString(2), at = Utc(r, 3), requests = r.GetInt32(4), delivered = r.GetInt32(5) }, token, ("@s", id));
         var pos = s.PoView ? await Rows(c, null, "SELECT po_id,po_number,po_date FROM itam_data.po WHERE supplier_id=@s ORDER BY po_date DESC", r => new { id = r.GetInt32(0), no = r.GetString(1), date = Day(r, 2) }, token, ("@s", id)) : [];
-        return new { supplier = su, invoices, packs, orders = orders.Where(o => s.CanInk(o.region) || s.ViewsAll || s.PoView).ToList(), pos, canManage = s.SuppliersManage, canPack = CanSeeInvoices(s) };
+        return new { supplier = su, invoices, packs, orders = orders.Where(o => s.CanInkSend(o.region) || s.InkView || s.InvoicesView).ToList(), pos, canManage = s.SuppliersManage, canPack = CanSeeInvoices(s) };
     }
 
     /// <summary>Add a supplier, or change one (<paramref name="id"/>). The name is unique; VAT number 15 digits (ZATCA); every
@@ -57,7 +57,7 @@ public sealed partial class ItamStore
         await using var c = await Open(token);
         await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var s = await Scope(c, tx, user, token);
-        Require(s.SuppliersManage, "Only the Ink Officer, the IT Assets Officer and the IT Administrator add or change suppliers.");
+        Require(s.SuppliersManage, "You cannot add or change suppliers.");
         var name = Text(x.Name, "Supplier name", 200);
         var vat = Optional(x.VatNo, "VAT number", 20);
         if (vat is not null && (vat.Length != 15 || vat.Any(ch => !char.IsAsciiDigit(ch)))) throw new ArgumentException("VAT number: 15 digits.");

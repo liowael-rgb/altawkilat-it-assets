@@ -21,17 +21,17 @@ public sealed class ItamConflict(string message) : Exception(message);
 
 public static class ItamRoles
 {
+    // The IT Administrator and Auditor roles were removed (owner, 22 October 2026): the IT Manager gives roles, keeps master
+    // data and reads the audit log.
     public const string SupportSpecialist = "SupportSpecialist", TeamLeader = "TeamLeader", SystemAdministrator = "SystemAdministrator",
-        VoiceAdministrator = "VoiceAdministrator", AssetsOfficer = "AssetsOfficer", ItManager = "ItManager", ItAdministrator = "ItAdministrator", Auditor = "Auditor",
-        InkOfficer = "InkOfficer";
-    public static readonly string[] All = [SupportSpecialist, TeamLeader, SystemAdministrator, VoiceAdministrator, AssetsOfficer, ItManager, ItAdministrator, Auditor, InkOfficer];
+        VoiceAdministrator = "VoiceAdministrator", AssetsOfficer = "AssetsOfficer", ItManager = "ItManager", InkOfficer = "InkOfficer";
+    public static readonly string[] All = [SupportSpecialist, TeamLeader, SystemAdministrator, VoiceAdministrator, AssetsOfficer, ItManager, InkOfficer];
     /// <summary>Roles given per region (one row per region).</summary>
     public static bool PerRegion(string role) => role is SupportSpecialist or InkOfficer;
     public static string Label(string code) => code switch
     {
         SupportSpecialist => "IT Support Specialist", TeamLeader => "IT Helpdesk Team Leader", SystemAdministrator => "System Administrator",
-        VoiceAdministrator => "Voice Administrator", AssetsOfficer => "IT Assets Officer", ItManager => "IT Manager",
-        ItAdministrator => "IT Administrator", Auditor => "Auditor", InkOfficer => "Ink Officer", _ => code
+        VoiceAdministrator => "Voice Administrator", AssetsOfficer => "IT Assets Officer", ItManager => "IT Manager", InkOfficer => "Ink Officer", _ => code
     };
 }
 
@@ -76,7 +76,8 @@ public static class ItamTypeFields
     public static bool KeyUsed(string type) => type is "PC" or "SOF";
 }
 
-/// <summary>What the signed-in person may do, from their IT roles (Role Permissions workbook; blank cells grant nothing).</summary>
+/// <summary>What the signed-in person may do, from their IT roles: the owner's permission matrix of 22 October 2026
+/// (IT Assets - Permission Matrix). Blank cells grant nothing; a person with several roles has all their rights.</summary>
 public sealed record ItamScope(Guid Id, string Name, string[] Roles, string[] Regions, string[] InkRegions)
 {
     bool Has(string role) => Roles.Contains(role);
@@ -86,49 +87,70 @@ public sealed record ItamScope(Guid Id, string Name, string[] Roles, string[] Re
     public bool Voice => Has(ItamRoles.VoiceAdministrator);
     public bool Officer => Has(ItamRoles.AssetsOfficer);
     public bool Manager => Has(ItamRoles.ItManager);
-    public bool ItAdmin => Has(ItamRoles.ItAdministrator);
-    public bool Auditor => Has(ItamRoles.Auditor);
+    public bool InkOfficer => InkRegions.Length > 0;
     public bool HasItRole => Roles.Length > 0;
+    bool Mine(string? region) => Specialist && region is not null && Regions.Contains(region);
+    /// <summary>The roles with rights in every region: Team Leader, System Administrator, IT Assets Officer, IT Manager.</summary>
+    bool Wide => TeamLeader || SysAdmin || Officer || Manager;
 
-    /// <summary>View assets: own regions (specialist); all (Team Leader, Assets Officer, IT Manager, IT Administrator,
-    /// Auditor); computers only (System Administrator); IP phones only (Voice Administrator).</summary>
-    public bool ViewsAll => TeamLeader || Officer || Manager || ItAdmin || Auditor;
-    public bool CanView(string type, string region) => ViewsAll || (Specialist && Regions.Contains(region)) || (SysAdmin && type == "PC") || (Voice && type == "IP");
-    public bool CanViewAny => ViewsAll || Specialist || SysAdmin || Voice;
-    /// <summary>Register an asset: own regions (specialist); yes for the other IT roles except the Auditor.</summary>
-    public bool CanRegister(string region) => TeamLeader || SysAdmin || Voice || Officer || Manager || ItAdmin || (Specialist && Regions.Contains(region));
-    public bool CanRegisterAny => TeamLeader || SysAdmin || Voice || Officer || Manager || ItAdmin || Specialist;
-    /// <summary>Edit asset details: own regions (specialist); all (Team Leader, Assets Officer, IT Administrator); IP phones
-    /// MAC, IP address and extension only (Voice Administrator).</summary>
-    public bool CanEdit(string type, string region) => TeamLeader || Officer || ItAdmin || (Specialist && Regions.Contains(region));
+    // Assets
+    public bool ViewsAll => Wide;
+    public bool CanView(string type, string region) => Wide || Mine(region) || (Voice && type == "IP");
+    public bool CanViewAny => Wide || Specialist || Voice;
+    public bool CanRegister(string region) => Wide || Voice || Mine(region);
+    public bool CanRegisterAny => Wide || Voice || Specialist;
+    public bool CanEdit(string type, string region) => Wide || Mine(region);
     public bool CanEditPhoneOnly(string type) => Voice && type == "IP";
-    /// <summary>OS and software keys: IT Administrator and IT Assets Officer; every view logged.</summary>
-    public bool CanSeeKeys => ItAdmin || Officer;
-    /// <summary>Record a PO and receive its devices: Team Leader and IT Assets Officer.</summary>
-    public bool PoManage => TeamLeader || Officer;
-    /// <summary>View POs and print the PO delivery report: Team Leader, System Administrator, Assets Officer, IT Manager, Auditor.</summary>
-    public bool PoView => TeamLeader || SysAdmin || Officer || Manager || Auditor;
-    /// <summary>Delivery note, receipt note and technical assessment (matrix rows 25, 27, 28): own regions (specialist), all
-    /// regions (Team Leader), IT Assets Officer. Uploading the signed copy belongs to the delivery note.</summary>
-    public bool CanHandover(string region) => TeamLeader || Officer || (Specialist && Regions.Contains(region));
-    public bool CanHandoverAny => TeamLeader || Officer || Specialist;
-    /// <summary>Print labels (row 24): own regions (specialist), all regions (Team Leader), IT Assets Officer, IT Administrator.</summary>
-    public bool CanPrintLabel(string region) => TeamLeader || Officer || ItAdmin || (Specialist && Regions.Contains(region)) || InkRegions.Contains(region);
-    /// <summary>Confirm computer removal from AD and Endpoint Central (row 38): System Administrator. Confirm IP phone removal
-    /// from CUCM (row 39): Voice Administrator.</summary>
-    public bool AdTasks => SysAdmin;
-    public bool CucmTasks => Voice;
-    /// <summary>Ink (owner, 22 October 2026): the Ink Officer of the printer's region sends requests for approval, orders, delivers
-    /// and records toner invoices; the IT Assets Officer covers all regions. A request of unknown region (printer not registered,
-    /// Active Directory location not matched) is seen by every Ink Officer.</summary>
-    public bool CanInk(string? region) => Officer || (region is null ? InkRegions.Length > 0 : InkRegions.Contains(region));
-    public bool CanInkAny => Officer || InkRegions.Length > 0;
-    /// <summary>Add and edit suppliers (Supplier module, owner 22 October 2026): Ink Officer, IT Assets Officer, IT Administrator.</summary>
-    public bool SuppliersManage => Officer || InkRegions.Length > 0 || ItAdmin;
-    public bool RolesManage => Manager || ItAdmin;
-    public bool MasterData => ItAdmin;
-    public bool AuditView => Manager || ItAdmin || Auditor;
-    public bool BackupsAll => Manager || ItAdmin;
-    public bool BackupsView => Manager || ItAdmin || Auditor;
-    public bool OwnBackup => HasItRole && !(Roles.Length == 1 && Auditor);
+    /// <summary>OS and software keys (every view logged): System Administrator, IT Assets Officer, IT Manager; specialists in their regions.</summary>
+    public bool CanSeeKeys(string region) => SysAdmin || Officer || Manager || Mine(region);
+    public bool CanPrintLabel(string region) => Wide || Mine(region) || InkRegions.Contains(region);
+
+    // Purchase orders: specialists record POs too, and receive devices into their regions only.
+    public bool PoManage => Wide || Specialist;
+    public bool PoView => Wide || Specialist;
+    public bool CanReceiveInto(string region) => Wide || Mine(region);
+
+    // Handover (delivery, signed copy, receipt, technical assessment) and repairs done by IT
+    public bool CanHandover(string region) => Wide || Mine(region);
+    public bool CanHandoverAny => Wide || Specialist;
+    public bool HandoverView => Wide || Specialist || Voice;
+
+    // Infrastructure tasks after a return
+    public bool AdTasks => TeamLeader || SysAdmin;
+    public bool CucmTasks => SysAdmin || Voice;
+    public bool TasksView => Wide || Voice;
+
+    // Ink
+    /// <summary>Ask for ink for another employee (others: their own team as the direct manager).</summary>
+    public bool InkForOthers => Specialist || TeamLeader || Officer || InkOfficer;
+    /// <summary>Supplier order, delivery and cancelling: System Administrator, IT Assets Officer, IT Manager; Ink Officer in their regions.</summary>
+    public bool CanInk(string? region) => SysAdmin || Officer || Manager || (region is null ? InkOfficer : InkRegions.Contains(region));
+    public bool CanInkAny => SysAdmin || Officer || Manager || InkOfficer;
+    /// <summary>Send an ink request for approval: also the Team Leader.</summary>
+    public bool CanInkSend(string? region) => CanInk(region) || TeamLeader;
+    /// <summary>Link or register a printer not in IT Assets: also the IT Support Specialists.</summary>
+    public bool CanInkPrinter(string? region) => CanInkSend(region) || Specialist;
+    public bool InkView => CanInkAny || TeamLeader;
+    public bool InkHandle => CanInkAny || TeamLeader || Specialist;
+
+    // Invoices, payment packs and suppliers
+    public bool InvoicesView => Wide || Specialist || InkOfficer;
+    public bool InvoiceToners => SysAdmin || Officer || Manager || InkOfficer;
+    public bool InvoiceDevices => Wide;
+    public bool InvoiceParts => Wide || Specialist;
+    public bool SuppliersManage => Wide || Specialist || InkOfficer;
+
+    // Maintenance orders: create and follow; approve (Team Leader, System Administrator, IT Manager; never their own order)
+    public bool MaintenanceManage => Wide || Specialist;
+    public bool MaintenanceApproverRole => TeamLeader || SysAdmin || Manager;
+    public bool MaintenanceView => Wide || Specialist;
+    public bool ItRepair(string region) => CanHandover(region);
+
+    // Administration and backups
+    public bool RolesManage => Manager;
+    public bool MasterData => Manager;
+    public bool AuditView => Manager;
+    public bool BackupsAll => TeamLeader || SysAdmin || Manager;
+    public bool BackupsView => BackupsAll;
+    public bool OwnBackup => HasItRole;
 }

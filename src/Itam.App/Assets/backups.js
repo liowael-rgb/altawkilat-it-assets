@@ -14,7 +14,7 @@ async function load(msg){
       table(['Backup','From','To','Status','Note'],mine,x=>[x.backupName,date(x.from),date(x.to),st(x.status),x.note||''],x=>x.status==='Active'||x.status==='Upcoming'?[['Cancel',()=>cancel(x)]]:[],{empty:'No backup set.'}),
       buttons(['Set my backup',async()=>{await people('');set(false);},'primary'])),
     covering.length?card('I am the backup for',null,table(['Person','From','To','Status'],covering,x=>[x.personName,date(x.from),date(x.to),st(x.status)])):null,
-    d.all?card('All backups','IT Manager, IT Administrator and Auditor.',table(['Person','Backup','From','To','Status','Set by'],d.items,x=>[x.personName,x.backupName,date(x.from),date(x.to),st(x.status),x.setByName||'']),
+    d.all?card('All backups','The IT Helpdesk Team Leader, the System Administrator and the IT Manager see every backup.',table(['Person','Backup','From','To','Status','Set by'],d.items,x=>[x.personName,x.backupName,date(x.from),date(x.to),st(x.status),x.setByName||'']),
       d.canSetForOthers?buttons(['Set a backup for someone',async()=>{await people('');set(true);}]):null):null].filter(Boolean));
   if(msg)message(msg);
 }

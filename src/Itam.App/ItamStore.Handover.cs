@@ -248,7 +248,7 @@ public sealed partial class ItamStore
     {
         await using var c = await Open(token);
         var s = await Scope(c, null, user, token);
-        Require(s.CanHandoverAny || s.ViewsAll || s.AdTasks || s.CucmTasks, "You cannot see handovers.");
+        Require(s.HandoverView || s.AdTasks || s.CucmTasks, "You cannot see handovers.");
         var st = status is "waiting" or "open" or "returned" or "signed" or "all" ? status : "waiting";
         var t = (text ?? "").Trim(); var like = "%" + t.Replace("[", "[[]").Replace("%", "[%]").Replace("_", "[_]") + "%";
         var rows = await Rows(c, null,
@@ -282,7 +282,7 @@ public sealed partial class ItamStore
     {
         await using var c = await Open(token);
         var s = await Scope(c, null, user, token);
-        Require(s.AdTasks || s.CucmTasks || s.ViewsAll, "You have no infrastructure tasks.");
+        Require(s.AdTasks || s.CucmTasks || s.TasksView, "You have no infrastructure tasks.");
         var tasks = await Tasks(c, s, token);
         return new { tasks, mine = new { ad = s.AdTasks, cucm = s.CucmTasks }, open = tasks.Count(t => t.canDo) };
     }
@@ -309,7 +309,7 @@ public sealed partial class ItamStore
         var s = await Scope(c, tx, user, token);
         var k = (await Rows(c, tx, "SELECT kind,asset_id,subject,done_at_utc FROM itam_data.task WITH (UPDLOCK) WHERE task_id=@i", r => (Kind: r.GetString(0), Asset: r.GetInt32(1), Subject: r.GetString(2), Done: !r.IsDBNull(3)), token, ("@i", taskId))).SingleOrDefault();
         if (k.Kind is null) throw new ArgumentException("The task was not found.");
-        Require(k.Kind == "RemoveFromAd" ? s.AdTasks : s.CucmTasks, k.Kind == "RemoveFromAd" ? "Only the System Administrator confirms removal from AD and Endpoint Central." : "Only the Voice Administrator confirms removal from CUCM.");
+        Require(k.Kind == "RemoveFromAd" ? s.AdTasks : s.CucmTasks, k.Kind == "RemoveFromAd" ? "Only the IT Helpdesk Team Leader and the System Administrator confirm removal from AD and Endpoint Central." : "Only the System Administrator and the Voice Administrator confirm removal from CUCM.");
         if (k.Done) throw new ArgumentException("This task is already done.");
         var note = Optional(x.Note, "Note", 500);
         await Exec(c, tx, "UPDATE itam_data.task SET done_by=@b,done_at_utc=SYSUTCDATETIME(),done_note=@n WHERE task_id=@i", token, ("@b", s.Id), ("@n", note), ("@i", taskId));

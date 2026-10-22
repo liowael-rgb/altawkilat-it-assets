@@ -89,8 +89,8 @@ static class DemoPeople
         new(G(5), "demo.central", "Demo Specialist Central and East", "IT Support Specialist (Central, East)", "Two regions in one list"),
         new(G(6), "demo.sysadmin", "Demo System Administrator", "System Administrator", "Computers only (read); sees POs"),
         new(G(7), "demo.voice", "Demo Voice Administrator", "Voice Administrator", "IP phones only: MAC, IP address and extension", "/?type=IP"),
-        new(G(8), "demo.itadmin", "Demo IT Administrator", "IT Administrator", "Master data, roles, settings; sees keys", "/admin.html"),
-        new(G(9), "demo.auditor", "Demo Auditor", "Auditor", "Reads everything, changes nothing"),
+        new(G(8), "demo.south", "Demo Specialist South", "IT Support Specialist (South)", "Assets, handover and keys of the South region; POs; maintenance orders"),
+        new(G(9), "demo.employee4", "Demo Employee Four", "Employee", null),
         new(G(10), "demo.employee", "Demo Employee", "Employee (no IT role)", "No IT role: sees no assets yet (My IT Assets comes in step 3)"),
         new(G(11), "demo.employee2", "Demo Employee Two", "Employee", null), new(G(12), "demo.employee3", "Demo Employee Three", "Employee", null),
         new(G(13), "demo.ink", "Demo Ink Officer", "Ink Officer (South)", "Sends ink requests for approval, orders and delivers ink, records toner invoices", "/ink.html")

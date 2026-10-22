@@ -1,5 +1,5 @@
-// Maintenance page (form 07 Maintenance Order, plan v1.9): the IT Assets Officer creates an order for an asset repaired by
-// an outside supplier, with the quotation; the IT Manager (or the backup on leave) approves or rejects; the officer records
+// Maintenance page (form 07 Maintenance Order, plan v1.9; roles from the owner's permission matrix): IT creates an order for an asset repaired by
+// an outside supplier, with the quotation; the Team Leader, System Administrator or IT Manager (or a backup on leave) approves or rejects, never their own order; IT records
 // the actual dispatch (asset In Repair) and the return with the outcome, repair details, final cost and invoice.
 import {$,el,api,shell,fail,message,date,when,money,card,table,edit,form,option,svg} from '/itam.js';
 let m,d,filter=new URLSearchParams(location.search).get('filter')||'open';
@@ -61,7 +61,7 @@ function newOrder(assetNo){
     catch(e){info.append(el('p',e.message,'msg error'));}};
   no.onchange=find;
   const sup=sel(m.lists.suppliers.filter(s=>s.active).map(s=>[s.id,s.name]),'Choose');const quote=inp('text',60);const cost=inp('number');cost.step='0.01';cost.min='0';
-  // A supplier not yet in the list is added on the spot (the IT Assets Officer adds suppliers; kept in the audit log).
+  // A supplier not yet in the list is added on the spot (kept in the audit log).
   sup.append(option('new','+ Add a new supplier'));
   sup.onchange=()=>{if(sup.value!=='new')return;sup.value='';
     edit('Add a supplier',[
@@ -75,15 +75,15 @@ function newOrder(assetNo){
   const details=document.createElement('textarea');details.maxLength=1000;const exp=inp('date');exp.min=today();const file=inp('file');file.accept='.pdf,.jpg,.jpeg,.png';
   const grid=el('div',null,'x-sec-body');
   grid.append(field('Asset No.',no,{req:true,hint:'Typed or scanned from the asset label; the product details fill in below.'}),field('Supplier',sup,{req:true}),info,
-    field('Quotation No.',quote,{req:true}),field('Cost (SAR)',cost,{req:true,hint:'From the quotation; the IT Manager sees it to approve.'}),
+    field('Quotation No.',quote,{req:true}),field('Cost (SAR)',cost,{req:true,hint:'From the quotation; the approver sees it.'}),
     field('Maintenance details',details,{req:true,wide:true,hint:'The fault and the repair asked for.'}),field('Expected supplier return',exp,{req:true}),
-    field('Quotation file',file,{req:true,hint:'The supplier\'s quotation (PDF, JPEG or PNG), sent to the IT Manager for approval.'}));
+    field('Quotation file',file,{req:true,hint:'The supplier\'s quotation (PDF, JPEG or PNG), sent for approval.'}));
   const save=btn('Create and send for approval',async()=>{try{
       if(!file.files[0])throw Error('Attach the supplier\'s quotation.');
       const r=await api('/maintenance',{method:'POST',body:form({assetNo:no.value.trim(),supplierId:Number(sup.value)||null,quotationNo:quote.value,cost:cost.value===''?null:Number(cost.value),details:details.value,expectedReturn:exp.value||null},file.files[0])});
-      filter='WaitingApproval';history.replaceState(null,'','/maintenance.html?filter=WaitingApproval');await load(`Maintenance order ${r.orderNo} created and waiting for the IT Manager's approval.`);}catch(e){fail(e);}},'primary','wrench');
+      filter='WaitingApproval';history.replaceState(null,'','/maintenance.html?filter=WaitingApproval');await load(`Maintenance order ${r.orderNo} created and waiting for approval.`);}catch(e){fail(e);}},'primary','wrench');
   const acts=el('div',null,'actions');acts.append(save,btn('Cancel',()=>load()));
-  $('view').replaceChildren(card('New maintenance order','For an asset repaired by an outside supplier. The IT Manager approves it before the asset is sent; repairs IT does itself are recorded on the asset\'s history instead.',grid,acts));
+  $('view').replaceChildren(card('New maintenance order','For an asset repaired by an outside supplier. It is approved (IT Helpdesk Team Leader, System Administrator or IT Manager) before the asset is sent; repairs IT does itself are recorded on the asset\'s history instead.',grid,acts));
   window.scrollTo(0,0);if(assetNo)find();
 }
 function decide(o,approve){
