@@ -250,3 +250,13 @@ column with Subject, To (Accounts Department), From (the IT Manager), Date, Refe
 Action boxes and Pages; on the right "ALTAWKILAT <year>", the invoices table (Date | Invoice no. | Amount, Total SAR),
 "Please arrange to pay the supplier", Regards, the received-by block, IT Department (checked by whoever prepared the pack)
 and Account Department signatures. Suppliers have an Arabic name too (shown on the list, the page and the cover).
+
+### Asset search and history (owner, 22 October 2026)
+
+The Assets search adds Model, Computer type, Processor and Memory (dropdowns of the values in use), the employee's
+Active Directory username and SAP ID (AD streetAddress, as VTMS); the list shows who has each asset now. Each asset page
+has a History section with tabs: Delivery (delivery notes, employee with username and SAP ID, signed copy, returned),
+Receipt (receipt notes, condition, received into, technical assessment), Maintenance and All events.
+Maintenance MT-n: kind (repair, preventive, upgrade, parts replaced), date, problem, done by IT or a supplier; "taken in"
+puts the device In Repair until it is closed (then back to its previous status); closing records the work done, parts,
+cost and the Parts & Maintenance invoice. One open maintenance per asset; IT of the region and the IT Administrator.

@@ -4,7 +4,8 @@
 
 -- Active Directory details printed on the delivery note (read-only copy; no national ID).
 ALTER TABLE itam_access.employee ADD mobile nvarchar(50) NULL, branch nvarchar(200) NULL, company nvarchar(200) NULL, hr_code nvarchar(50) NULL,
- region nvarchar(100) NULL; -- region as written in Active Directory (matched to a region code or name)
+ region nvarchar(100) NULL, -- region as written in Active Directory (matched to a region code or name)
+ sap_id nvarchar(50) NULL; -- SAP ID (Active Directory streetAddress, as VTMS)
 
 -- One row per delivery note. Open custody = received_at_utc IS NULL. The employee and product details are kept as issued
 -- (snapshot_json) so a reprint never changes.

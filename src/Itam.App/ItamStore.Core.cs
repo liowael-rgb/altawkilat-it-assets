@@ -110,15 +110,15 @@ public sealed partial class ItamStore(Func<DbConnection> connections, IItamSecre
         if (directory.Count == 0) throw new InvalidOperationException("The directory read returned no accounts; nothing changed.");
         await using var c = await Open(token);
         await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
-        var have = (await Rows(c, tx, "SELECT employee_id,account,display_name,email,job_title,department,manager_id,enabled,mobile,branch,company,hr_code,region FROM itam_access.employee",
-            r => new ItamEmployee(r.GetGuid(0), r.GetString(1), r.GetString(2), S(r, 3), S(r, 4), S(r, 5), r.IsDBNull(6) ? null : r.GetGuid(6), r.GetBoolean(7), S(r, 8), S(r, 9), S(r, 10), S(r, 11), S(r, 12)), token)).ToDictionary(e => e.Id);
+        var have = (await Rows(c, tx, "SELECT employee_id,account,display_name,email,job_title,department,manager_id,enabled,mobile,branch,company,hr_code,region,sap_id FROM itam_access.employee",
+            r => new ItamEmployee(r.GetGuid(0), r.GetString(1), r.GetString(2), S(r, 3), S(r, 4), S(r, 5), r.IsDBNull(6) ? null : r.GetGuid(6), r.GetBoolean(7), S(r, 8), S(r, 9), S(r, 10), S(r, 11), S(r, 12), S(r, 13)), token)).ToDictionary(e => e.Id);
         int added = 0, changed = 0, disabled = 0;
         foreach (var e in directory)
         {
             (string, object?)[] v = [("@i", e.Id), ("@a", e.Account), ("@n", e.Name), ("@m", e.Email), ("@j", e.JobTitle), ("@d", e.Department), ("@g", e.ManagerId), ("@e", e.Enabled),
-                ("@mo", e.Mobile), ("@b", e.Branch), ("@co", e.Company), ("@h", e.HrCode), ("@rg", e.Region)];
-            if (!have.TryGetValue(e.Id, out var old)) { await Exec(c, tx, "INSERT itam_access.employee(employee_id,account,display_name,email,job_title,department,manager_id,enabled,mobile,branch,company,hr_code,region) VALUES(@i,@a,@n,@m,@j,@d,@g,@e,@mo,@b,@co,@h,@rg)", token, v); added++; }
-            else if (old != e) { await Exec(c, tx, "UPDATE itam_access.employee SET account=@a,display_name=@n,email=@m,job_title=@j,department=@d,manager_id=@g,enabled=@e,mobile=@mo,branch=@b,company=@co,hr_code=@h,region=@rg,synced_at_utc=SYSUTCDATETIME() WHERE employee_id=@i", token, v); changed++; }
+                ("@mo", e.Mobile), ("@b", e.Branch), ("@co", e.Company), ("@h", e.HrCode), ("@rg", e.Region), ("@sap", e.SapId)];
+            if (!have.TryGetValue(e.Id, out var old)) { await Exec(c, tx, "INSERT itam_access.employee(employee_id,account,display_name,email,job_title,department,manager_id,enabled,mobile,branch,company,hr_code,region,sap_id) VALUES(@i,@a,@n,@m,@j,@d,@g,@e,@mo,@b,@co,@h,@rg,@sap)", token, v); added++; }
+            else if (old != e) { await Exec(c, tx, "UPDATE itam_access.employee SET account=@a,display_name=@n,email=@m,job_title=@j,department=@d,manager_id=@g,enabled=@e,mobile=@mo,branch=@b,company=@co,hr_code=@h,region=@rg,sap_id=@sap,synced_at_utc=SYSUTCDATETIME() WHERE employee_id=@i", token, v); changed++; }
         }
         var seen = directory.Select(e => e.Id).ToHashSet();
         foreach (var gone in have.Values.Where(e => e.Enabled && !seen.Contains(e.Id)))

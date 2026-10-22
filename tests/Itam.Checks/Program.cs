@@ -323,6 +323,25 @@ try
     var mixed = JsonSerializer.SerializeToElement(await store.CreatePack(U(1), new(1, null, [dInv, pInv]), default)).GetProperty("id").GetInt32();
     Check(await Scalar($"SELECT category FROM itam_data.payment_pack WHERE pack_id={mixed}") as string == "Mixed"
         && System.Text.Encoding.ASCII.GetString((await store.PackPdf(U(1), mixed, default)).Content, 0, 5) == "%PDF-", "Picked invoices of different categories make a Mixed pack");
+    // Maintenance and the asset history; search by computer details and by the employee who has the asset.
+    Check(await Throws<ItamAccessDenied>(() => store.OpenMaintenance(U(4), printer, new("Repair", null, "Jam", "IT", null, true), default))
+        && await Throws<ArgumentException>(() => store.OpenMaintenance(U(9), printer, new("Repair", null, "Jam", "Supplier", null, true), default)), "Maintenance by IT of the region; a supplier job names the supplier");
+    var mt = JsonSerializer.SerializeToElement(await store.OpenMaintenance(U(9), printer, new("Repair", null, "Paper jam", "IT", null, true), default)).GetProperty("id").GetInt32();
+    Check(await Scalar($"SELECT status FROM itam_data.asset WHERE asset_id={printer}") as string == "InRepair"
+        && await Throws<ArgumentException>(() => store.OpenMaintenance(U(9), printer, new("Preventive", null, "x", "IT", null, false), default)), "Taken in: In Repair; one open maintenance per asset");
+    await store.CloseMaintenance(U(9), mt, new(null, "Roller cleaned", null, 0m, pInv), default);
+    var hist = JsonSerializer.SerializeToElement(await store.Asset(U(1), printer, default)).GetProperty("record");
+    Check(await Scalar($"SELECT status FROM itam_data.asset WHERE asset_id={printer}") as string == "InUse" && hist.GetProperty("maintenance").GetArrayLength() == 1
+        && hist.GetProperty("maintenance")[0].GetProperty("invoice").GetString() == "INV-P1", "Closing returns the asset to its status; the history lists the maintenance with its invoice");
+    var ctype = await Scalar("SELECT TOP 1 value FROM itam_data.asset_attribute WHERE attr_code=N'ComputerType'") as string;
+    var holder = await Scalar("SELECT TOP 1 e.account FROM itam_data.delivery d JOIN itam_access.employee e ON e.employee_id=d.employee_id WHERE d.received_at_utc IS NULL") as string;
+    await Exec($"UPDATE itam_access.employee SET sap_id=N'50001' WHERE account=N'{holder}'");
+    var byType = JsonSerializer.SerializeToElement(await store.Assets(U(1), new(null, null, null, null, null, 1, ComputerType: ctype), default)).GetProperty("items");
+    var byUser = JsonSerializer.SerializeToElement(await store.Assets(U(1), new(null, null, null, null, null, 1, User: holder), default)).GetProperty("items");
+    var bySap = JsonSerializer.SerializeToElement(await store.Assets(U(1), new(null, null, null, null, null, 1, SapId: "50001"), default)).GetProperty("items");
+    Check(ctype is not null && byType.GetArrayLength() > 0 && byType.EnumerateArray().All(x => x.GetProperty("type").GetString() == "PC")
+        && byUser.GetArrayLength() > 0 && byUser.EnumerateArray().All(x => x.GetProperty("username").GetString() == holder) && bySap.GetArrayLength() == byUser.GetArrayLength(),
+        "Search by computer type, by the employee's username and by SAP ID");
     // A printer not in IT Assets: serial number and model typed by the employee, region and office from Active Directory, linked or
     // registered by the Ink Officer before it goes for approval.
     await Exec($"UPDATE itam_access.employee SET branch=N'Riyadh WH',region=N'Central' WHERE employee_id='{G(10)}'");

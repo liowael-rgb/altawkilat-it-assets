@@ -71,3 +71,20 @@ CREATE TABLE itam_data.ink_delivery(
  delivered_on date NOT NULL, source nvarchar(20) NOT NULL CHECK(source IN(N'Shelf',N'Invoice')),
  invoice_line_id int NULL REFERENCES itam_data.invoice_line(line_id), unit_cost decimal(18,2) NULL,
  issued_by uniqueidentifier NOT NULL, issued_at_utc datetime2 NOT NULL DEFAULT SYSUTCDATETIME());
+
+-- Maintenance MT-n (owner, 22 October 2026): repairs, preventive maintenance, upgrades and parts replaced, by IT or by a
+-- supplier, with the cost and the Parts & Maintenance invoice when there is one. A device taken in for repair is In Repair
+-- until the maintenance is closed (then back to its previous status). One open maintenance per asset.
+INSERT itam_data.counter(counter_code,next_value) VALUES(N'Maintenance',1);
+CREATE TABLE itam_data.maintenance(
+ maintenance_id int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+ maintenance_no nvarchar(20) NOT NULL CONSTRAINT UX_itam_maintenance_no UNIQUE,
+ asset_id int NOT NULL REFERENCES itam_data.asset(asset_id),
+ kind nvarchar(20) NOT NULL CHECK(kind IN(N'Repair',N'Preventive',N'Upgrade',N'Parts')),
+ opened_on date NOT NULL, problem nvarchar(1000) NOT NULL,
+ done_by nvarchar(10) NOT NULL CHECK(done_by IN(N'IT',N'Supplier')), supplier_id int NULL REFERENCES itam_ref.supplier(supplier_id),
+ status nvarchar(10) NOT NULL CHECK(status IN(N'Open',N'Closed')), previous_status nvarchar(20) NULL,
+ closed_on date NULL, work_done nvarchar(1000) NULL, parts nvarchar(500) NULL, cost decimal(18,2) NULL CHECK(cost>=0),
+ invoice_id int NULL REFERENCES itam_data.invoice(invoice_id),
+ created_by uniqueidentifier NOT NULL, created_at_utc datetime2 NOT NULL DEFAULT SYSUTCDATETIME(), closed_by uniqueidentifier NULL);
+CREATE UNIQUE INDEX UX_itam_maintenance_open ON itam_data.maintenance(asset_id) WHERE status=N'Open';

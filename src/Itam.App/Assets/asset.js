@@ -1,8 +1,8 @@
-import {$,el,api,shell,fail,message,when,date,money,card,dl,table,statusTag,svg} from '/itam.js';
+import {$,el,api,shell,fail,message,when,date,money,card,dl,table,statusTag,svg,edit} from '/itam.js';
 import {assetForm,labelCard} from '/assetform.js';
 import {custody} from '/custody.js';
 const id=Number(new URLSearchParams(location.search).get('id'));
-let m,d;
+let m,d,tab='delivery';
 async function load(note){
   d=await api('/assets/'+id);const a=d.asset;
   const product=[a.manufacturer,a.model||d.attributes.Software||d.attributes.TonerCode].filter(Boolean).join(' ')||a.typeName;
@@ -25,7 +25,7 @@ async function load(note){
   const left=el('div');left.append(...[
     card('Device',null,details),card('Where it is',null,where),card('Purchase',a.poId?'Received on a PO.':a.poNumber||a.supplier?null:'Registered without a PO (old stock).',purchase),
     keys&&card('Keys','Encrypted. Every view is logged with who and when.',keys),a.notes&&card('Notes',null,el('p',a.notes)),
-    card('History','Everything that happened to this asset, newest first.',(()=>{const t=table(['When','Who','What','Details'],d.history,h=>[when(h.at),h.who,h.kind,h.detail||'']);t.classList.add('x-history');return t;})())].filter(Boolean));
+    historyCard()].filter(Boolean));
   const lc=labelCard();lc.live.textContent=a.statusLabel;lc.live.className='x-tag '+(a.status==='InStore'?'ok':'acc');
   const first=d.fields[0];
   lc.set({type:a.typeName,no:a.assetNo,model:`${product}`,cells:[['Serial',a.serial],a.serviceTag?['Service tag',a.serviceTag]:first?[first.label,listName(first,d.attributes[first.code])]:['Service tag',''],
@@ -47,3 +47,53 @@ function editMode(){
     try{await api('/assets/'+id,{method:'PUT',json:{...read(),version:d.asset.version,reason:$('edit-reason').value}});await load('Saved. The change is in the history.');}catch(err){fail(err);}};
 }
 try{m=await shell('assets');const fresh=new URLSearchParams(location.search).get('new');await load(fresh?`Registered as ${fresh}.`:null);}catch(e){fail(e);}
+
+// History (owner, 22 October 2026): deliveries, receipts and maintenance of this asset, and every event.
+function historyCard(){
+  const h=d.record;const box=el('div');const seg=el('div',null,'x-seg');
+  const receipts=h.deliveries.filter(x=>x.receivedAt);const open=h.maintenance.find(x=>x.status==='Open');
+  const TABS=[['delivery','Delivery',h.deliveries.length],['receipt','Receipt',receipts.length],['maintenance','Maintenance',h.maintenance.length],['all','All events',d.history.length]];
+  const doc=(text,href)=>{const a=el('a',text,'mono');a.href=href;a.target='_blank';return a;};
+  const two=(x,y)=>{const s=el('span');s.append(el('span',x));if(y)s.append(el('small',y,'x-sub'));return s;};
+  const draw=()=>{
+    for(const b of seg.children)b.setAttribute('aria-pressed',String(b.dataset.k===tab));
+    if(tab==='delivery')box.replaceChildren(table(['Delivery note','Employee','Delivered','Owner type','Issued by','Signed copy','Returned'],h.deliveries,
+      x=>[doc(x.no,`/api/deliveries/${x.id}/note.pdf`),two(x.employee,[x.username,x.sapId?'SAP '+x.sapId:''].filter(Boolean).join(' · ')),date(x.deliveredOn),x.ownerType||'',x.issuedBy||'',
+        x.signedAt?el('span','Signed '+when(x.signedAt),'tag ok'):el('span','Waiting','tag warn'),x.receivedAt?date(x.receivedAt):el('span','With the employee','tag')],null,{empty:'Never delivered.'}));
+    else if(tab==='receipt')box.replaceChildren(table(['Receipt note','From employee','Received','Received by','Condition','Received into','Technical assessment'],receipts,
+      x=>[doc(x.receiptNo,`/api/deliveries/${x.id}/receipt.pdf`),x.employee,when(x.receivedAt),x.receivedBy||'',x.condition||'',x.receivedInto||'',
+        x.assessmentNo?two(doc(x.assessmentNo,`/api/deliveries/${x.id}/assessment.pdf`),x.recommendation):''],null,{empty:'Never received back from an employee.'}));
+    else if(tab==='maintenance'){
+      const acts=el('div',null,'actions');if(h.canMaintain&&!open){const b=el('button',null,'primary');b.type='button';b.append(svg('plus'),'Record maintenance');b.onclick=openMaintenance;acts.append(b);}
+      box.replaceChildren(...(acts.children.length?[acts]:[]),table(['Maintenance','Kind','Opened','Problem','Done by','Status','Work done','Cost'],h.maintenance,
+        x=>[el('span',x.no,'mono'),x.kind,date(x.openedOn),x.problem,x.doneBy,x.status==='Open'?el('span',x.takenIn?'Open · In Repair':'Open','tag warn'):el('span','Closed '+date(x.closedOn),'tag ok'),
+          two(x.workDone||'',[x.parts?'Parts: '+x.parts:'',x.invoice?'Invoice '+x.invoice:''].filter(Boolean).join(' · ')),x.cost===null?'':money(x.cost)],
+        x=>x.status==='Open'&&h.canMaintain?[['Close',()=>closeMaintenance(x)]]:[],{empty:'No maintenance recorded.'}));}
+    else{const t=table(['When','Who','What','Details'],d.history,x=>[when(x.at),x.who,x.kind,x.detail||'']);t.classList.add('x-history');box.replaceChildren(t);}
+  };
+  for(const [k,t,n] of TABS){const b=el('button',t);b.dataset.k=k;b.type='button';b.append(el('span',String(n),'x-segc'+(k==='maintenance'&&open?' hot':'')));b.onclick=()=>{tab=k;draw();};seg.append(b);}
+  const bar=el('div',null,'x-filterbar');bar.append(seg);draw();
+  return card('History','Delivery notes, receipts back from employees and maintenance of this asset; All events shows every change.',bar,box);
+}
+function openMaintenance(){
+  const sup=m.lists.suppliers.filter(s=>s.active);
+  edit(`Record maintenance for ${d.asset.assetNo}`,[
+    {key:'kind',label:'Kind',type:'select',required:true,options:[['','Choose'],...d.record.kinds.map(k=>[k.code,k.label])]},
+    {key:'on',label:'Date',type:'date',value:new Date(Date.now()+3*3600e3).toISOString().slice(0,10),required:true},
+    {key:'problem',label:'Problem or work needed',type:'textarea',wide:true,required:true,max:1000},
+    {key:'by',label:'Done by',type:'select',required:true,options:[['IT','IT'],['Supplier','A supplier']],onchange:i=>{i.supplier.closest('label').hidden=i.by.value!=='Supplier';}},
+    {key:'supplier',label:'Supplier',type:'select',options:[['','Choose'],...sup.map(s=>[s.id,s.name])]},
+    {key:'takeIn',label:'Device taken in for repair (status In Repair until closed)',type:'checkbox',wide:true}],
+    x=>api(`/assets/${id}/maintenance`,{method:'POST',json:{kind:x.kind,openedOn:x.on,problem:x.problem,doneBy:x.by,supplierId:Number(x.supplier)||null,takeIn:!!x.takeIn}}),
+    {reason:false,button:'Record',done:()=>{tab='maintenance';load('Maintenance recorded.');}});
+}
+function closeMaintenance(x){
+  edit(`Close ${x.no}`,[
+    {key:'on',label:'Closed on',type:'date',value:new Date(Date.now()+3*3600e3).toISOString().slice(0,10),required:true},
+    {key:'work',label:'Work done',type:'textarea',wide:true,required:true,max:1000},
+    {key:'parts',label:'Parts replaced',wide:true,max:500,hint:'Optional.'},
+    {key:'cost',label:'Cost (SAR, incl. VAT)',type:'number',hint:'Optional.'},
+    {key:'invoice',label:'Parts and maintenance invoice',type:'select',wide:true,options:[['','None'],...d.record.maintenanceInvoices.map(i=>[i.id,`${i.no} · ${i.supplier}`])]}],
+    y=>api(`/maintenance/${x.id}/close`,{method:'POST',json:{closedOn:y.on,workDone:y.work,parts:y.parts,cost:y.cost===''||y.cost===null||y.cost===undefined?null:Number(y.cost),invoiceId:Number(y.invoice)||null}}),
+    {reason:false,button:'Close the maintenance',hint:x.problem,done:()=>{tab='maintenance';load(`${x.no} closed.`);}});
+}

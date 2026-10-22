@@ -10,7 +10,8 @@ public sealed record ItamAssetInput(string? Type, int? LocationId, int? Manufact
     int? SupplierId, string? PoNumber, decimal? UnitCost, string? InvoiceNo, string? Notes, Dictionary<string, string?>? Attributes,
     string? OsKey, string? SoftwareKey, string? Version = null, string? Reason = null, string? NewSupplier = null, string? NewSupplierVat = null);
 
-public sealed record ItamAssetFilter(string? Text, string? Type, string? Status, string? Region, int? LocationId, int Page = 1);
+public sealed record ItamAssetFilter(string? Text, string? Type, string? Status, string? Region, int? LocationId, int Page = 1,
+    string? ComputerType = null, string? Processor = null, string? Memory = null, int? ModelId = null, string? User = null, string? SapId = null);
 
 public sealed partial class ItamStore
 {
@@ -244,16 +245,23 @@ public sealed partial class ItamStore
         if (!string.IsNullOrWhiteSpace(f.Status)) { parts.Add("a.status=@st"); a.Add(("@st", f.Status)); }
         if (!string.IsNullOrWhiteSpace(f.Region)) { parts.Add("g.region_code=@rg"); a.Add(("@rg", f.Region)); }
         if (f.LocationId is int l) { parts.Add("a.location_id=@l"); a.Add(("@l", l)); }
+        // Computer details and the employee who has the asset now (Active Directory username or SAP ID).
+        void Attr(string code, string? value, string p) { if (string.IsNullOrWhiteSpace(value)) return; parts.Add($"EXISTS(SELECT 1 FROM itam_data.asset_attribute x WHERE x.asset_id=a.asset_id AND x.attr_code=N'{code}' AND x.value={p})"); a.Add((p, value.Trim())); }
+        Attr("ComputerType", f.ComputerType, "@ct"); Attr("Processor", f.Processor, "@cpu"); Attr("MemoryGb", f.Memory, "@mem");
+        if (f.ModelId is int mid) { parts.Add("a.model_id=@mid"); a.Add(("@mid", mid)); }
+        if (!string.IsNullOrWhiteSpace(f.User)) { parts.Add("he.account LIKE @usr"); a.Add(("@usr", "%" + f.User.Trim().Replace("[", "[[]").Replace("%", "[%]").Replace("_", "[_]") + "%")); }
+        if (!string.IsNullOrWhiteSpace(f.SapId)) { parts.Add("he.sap_id=@sap"); a.Add(("@sap", f.SapId.Trim())); }
         var page = Math.Clamp(f.Page, 1, 10_000);
         var rows = await Rows(c, null,
             "SELECT a.asset_id,a.asset_no,a.type_code,t.name_en,m.name_en,mo.name_en,a.serial_no,a.status,g.name_en,g.region_code,COALESCE(p.po_number,a.po_number_text),a.service_tag," +
             "(SELECT TOP 1 value FROM itam_data.asset_attribute x WHERE x.asset_id=a.asset_id AND x.attr_code=N'ComputerName')," +
-            "(SELECT TOP 1 value FROM itam_data.asset_attribute x WHERE x.asset_id=a.asset_id AND x.attr_code IN(N'Software',N'TonerCode')) " +
+            "(SELECT TOP 1 value FROM itam_data.asset_attribute x WHERE x.asset_id=a.asset_id AND x.attr_code IN(N'Software',N'TonerCode')),he.display_name,he.account,he.sap_id " +
             "FROM itam_data.asset a JOIN itam_ref.location g ON g.location_id=a.location_id JOIN itam_ref.asset_type t ON t.type_code=a.type_code " +
             "LEFT JOIN itam_ref.manufacturer m ON m.manufacturer_id=a.manufacturer_id LEFT JOIN itam_ref.model mo ON mo.model_id=a.model_id LEFT JOIN itam_data.po p ON p.po_id=a.po_id " +
+            "OUTER APPLY (SELECT TOP 1 e.display_name,e.account,e.sap_id FROM itam_data.delivery d JOIN itam_access.employee e ON e.employee_id=d.employee_id WHERE d.asset_id=a.asset_id AND d.received_at_utc IS NULL ORDER BY d.delivery_id DESC) he " +
             $"WHERE {string.Join(" AND ", parts)} ORDER BY a.asset_seq DESC OFFSET @skip ROWS FETCH NEXT 51 ROWS ONLY",
             r => new { id = r.GetInt32(0), assetNo = r.GetString(1), type = r.GetString(2), typeName = r.GetString(3), manufacturer = S(r, 4), model = S(r, 5) ?? S(r, 13),
-                serial = S(r, 6), status = r.GetString(7), statusLabel = ItamStatuses.Label(r.GetString(7)), keptAt = r.GetString(8), region = r.GetString(9), po = S(r, 10), serviceTag = S(r, 11), computerName = S(r, 12) },
+                serial = S(r, 6), status = r.GetString(7), statusLabel = ItamStatuses.Label(r.GetString(7)), keptAt = r.GetString(8), region = r.GetString(9), po = S(r, 10), serviceTag = S(r, 11), computerName = S(r, 12), employee = S(r, 14), username = S(r, 15), sapId = S(r, 16) },
             token, [.. a, ("@skip", (page - 1) * 50)]);
         return new { page, hasMore = rows.Count > 50, items = rows.Take(50) };
     }
@@ -285,8 +293,20 @@ public sealed partial class ItamStore
         var history = await Rows(c, null, "SELECT at_utc,actor_id,kind,detail FROM itam_data.asset_event WHERE asset_id=@i ORDER BY event_id DESC", r => new { at = Utc(r, 0), who = N(r.GetGuid(1)), kind = r.GetString(2), detail = S(r, 3) }, token, ("@i", id));
         return new
         {
-            asset = a, createdByName = N(a.createdBy), receivedByName = N(a.receivedBy), attributes, fields = ItamTypeFields.For(a.type), keys, history,
+            asset = a, createdByName = N(a.createdBy), receivedByName = N(a.receivedBy), attributes, fields = ItamTypeFields.For(a.type), keys, history, record = await AssetHistory(c, s, id, a.region, token),
             canEdit = s.CanEdit(a.type, a.region), phoneOnly = !s.CanEdit(a.type, a.region) && s.CanEditPhoneOnly(a.type), canSeeKeys = s.CanSeeKeys
         };
+    }
+
+    /// <summary>The processors and memory sizes in use on computers, for the search dropdowns.</summary>
+    public async Task<object> AssetChoices(ItamUser user, CancellationToken token)
+    {
+        await using var c = await Open(token);
+        var s = await Scope(c, null, user, token);
+        Require(s.CanViewAny, "You have no IT role that shows assets.");
+        var processors = await Rows(c, null, "SELECT DISTINCT x.value FROM itam_data.asset_attribute x JOIN itam_data.asset a ON a.asset_id=x.asset_id WHERE a.type_code=N'PC' AND x.attr_code=N'Processor' ORDER BY x.value", r => r.GetString(0), token);
+        var memory = (await Rows(c, null, "SELECT DISTINCT x.value FROM itam_data.asset_attribute x JOIN itam_data.asset a ON a.asset_id=x.asset_id WHERE a.type_code=N'PC' AND x.attr_code=N'MemoryGb'", r => r.GetString(0), token))
+            .OrderBy(v => int.TryParse(v, out var n) ? n : int.MaxValue).ToList();
+        return new { processors, memory };
     }
 }

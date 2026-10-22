@@ -70,8 +70,12 @@ public static class ItamApi
         var api = app.MapGroup("/api");
         api.MapGet("/me", (HttpContext ctx, ItamStore store, IAntiforgery csrf) => Guard(ctx, async u => Results.Ok(new { me = await store.Me(u, ctx.RequestAborted), csrf = csrf.GetAndStoreTokens(ctx).RequestToken })));
         api.MapGet("/employees", (HttpContext ctx, ItamStore store, string? q) => Guard(ctx, async u => Results.Ok(await store.Employees(u, q, ctx.RequestAborted))));
-        api.MapGet("/assets", (HttpContext ctx, ItamStore store, string? q, string? type, string? status, string? region, int? location, int? page) => Guard(ctx, async u =>
-            Results.Ok(await store.Assets(u, new(q, type, status, region, location, page ?? 1), ctx.RequestAborted))));
+        api.MapGet("/assets", (HttpContext ctx, ItamStore store, string? q, string? type, string? status, string? region, int? location, int? page,
+            string? computerType, string? processor, string? memory, int? model, string? user, string? sap) => Guard(ctx, async u =>
+            Results.Ok(await store.Assets(u, new(q, type, status, region, location, page ?? 1, computerType, processor, memory, model, user, sap), ctx.RequestAborted))));
+        api.MapGet("/assets/choices", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.AssetChoices(u, ctx.RequestAborted))));
+        api.MapPost("/assets/{id:int}/maintenance", (HttpContext ctx, ItamStore store, int id, ItamMaintenanceInput input) => Guard(ctx, async u => Results.Ok(await store.OpenMaintenance(u, id, input, ctx.RequestAborted))));
+        api.MapPost("/maintenance/{id:int}/close", (HttpContext ctx, ItamStore store, int id, ItamMaintenanceClose input) => Guard(ctx, async u => { await store.CloseMaintenance(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
         api.MapGet("/assets/{id:int}", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Results.Ok(await store.Asset(u, id, ctx.RequestAborted))));
         api.MapPost("/assets", (HttpContext ctx, ItamStore store, ItamAssetInput input) => Guard(ctx, async u => Results.Ok(await store.Register(u, input, ctx.RequestAborted))));
         api.MapPut("/assets/{id:int}", (HttpContext ctx, ItamStore store, int id, ItamAssetInput input) => Guard(ctx, async u => { await store.Update(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));

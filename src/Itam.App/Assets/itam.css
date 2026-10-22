@@ -436,3 +436,6 @@
 .x a.c2c .x-i{width:14px;height:14px}
 .x .x-pick{width:18px;height:18px;margin:0}
 .x .x-filter-search{flex:1;max-width:340px;height:40px;padding:0 14px;border:1px solid var(--line2);border-radius:10px;background:#fff;font:inherit}
+.x .filters.x-filters6{grid-template-columns:repeat(6,minmax(0,1fr))}
+.x .filters.x-filters6 .span2{grid-column:span 2}
+.x .filters.x-filters6 .span6{grid-column:1/-1;justify-content:flex-end}

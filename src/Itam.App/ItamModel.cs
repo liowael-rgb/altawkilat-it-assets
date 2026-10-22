@@ -7,9 +7,9 @@ namespace Itam.App;
 public sealed record ItamUser(Guid Id, string Account);
 
 /// <summary>One employee as read from the Active Directory users OU (read-only), with the same attributes as VTMS: region postalCode, branch
-/// physicalDeliveryOfficeName, job title description, company, department, HR code postOfficeBox, mobile, manager.</summary>
+/// physicalDeliveryOfficeName, job title description, company, department, HR code postOfficeBox, mobile, manager, SAP ID streetAddress.</summary>
 public sealed record ItamEmployee(Guid Id, string Account, string Name, string? Email, string? JobTitle, string? Department, Guid? ManagerId, bool Enabled,
-    string? Mobile = null, string? Branch = null, string? Company = null, string? HrCode = null, string? Region = null);
+    string? Mobile = null, string? Branch = null, string? Company = null, string? HrCode = null, string? Region = null, string? SapId = null);
 
 public interface IItamSession { Task<ItamUser?> Current(HttpContext context, CancellationToken token); }
 
