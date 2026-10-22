@@ -225,6 +225,8 @@ public static class ItamApi
 
         api.MapGet("/admin", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Admin(u, ctx.RequestAborted))));
         api.MapPost("/admin", (HttpContext ctx, ItamStore store, ItamAdminChange change) => Guard(ctx, async u => { await store.Change(u, change, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+        api.MapGet("/admin/csv/{list}", (HttpContext ctx, ItamStore store, string list) => Guard(ctx, async u => { var f = await store.ExportCsv(u, list, ctx.RequestAborted); return Results.File(f.Content, f.MediaType, f.FileName); }));
+        api.MapPost("/admin/csv/{list}", (HttpContext ctx, ItamStore store, string list) => Guard(ctx, async u => { var (d, f) = await Form<ItamCsvImport>(ctx.Request); return Results.Ok(await store.ImportCsv(u, list, d, f, ctx.RequestAborted)); }));
         api.MapGet("/backups", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Backups(u, ctx.RequestAborted))));
         api.MapPost("/backups", (HttpContext ctx, ItamStore store, ItamBackupInput input) => Guard(ctx, async u => { await store.SetBackup(u, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
         api.MapPost("/backups/{id:int}/cancel", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => { await store.CancelBackup(u, id, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));

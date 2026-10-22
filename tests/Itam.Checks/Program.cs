@@ -813,6 +813,49 @@ try
     Check(J(await store.Backups(U(2), default)).Contains("Cancelled"), "Cancelled backup stays in the IT Manager's list");
     Check(Convert.ToInt32(await Scalar("SELECT COUNT(*) FROM itam_access.audit")) >= 8, "Changes are in the audit log");
     Console.WriteLine("PASS backups and audit");
+
+    // ---- CSV import and export (Administration Center) --------------------------------------------------------------------
+    ItamUpload CsvFile(string text, string name = "lists.csv") => new(name, "text/csv", System.Text.Encoding.UTF8.GetBytes(text));
+    string CsvText(ItamUpload f) => System.Text.Encoding.UTF8.GetString(f.Content);
+    var supCsv = await store.ExportCsv(U(2), "suppliers", default);
+    Check(supCsv.Content[0] == 0xEF && CsvText(supCsv).Contains("Name,VAT number,Active\r\n") && CsvText(supCsv).Contains("Supplier Two,300000000000003,Yes") && supCsv.FileName.EndsWith(".csv"),
+        "CSV export: UTF-8 for Excel, the column names, one row per supplier");
+    var badLoc = CsvFile("Name,Kind,Region,City,Active\r\nCSV Store A,IT warehouse,Central,Riyadh,Yes\r\nCSV Store B,Shop,Central,,Yes\r\n");
+    var c1 = await store.ImportCsv(U(2), "locations", new(true, null), badLoc, default);
+    var c2 = await store.ImportCsv(U(2), "locations", new(false, null), badLoc, default);
+    Check(c1.Errors.Count == 1 && c1.Errors[0].Row == 3 && c1.Errors[0].Error.Contains("Kind") && !c1.Saved && !c2.Saved
+        && await Scalar("SELECT 1 FROM itam_ref.location WHERE name_en=N'CSV Store A'") is null,
+        "CSV import: a wrong row is listed with its Excel row number, and nothing is saved");
+    var goodLoc = CsvFile("Region;Name;Kind;City\r\nCentral;CSV Store A;IT warehouse;Riyadh\r\nCentral;\"CSV Store, B\";Branch;\r\n");
+    var c3 = await store.ImportCsv(U(2), "locations", new(true, null), goodLoc, default);
+    var noneYet = await Scalar("SELECT COUNT(*) FROM itam_ref.location WHERE name_en LIKE N'CSV Store%'");
+    var c4 = await store.ImportCsv(U(2), "locations", new(false, "first load"), goodLoc, default);
+    var c5 = await store.ImportCsv(U(2), "locations", new(false, null), goodLoc, default);
+    var c6 = await store.ImportCsv(U(2), "locations", new(false, null), CsvFile("Name,Kind,Region,Active\r\nCSV Store A,IT warehouse,Central,No\r\n"), default);
+    Check(c3.Errors.Count == 0 && !c3.Saved && c3.Added == 2 && Convert.ToInt32(noneYet) == 0 && c4.Saved && c4.Added == 2 && c5.Unchanged == 2 && c5.Added + c5.Changed == 0
+        && c6.Changed == 1 && await Scalar("SELECT active FROM itam_ref.location WHERE name_en=N'CSV Store A'") is false
+        && Convert.ToInt32(await Scalar("SELECT COUNT(*) FROM itam_access.audit WHERE entity=N'location' AND reason=N'CSV import (lists.csv): first load'")) == 2,
+        "CSV import: check only saves nothing; columns in any order, semicolons and quotes; rows added, then already the same, then changed; each in the audit log");
+    await store.Change(U(2), new("supplier", "save", E(new { name = "=1+2", active = true }), null), default);
+    var guarded = CsvText(await store.ExportCsv(U(2), "suppliers", default));
+    var reimport = await store.ImportCsv(U(2), "suppliers", new(false, null), new("s.csv", "text/csv", System.Text.Encoding.UTF8.GetBytes(guarded)), default);
+    Check(guarded.Contains("'=1+2,,Yes") && reimport.Errors.Count == 0 && reimport.Unchanged == reimport.Rows,
+        "CSV export never lets Excel run a cell as a formula; the exported file imports back unchanged");
+    var models = await store.ImportCsv(U(2), "models", new(true, null), CsvFile("Manufacturer,Type,Model\r\nNo Such Maker,PC,X1\r\n"), default);
+    Check(models.Errors.Count == 1 && models.Errors[0].Error.Contains("Manufacturer"), "CSV import of models: the manufacturer must be in the list first");
+    Check(await Throws<ItamAccessDenied>(() => store.ImportCsv(U(3), "locations", new(true, null), goodLoc, default))
+        && await Throws<ItamAccessDenied>(() => store.ImportCsv(U(5), "roles", new(true, null), CsvFile("Username,Role\r\nu10,Team Leader\r\n"), default))
+        && await Throws<ArgumentException>(() => store.ImportCsv(U(2), "employees", new(true, null), CsvFile("Username\r\nu10\r\n"), default))
+        && await Throws<ArgumentException>(() => store.ImportCsv(U(2), "locations", new(true, null), CsvFile("Place,Kind\r\nX,Branch\r\n"), default))
+        && await Throws<ArgumentException>(() => store.ImportCsv(U(2), "locations", new(true, null), CsvFile("Name,Kind,Region\r\n", "lists.xlsx"), default)),
+        "CSV import: only the IT Manager imports; employees come from AD only; the column names and a .csv file are required");
+    var roles = await store.ImportCsv(U(2), "roles", new(false, null), CsvFile("Username,Name,Role,Region\r\nU10,Anyone,Ink Officer,Central\r\nu11,,Team Leader,\r\n"), default);
+    var roles2 = await store.ImportCsv(U(2), "roles", new(false, null), CsvFile("Username,Name,Role,Region\r\nALTAWKILAT\\u10,,InkOfficer,Central\r\n"), default);
+    Check(roles.Errors.Count == 1 && roles.Errors[0].Row == 3 && !roles.Saved && roles2.Saved && roles2.Added == 1
+        && await Scalar($"SELECT 1 FROM itam_access.role_assignment WHERE employee_id='{G(10)}' AND role_code=N'InkOfficer' AND region_code=N'Central'") is not null
+        && CsvText(await store.ExportCsv(U(2), "roles", default)).Contains("u10,") && CsvText(await store.ExportCsv(U(2), "audit", default)).Contains("CSV import"),
+        "CSV import of roles: by username and role name; a disabled employee is refused; roles and the audit log export");
+    Console.WriteLine("PASS CSV import and export");
     // Review copies of the emails (only when ITAM_MAIL_SAMPLES names a folder): the latest email of each template, as sent,
     // with the logo embedded so each file opens on its own. Invented check data only.
     if (Environment.GetEnvironmentVariable("ITAM_MAIL_SAMPLES") is { Length: > 0 } sampleDir)

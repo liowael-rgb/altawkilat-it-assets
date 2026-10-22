@@ -1,7 +1,7 @@
-import {$,el,api,shell,fail,message,when,card,table,buttons,edit,people,tags} from '/itam.js';
+import {$,el,api,shell,fail,message,when,card,table,buttons,edit,people,tags,form} from '/itam.js';
 let d,area=new URLSearchParams(location.search).get('area')||'roles';
 const AREAS=[['roles','Roles'],['types','Asset types'],['locations','IT warehouses and branches'],['regions','Regions'],['suppliers','Suppliers'],
-  ['manufacturers','Manufacturers and models'],['values','Value lists'],['employees','Employees'],['audit','Audit log']];
+  ['manufacturers','Manufacturers and models'],['values','Value lists'],['employees','Employees'],['csv','Import and export (CSV)'],['audit','Audit log']];
 const L=()=>d.lists;const yes=v=>v?'Yes':'No';
 const change=(a,data,reason,action='save')=>api('/admin',{method:'POST',json:{area:a,action,data,reason}});
 const reload=msg=>()=>load(msg||'Saved.');
@@ -68,6 +68,34 @@ const render={
       d.can.masterData&&add('Add a value',()=>ref('value',{list:code,active:true},[['code','Code'],['name','Name'],['sort','Order','number']],code))));},
   employees:()=>[card('Employees','Read from the Active Directory users OU (read-only). Accounts no longer found are kept, marked disabled, so history and custody stay linked.',
     el('p',`${d.employees.active} active of ${d.employees.total} employees. Last read: ${when(d.employees.lastRead)}.`))],
+  csv:()=>{
+    // Export any list to a CSV file (opens in Excel); import master data and roles from a CSV file with the same columns.
+    const exp=table(['List','Columns',''],d.csv,x=>{const a=el('a','Export CSV');a.href='/api/admin/csv/'+x.key;a.setAttribute('download','');return [x.title,x.columns.join(', '),a];});
+    const can=d.csv.filter(x=>x.import);
+    if(!can.length)return [card('Export (CSV)','Each list as a CSV file that opens in Excel.',exp)];
+    const pick=el('select');pick.id='csv-list';for(const x of can)pick.append(new Option(x.title,x.key));
+    const file=document.createElement('input');file.type='file';file.id='csv-file';file.accept='.csv,text/csv';
+    const why=document.createElement('input');why.id='csv-reason';why.maxLength=500;why.placeholder='For example: first load of the warehouses';
+    const cols=el('p','','hint');const showCols=()=>{const x=can.find(y=>y.key===pick.value);cols.textContent='Columns (first row of the file): '+x.columns.join(', ')+'.'+(x.key==='roles'?' Region only for IT Support Specialist and Ink Officer. Roles are only added; remove a role on the Roles page.':' Rows are added or updated, never deleted: set Active to No instead.');};
+    pick.onchange=showCols;showCols();
+    const lab=(t,i,cls)=>{const l=el('label',t,cls);l.append(i);return l;};
+    const result=el('div');
+    const run=async check=>{
+      if(!file.files.length){message('Choose the CSV file.','error');return;}
+      message('');result.replaceChildren(el('p',check?'Checking the file…':'Importing…','hint'));
+      try{
+        const r=await api('/admin/csv/'+pick.value,{method:'POST',body:form({checkOnly:check,reason:why.value},file.files[0])});
+        const sum=`${r.rows} rows: ${r.added} new, ${r.changed} changed, ${r.unchanged} already the same.`;
+        result.replaceChildren(r.errors.length
+          ?card(`${r.errors.length} row(s) to fix: nothing was saved`,'Fix these rows in the file and try again. Row numbers are as in Excel (row 1 is the column names).',table(['Row','Problem'],r.errors,e=>[String(e.row),e.error]))
+          :el('p',(r.saved?'Imported. ':'The file is correct; nothing is saved yet. Press Import to save. ')+sum,'msg '+(r.saved?'ok':'info')));
+        if(r.saved)d=await api('/admin');
+      }catch(e){result.replaceChildren();fail(e);}
+    };
+    const grid=el('div',null,'grid two');grid.append(lab('List',pick),lab('CSV file',file),lab('Reason (kept in the audit log)',why,'wide'));
+    return [card('Export (CSV)','Each list as a CSV file that opens in Excel. Export a list first to get the right columns for an import.',exp),
+      card('Import (CSV)','Use a file exported here (or the same columns), edited in Excel and saved as CSV UTF-8. Check the file first: the same rules as the forms apply, and if any row is wrong nothing is saved. Every imported row is kept in the audit log.',
+        grid,cols,buttons(['Check file',()=>run(true)],['Import',()=>run(false),'primary']),result)];},
   audit:()=>[card('Audit log','The last 300 changes: who, when, what and why.',table(['When','Who','What','Key','Action','Details','Reason'],d.audit,x=>[when(x.at),x.who,x.entity,x.key,x.action,x.detail||'',x.reason||'']))]
 };
 // A simple list item: fields = [key,label,type?,readonlyWhenEditing?]

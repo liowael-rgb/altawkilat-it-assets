@@ -65,6 +65,7 @@ public sealed partial class ItamStore
             roles = await Rows(c, null, "SELECT a.assignment_id,a.employee_id,e.display_name,e.enabled,a.role_code,a.region_code,a.created_at_utc FROM itam_access.role_assignment a JOIN itam_access.employee e ON e.employee_id=a.employee_id ORDER BY a.role_code,e.display_name,a.region_code",
                 r => new { id = r.GetInt32(0), employee = r.GetGuid(1), name = r.GetString(2), enabled = r.GetBoolean(3), role = r.GetString(4), roleLabel = ItamRoles.Label(r.GetString(4)), region = S(r, 5), since = Utc(r, 6) }, token),
             roleCodes = ItamRoles.All.Select(r => new { code = r, label = ItamRoles.Label(r) }),
+            csv = CsvLists.Where(l => l.Key != "audit" || s.AuditView).Select(l => new { key = l.Key, title = l.Title, columns = l.Columns, import = l.Import && (l.Key == "roles" ? s.RolesManage : s.MasterData) }),
             audit = s.AuditView ? await Rows(c, null, "SELECT TOP 300 at_utc,actor_id,entity,entity_key,action,after_json,reason FROM itam_access.audit ORDER BY audit_id DESC",
                 r => (object)new { at = Utc(r, 0), who = N(r.GetGuid(1)), entity = r.GetString(2), key = r.GetString(3), action = r.GetString(4), detail = S(r, 5), reason = S(r, 6) }, token) : [],
             employees = new { total = await Scalar(c, null, "SELECT COUNT(*) FROM itam_access.employee", token), active = await Scalar(c, null, "SELECT COUNT(*) FROM itam_access.employee WHERE enabled=1", token),
@@ -80,6 +81,14 @@ public sealed partial class ItamStore
         await using var c = await Open(token);
         await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var s = await Scope(c, tx, user, token);
+        await ApplyChange(c, tx, s, change, token);
+        await tx.CommitAsync(token);
+    }
+
+    /// <summary>One change of the Administration Center (a role, or a master-data row), checked and kept in the audit log. Used by
+    /// the forms and by the CSV import.</summary>
+    async Task ApplyChange(DbConnection c, DbTransaction tx, ItamScope s, ItamAdminChange change, CancellationToken token)
+    {
         Task Log(string key, string action, object? after) => Audit(c, tx, s.Id, change.Area, key, action, null, after, change.Reason, token);
         if (change.Area == "role")
         {
@@ -104,7 +113,6 @@ public sealed partial class ItamStore
                 await Exec(c, tx, "INSERT itam_access.role_assignment(employee_id,role_code,region_code,created_by) VALUES(@e,@r,@g,@b)", token, ("@e", x.Employee), ("@r", role), ("@g", region), ("@b", s.Id));
                 await Log(x.Employee.ToString()!, "Give role", new { role, region });
             }
-            await tx.CommitAsync(token);
             return;
         }
         Require(s.MasterData, "Only the IT Manager changes master data.");
@@ -181,7 +189,6 @@ public sealed partial class ItamStore
             }
             default: throw new ArgumentException("Unknown change.");
         }
-        await tx.CommitAsync(token);
     }
 
     // Backups during leave (My Backup) ----------------------------------------------------------------------------------------------
