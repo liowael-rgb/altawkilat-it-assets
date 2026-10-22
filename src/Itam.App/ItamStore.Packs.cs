@@ -125,6 +125,9 @@ public sealed partial class ItamStore
             var pdf = Pdf!; var d = pdf.Start(); d.Text($"The PO document {document?.FileName} could not be added (protected or damaged PDF).", ItamPdf.Doc.M, d.Y, 11);
             d.Y -= 16; d.Text("Print it from the PO page and add it to this pack.", ItamPdf.Doc.M, d.Y, 10); Append(d.Build());
         }
+        // The supplier invoices recorded for this PO (build step 3a), after the PO document.
+        foreach (var f in await Rows(c, null, "SELECT file_id FROM itam_data.invoice WHERE po_id=@p ORDER BY invoice_date,invoice_id", r => r.GetInt64(0), token, ("@p", id)))
+            if (await LoadFile(c, null, f, token) is { } inv) { try { Append(inv.Content); } catch (Exception ex) when (ex is PdfReaderException or InvalidOperationException or NotSupportedException) { } }
         // The delivery note of every delivered device, in Asset No. order: the copy the employee signed on paper, or the
         // issued note marked "Not yet signed". Devices not yet delivered are listed on the cover only.
         int notesSigned = 0, notesUnsigned = 0;

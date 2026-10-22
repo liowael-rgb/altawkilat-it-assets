@@ -49,16 +49,17 @@ public static class ItamTypeFields
             new("CapacityGb", "Storage (GB)", "number", false), new("MemoryGb", "Memory (GB)", "number", false),
             new("OperatingSystem", "Operating system", "list", false, "OperatingSystem"), new("ComputerName", "Computer name", "text", false)],
         ["PNT"] = [new("PrinterType", "Printer type", "list", true, "PrinterType"), new("PrinterLocation", "Printer location", "text", false),
-            new("TonerType", "Toner type", "list", false, "TonerType")],
+            new("TonerType", "Toner type", "list", false, "TonerType"), new("TonerCode", "Toner code", "text", false)],
         ["IP"] = [new("Extension", "Extension number", "text", false)],
         ["SOF"] = [new("Software", "Software name", "text", true)],
         ["TON"] = [new("TonerCode", "Toner code", "text", true)],
         ["DEV"] = [new("DeviceName", "Device name", "text", true), new("DeviceDescription", "Device description", "text", false)]
     };
     public static ItamField[] For(string type) => Fields.TryGetValue(type, out var f) ? f : [];
-    /// <summary>Serial number: not asked for software and IP phones; optional for toner; required for every other type.
+    /// <summary>Serial number: not asked for computers (the service tag identifies them), software and IP phones; optional for
+    /// toner; required for every other type.
     /// Service tag: required for computers. MAC: IP phones only (required; it identifies the phone). IP address: printers and IP phones.</summary>
-    public static bool SerialUsed(string type) => type is not ("SOF" or "IP");
+    public static bool SerialUsed(string type) => type is not ("PC" or "SOF" or "IP");
     /// <summary>Manufacturer: every type except software (the software name identifies it). Model: not for software or toner
     /// (the toner code identifies the cartridge).</summary>
     public static bool ManufacturerUsed(string type) => type != "SOF";

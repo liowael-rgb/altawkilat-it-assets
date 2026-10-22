@@ -170,3 +170,21 @@ To confirm:
 3. Owner type Resigned (System Administrator, IT-EM-11) and the Assets to collect page follow with employee clearance (step 5).
 4. The label QR address: the final IT Assets site address (today's example uses hub.altawkilat.com/itasm).
 5. Company Name on the delivery note comes from Active Directory (the employee's company), not from the asset.
+
+## Step 3a (ink and invoices) — built 22 October 2026
+
+Owner decisions (22 October 2026): the direct manager approves the ink request (as the owner's toner process; prices come
+from the supplier invoice, no per-request cost step); no toner stock list; ink and invoices before the requests part.
+Computers have a service tag only (no serial number).
+
+Built as a local demo with checks: ink request INK-n for an In Use printer (toner code from the printer), approval by the
+direct manager or the manager's backup on leave (no self-approval, rejection needs a reason), supplier order ORD-n (PDF and
+an email draft; nothing sent automatically), supplier invoices (Toners, Devices, Parts and maintenance; number unique per
+supplier; VAT 15%; toners linked to their order, devices to the PO receipts they cover, shown on the PO page and in the PO
+pack), ink delivery note (printer Asset No.-n after 601, from the IT shelf or an invoice line, never more than the line;
+signed on paper, scan uploaded), and the payment pack PAY-n (Inter-Office Memo cover with Date | Invoice No. | Amount | Total
+and the three signatures, then each invoice, its order and its signed ink notes; sent-to-Accounting and paid dates).
+
+To confirm: reading the uploaded invoice automatically (ZATCA XML / text PDF / OCR) comes next; names on the memo cover
+(today: "Checked by (IT)", "Approved by (Head of Department)", "Accountant"); email of approvals with the email service.
+Step 3b next: My IT Assets (and My Team), device and accessory requests with manager approval and cost approval.

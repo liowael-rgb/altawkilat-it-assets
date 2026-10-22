@@ -134,7 +134,7 @@ public sealed partial class ItamStore(Func<DbConnection> connections, IItamSecre
 /// ITAM_Test or an ITAM_Validation_ database.</summary>
 public static class ItamSchemaInstaller
 {
-    static readonly string[] Names = ["001_itam_foundation.sql", "002_itam_handover.sql"];
+    static readonly string[] Names = ["001_itam_foundation.sql", "002_itam_handover.sql", "003_itam_ink_invoices.sql"];
     public static int Count => Names.Length;
     public static void RequireTarget(string database)
     {

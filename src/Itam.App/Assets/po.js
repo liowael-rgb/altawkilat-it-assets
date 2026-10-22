@@ -23,6 +23,8 @@ async function load(note){
       table(['Line','Type','Manufacturer and model','Specification','Quantity','Unit cost','Line total','Received','To come'],d.lines,
         l=>[String(l.no),l.typeName,[l.manufacturer,l.model].filter(Boolean).join(' ')||'-',l.specification||'',String(l.quantity),money(l.unitCost),money(l.lineTotal),String(l.received),String(l.toCome)])),
     d.canManage&&toCome.length?receiveCard(toCome):null,
+    card('Invoices',`${d.invoicedDevices} of ${c.received} received devices are on a recorded invoice.`+(d.canManage?' Record device invoices on the Invoices page.':''),
+      table(['Invoice','Date','Total incl. VAT','Devices'],d.invoices,i=>[i.no,date(i.date),money(i.total),String(i.devices)],null,{empty:'No invoice recorded for this PO yet.',onRow:()=>location.assign('/invoices.html')})),
     card('Devices received','Each device has its own Asset No.; open one to see its details and history.',
       table(['Asset No.','Line','Model','Serial / service tag','Status','Kept at / employee','Delivery note','Received'],d.devices,x=>[x.assetNo,String(x.line),x.model||'',x.serial||x.serviceTag||'',x.status,x.employee||x.keptAt,x.deliveryNo?(()=>{const s=el('span');s.append(x.deliveryNo+' ',el('span',x.signed?'Signed':'Waiting for signed copy','tag '+(x.signed?'ok':'warn')));return s;})():'Not yet delivered',when(x.receivedAt)],null,
         {empty:'No device received yet.',onRow:x=>location.assign('/asset.html?id='+x.id)})),

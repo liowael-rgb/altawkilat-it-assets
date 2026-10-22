@@ -103,6 +103,26 @@ public static class ItamApi
         api.MapGet("/tasks", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.MyTasks(u, ctx.RequestAborted))));
         api.MapPost("/tasks/{id:int}/done", (HttpContext ctx, ItamStore store, int id, ItamTaskDone input) => Guard(ctx, async u => { await store.TaskDone(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
 
+        // Ink and invoices (build step 3a).
+        api.MapGet("/printers", (HttpContext ctx, ItamStore store, string? q) => Guard(ctx, async u => Results.Ok(await store.Printers(u, q, ctx.RequestAborted))));
+        api.MapGet("/ink", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Ink(u, ctx.RequestAborted))));
+        api.MapPost("/ink", (HttpContext ctx, ItamStore store, ItamInkRequestInput input) => Guard(ctx, async u => Results.Ok(await store.CreateInkRequest(u, input, ctx.RequestAborted))));
+        api.MapPost("/ink/{id:int}/decision", (HttpContext ctx, ItamStore store, int id, ItamDecision input) => Guard(ctx, async u => { await store.DecideInk(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+        api.MapPost("/ink/{id:int}/cancel", (HttpContext ctx, ItamStore store, int id, ItamCancelInput input) => Guard(ctx, async u => { await store.CancelInk(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+        api.MapPost("/ink/{id:int}/deliver", (HttpContext ctx, ItamStore store, int id, ItamInkDeliverInput input) => Guard(ctx, async u => Results.Ok(await store.DeliverInk(u, id, input, ctx.RequestAborted))));
+        api.MapPost("/orders", (HttpContext ctx, ItamStore store, ItamOrderInput input) => Guard(ctx, async u => Results.Ok(await store.CreateOrder(u, input, ctx.RequestAborted))));
+        api.MapGet("/orders/{id:int}/order.pdf", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Pdf(await store.OrderPdf(u, id, ctx.RequestAborted))));
+        api.MapGet("/ink-notes/{id:int}/note.pdf", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Pdf(await store.InkNote(u, id, ctx.RequestAborted))));
+        api.MapGet("/ink-notes/{id:int}/signed", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => { var f = await store.InkSignedFile(u, id, ctx.RequestAborted); return Results.File(f.Content, f.MediaType, f.MediaType == "application/pdf" ? null : f.FileName); }));
+        api.MapPost("/ink-notes/{id:int}/signed", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => { var (_, f) = await Form<object>(ctx.Request); await store.UploadInkSigned(u, id, f, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+        api.MapGet("/invoices", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Invoices(u, ctx.RequestAborted))));
+        api.MapGet("/invoices/{id:int}", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Results.Ok(await store.Invoice(u, id, ctx.RequestAborted))));
+        api.MapGet("/invoices/{id:int}/file", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Pdf(await store.InvoiceFile(u, id, ctx.RequestAborted))));
+        api.MapPost("/invoices", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => { var (d, f) = await Form<ItamInvoiceInput>(ctx.Request); return Results.Ok(await store.CreateInvoice(u, d, f, ctx.RequestAborted)); }));
+        api.MapPost("/packs", (HttpContext ctx, ItamStore store, ItamPackInput input) => Guard(ctx, async u => Results.Ok(await store.CreatePack(u, input, ctx.RequestAborted))));
+        api.MapGet("/packs/{id:int}/pack.pdf", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Pdf(await store.PackPdf(u, id, ctx.RequestAborted))));
+        api.MapPost("/packs/{id:int}/dates", (HttpContext ctx, ItamStore store, int id, ItamPackDates input) => Guard(ctx, async u => { await store.PackDates(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+
         api.MapGet("/admin", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Admin(u, ctx.RequestAborted))));
         api.MapPost("/admin", (HttpContext ctx, ItamStore store, ItamAdminChange change) => Guard(ctx, async u => { await store.Change(u, change, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
         api.MapGet("/backups", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Backups(u, ctx.RequestAborted))));

@@ -64,7 +64,7 @@ try
     var pc = JsonSerializer.SerializeToElement(await store.Register(U(1), A("PC", 1, 1, "SN-0001", "TAG1", null, pcAttrs, "AAAAA-BBBBB"), default));
     var mon = JsonSerializer.SerializeToElement(await store.Register(U(1), A("MON", 2, 2, "MN-0001"), default));
     Check(pc.GetProperty("assetNo").GetString() == "PC-4809" && mon.GetProperty("assetNo").GetString() == "MON-4810", "Asset No.: product code and one sequence for all types, after 4808");
-    Check((await Error(() => store.Register(U(1), A("PC", 1, 1, "sn 0001", "TAG9", null, pcAttrs), default))).Contains("already on PC-4809"), "Duplicate serial number refused (spaces, dashes and case ignored)");
+    Check((await Error(() => store.Register(U(1), A("PC", 1, 1, null, "tag-1", null, pcAttrs), default))).Contains("already on PC-4809"), "Duplicate service tag refused (spaces, dashes and case ignored)");
     Check((await Error(() => store.Register(U(1), A("PC", 1, 1, "SN-0002", null, null, pcAttrs), default))).Contains("Service tag"), "Service tag required for computers");
     Check((await Error(() => store.Register(U(1), A("IP", 1, 3, "IP-0001", mf: 2), default))).Contains("MAC"), "MAC address required for IP phones");
     Check((await Error(() => store.Register(U(1), A("MON", 1, 2, null), default))).Contains("Serial"), "Serial number required (except software)");
@@ -127,7 +127,7 @@ try
     Check(await Throws<ArgumentException>(() => store.CreatePo(U(3), poInput, new("po.pdf", "application/pdf", poPdf), default)), "The same PO number twice is refused");
     Check(await Scalar($"SELECT request_ref FROM itam_data.po WHERE po_id={po}") as string == "PR-3", "Request number stored as PR-n");
     int Line(int no) => (int)Scalar($"SELECT po_line_id FROM itam_data.po_line WHERE po_id={po} AND line_no={no}").Result!;
-    ItamDeviceInput Dev(string serial, string? tag = null) => new(serial, tag, null, null, "New", new() { ["ComputerType"] = "Notebook" }, null, null, null);
+    ItamDeviceInput Dev(string? serial, string? tag = null) => new(serial, tag, null, null, "New", new() { ["ComputerType"] = "Notebook" }, null, null, null);
     var r1 = JsonSerializer.SerializeToElement(await store.Receive(U(1), po, new(Line(1), 1, null, "INV-1", null, [Dev("POSN1", "POTAG1"), Dev("POSN2", "POTAG2")]), null, default));
     Check(r1.GetProperty("assets").GetArrayLength() == 2, "Partial receipt: 2 of 3");
     var before = await Scalar("SELECT COUNT(*) FROM itam_data.asset");
@@ -135,7 +135,7 @@ try
         && Equals(await Scalar("SELECT COUNT(*) FROM itam_data.asset"), before), "Receiving more than the remaining quantity is refused; nothing saved");
     Check((await Error(() => store.Receive(U(1), po, new(Line(2), 1, null, null, null, [new("SAME1", null, null, null, "New", null, null, null, null), new("same-1", null, null, null, "New", null, null, null, null)]), null, default))).Contains("twice")
         && Equals(await Scalar("SELECT COUNT(*) FROM itam_data.asset"), before), "The same serial twice in one receipt is refused; nothing saved");
-    Check((await Error(() => store.Receive(U(1), po, new(Line(1), 1, null, null, null, [Dev("SN-0001", "NEWTAG")]), null, default))).Contains("Device 1"), "A serial already in IT Assets is refused, naming the row");
+    Check((await Error(() => store.Receive(U(1), po, new(Line(1), 1, null, null, null, [Dev(null, "TAG1")]), null, default))).Contains("Device 1"), "A service tag already in IT Assets is refused, naming the row");
     Check(await Scalar("SELECT COUNT(*) FROM itam_data.asset WHERE po_id IS NOT NULL AND unit_cost=1000 AND supplier_id=1 AND status='InStore'") is 2, "Received devices carry the PO cost and supplier, In Store");
     Check((await Error(() => store.Register(U(1), A("MON", 1, 2, "MN-0500") with { PoNumber = "PO-77" }, default))).Contains("receive the device on the PO"), "Registering by hand against a recorded PO is refused");
     var view = JsonSerializer.SerializeToElement(await store.Po(U(8), po, default), new JsonSerializerOptions(JsonSerializerDefaults.Web));
@@ -236,6 +236,64 @@ try
     Check(hv.GetProperty("items").EnumerateArray().All(x => x.GetProperty("region").GetString() == "West"), "The Handover page shows a specialist his own regions");
     Check(await Throws<ItamAccessDenied>(() => store.Handover(U(10), "all", null, default)), "People without an IT role cannot open the Handover page");
     Console.WriteLine("PASS handover");
+
+    // ---- Ink and invoices (build step 3a) ----------------------------------------------------------------------------------------
+    await Exec($"INSERT itam_ref.model(manufacturer_id,type_code,name_en) VALUES(1,'PNT',N'LaserJet'); UPDATE itam_access.employee SET manager_id='{G(12)}' WHERE employee_id='{G(10)}';");
+    var pntModel = (int)(await Scalar("SELECT model_id FROM itam_ref.model WHERE type_code='PNT'"))!;
+    var printer = JsonSerializer.SerializeToElement(await store.Register(U(1), A("PNT", 1, pntModel, "PR-001", at: new() { ["PrinterType"] = "Network", ["TonerCode"] = "W2210A" }), default)).GetProperty("id").GetInt32();
+    Check(await Throws<ArgumentException>(() => store.CreateInkRequest(U(10), new(printer, null, 1, null, null, null), default)), "Ink only for an active printer (In Use)");
+    await store.Deliver(U(1), printer, new(G(10), handDay, "Department", null, null, null), default);
+    ItamInkRequestInput Ink(int qty) => new(printer, null, qty, null, null, null);
+    var ink1 = JsonSerializer.SerializeToElement(await store.CreateInkRequest(U(10), Ink(2), default)).GetProperty("id").GetInt32();
+    Check(await Scalar($"SELECT toner+'|'+status+'|'+request_no FROM itam_data.ink_request WHERE request_id={ink1}") as string == "W2210A|WaitingApproval|INK-1"
+        && JsonSerializer.SerializeToElement(await store.Me(U(12), default)).GetProperty("pendingApprovals").GetInt32() == 1, "Ink request INK-1 with the printer toner, waiting for the direct manager");
+    Check(await Throws<ArgumentException>(() => store.CreateInkRequest(U(9), Ink(1), default)), "No direct manager in Active Directory: the request is refused");
+    Check(await Throws<ItamAccessDenied>(() => store.DecideInk(U(10), ink1, new(true, null), default)) && await Throws<ItamAccessDenied>(() => store.DecideInk(U(9), ink1, new(true, null), default)),
+        "Only the direct manager (or backup) decides; nobody approves their own request");
+    await store.DecideInk(U(12), ink1, new(true, null), default);
+    var ink2 = JsonSerializer.SerializeToElement(await store.CreateInkRequest(U(10), Ink(2), default)).GetProperty("id").GetInt32();
+    await Exec($"INSERT itam_access.leave_backup(person_id,backup_employee_id,leave_from,leave_to,set_by) VALUES('{G(12)}','{G(3)}',CAST(DATEADD(day,-1,SYSUTCDATETIME()) AS date),CAST(DATEADD(day,3,SYSUTCDATETIME()) AS date),'{G(12)}')");
+    await store.DecideInk(U(3), ink2, new(true, null), default);
+    var ink3 = JsonSerializer.SerializeToElement(await store.CreateInkRequest(U(10), Ink(1), default)).GetProperty("id").GetInt32();
+    Check(await Throws<ArgumentException>(() => store.DecideInk(U(12), ink3, new(false, null), default)), "A rejection needs a reason");
+    await store.DecideInk(U(12), ink3, new(false, "Use the shared printer"), default);
+    Check(await Scalar($"SELECT status FROM itam_data.ink_request WHERE request_id={ink2}") as string == "Approved" && await Scalar($"SELECT status FROM itam_data.ink_request WHERE request_id={ink3}") as string == "Rejected"
+        && await Throws<ArgumentException>(() => store.DeliverInk(U(9), ink3, new(null, "Shelf", null), default)), "The manager backup on leave approves; rejected requests are not delivered");
+    Check(await Throws<ItamAccessDenied>(() => store.CreateOrder(U(4), new(1, [ink1], null), default)), "Orders for your regions only");
+    var order = JsonSerializer.SerializeToElement(await store.CreateOrder(U(9), new(1, [ink1], "test"), default));
+    var orderId = order.GetProperty("id").GetInt32();
+    Check(order.GetProperty("orderNo").GetString() == "ORD-1" && await Throws<ArgumentException>(() => store.CreateOrder(U(9), new(1, [ink1], null), default))
+        && System.Text.Encoding.ASCII.GetString((await store.OrderPdf(U(9), orderId, default)).Content, 0, 5) == "%PDF-", "Supplier order ORD-1 with its PDF; a request is ordered once");
+    var invDoc = pdf.Start(); invDoc.Text("invoice", 40, invDoc.Y, 12); var invPdf = new ItamUpload("invoice.pdf", "application/pdf", invDoc.Build());
+    var inv = JsonSerializer.SerializeToElement(await store.CreateInvoice(U(9), new(1, "INV-T1", handDay, "Toners", orderId, null, null, null, [new("HP 207A W2210A Black", 3, 291m)]), invPdf, default)).GetProperty("id").GetInt32();
+    Check(await Scalar($"SELECT CAST(total AS varchar(20)) FROM itam_data.invoice WHERE invoice_id={inv}") as string == "1003.95"
+        && await Throws<ArgumentException>(() => store.CreateInvoice(U(9), new(1, "INV-T1", handDay, "Toners", null, null, null, null, [new("x", 1, 1m)]), invPdf, default))
+        && await Throws<ItamAccessDenied>(() => store.CreateInvoice(U(9), new(1, "INV-D1", handDay, "Devices", null, po, null, null, [new("x", 1, 1m)]), invPdf, default)),
+        "Toner invoice with VAT 15%; one number per supplier; device invoices by the Team Leader or IT Assets Officer only");
+    var receipt = (int)(await Scalar($"SELECT TOP 1 receipt_id FROM itam_data.po_receipt WHERE po_id={po}"))!;
+    var poSupplier = (int)(await Scalar($"SELECT supplier_id FROM itam_data.po WHERE po_id={po}"))!;
+    await store.CreateInvoice(U(1), new(poSupplier, "INV-D1", handDay, "Devices", null, po, [receipt], null, [new("Devices", 1, 100m)]), invPdf, default);
+    Check(await Scalar($"SELECT COUNT(*) FROM itam_data.po_receipt WHERE receipt_id={receipt} AND invoice_id IS NOT NULL") is 1
+        && await Throws<ArgumentException>(() => store.CreateInvoice(U(1), new(poSupplier, "INV-D2", handDay, "Devices", null, po, [receipt], null, [new("Devices", 1, 100m)]), invPdf, default)),
+        "A device invoice covers PO receipts; a receipt is on one invoice only");
+    var line = (int)(await Scalar($"SELECT line_id FROM itam_data.invoice_line WHERE invoice_id={inv}"))!;
+    var inkNote = JsonSerializer.SerializeToElement(await store.DeliverInk(U(9), ink1, new(null, "Invoice", line), default));
+    Check(inkNote.GetProperty("deliveryNo").GetString()!.EndsWith("-602", StringComparison.Ordinal)
+        && await Throws<ArgumentException>(() => store.DeliverInk(U(9), ink2, new(null, "Invoice", line), default)), "Ink delivery note printer-602 from the invoice line; never more than the line holds");
+    await store.DeliverInk(U(9), ink2, new(null, "Shelf", null), default);
+    var inkNoteId = inkNote.GetProperty("id").GetInt32();
+    Check(System.Text.Encoding.ASCII.GetString((await store.InkNote(U(10), inkNoteId, default)).Content, 0, 5) == "%PDF-" && await Throws<ItamAccessDenied>(() => store.UploadInkSigned(U(10), inkNoteId, scan, default)),
+        "The employee reads the ink note; IT uploads the signed copy");
+    await store.UploadInkSigned(U(9), inkNoteId, scan, default);
+    var payPack = JsonSerializer.SerializeToElement(await store.CreatePack(U(9), new(1, "Toners", [inv]), default)).GetProperty("id").GetInt32();
+    var packFile = await store.PackPdf(U(9), payPack, default);
+    using (var ms = new MemoryStream(packFile.Content)) using (var read = PdfReader.Open(ms, PdfDocumentOpenMode.Import))
+        Check(read.PageCount == 4, "Payment pack: cover memo, invoice, order and the signed ink delivery note");
+    Check(await Throws<ArgumentException>(() => store.CreatePack(U(9), new(1, "Toners", [inv]), default)) && await Throws<ArgumentException>(() => store.PackDates(U(9), payPack, new(null, handDay, null), default)),
+        "An invoice is in one pack; paid only after it went to Accounting");
+    await store.PackDates(U(9), payPack, new(handDay, null, null), default); await store.PackDates(U(9), payPack, new(null, handDay, "Ref 123"), default);
+    Check(await Scalar($"SELECT CASE WHEN sent_on IS NOT NULL AND paid_on IS NOT NULL THEN 1 ELSE 0 END FROM itam_data.payment_pack WHERE pack_id={payPack}") is 1, "Sent to Accounting and paid dates recorded");
+    Console.WriteLine("PASS ink and invoices");
 
     // ---- My Backup ----------------------------------------------------------------------------------------------------------------
     var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(3));

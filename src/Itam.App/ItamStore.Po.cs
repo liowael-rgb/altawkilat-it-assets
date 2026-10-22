@@ -141,6 +141,7 @@ public sealed partial class ItamStore
             {
                 // The same serial number twice in this receipt (checked before the rows already saved in it).
                 if (Key(dvc.SerialNo) is string key && devices.Take(row - 1).Any(o => Key(o.SerialNo) == key)) throw new ArgumentException($"Serial number {dvc.SerialNo!.Trim()} is entered twice.");
+                if (Key(dvc.ServiceTag) is string tagKey && devices.Take(row - 1).Any(o => Key(o.ServiceTag) == tagKey)) throw new ArgumentException($"Service tag {dvc.ServiceTag!.Trim()} is entered twice.");
                 var d = await Check(c, tx, s, new ItamAssetInput(line.Type, x.LocationId, line.Manufacturer, line.Model, null, dvc.SerialNo, dvc.ServiceTag, dvc.MacAddress, dvc.IpAddress,
                     dvc.Condition ?? "New", head.Date, head.Supplier, head.No, line.Cost, x.InvoiceRef ?? head.Invoice, dvc.Notes, dvc.Attributes, null, null), line.Type, null, token);
                 var (_, no) = await Create(c, tx, s.Id, d, po, line.Id, receipt, dvc.OsKey, dvc.SoftwareKey, $"Received on PO {head.No}, line {line.No}", token);
@@ -222,6 +223,8 @@ public sealed partial class ItamStore
         var receipts = await Rows(c, null, "SELECT r.receipt_id,r.received_at_utc,e.display_name,g.name_en,r.invoice_ref,r.evidence_file_id,r.note,(SELECT COUNT(*) FROM itam_data.asset a WHERE a.receipt_id=r.receipt_id) " +
             "FROM itam_data.po_receipt r JOIN itam_ref.location g ON g.location_id=r.location_id LEFT JOIN itam_access.employee e ON e.employee_id=r.received_by WHERE r.po_id=@i ORDER BY r.receipt_id",
             r => new { id = r.GetInt32(0), at = Utc(r, 1), by = S(r, 2), location = r.GetString(3), invoiceRef = S(r, 4), evidence = r.IsDBNull(5) ? (long?)null : r.GetInt64(5), note = S(r, 6), devices = r.GetInt32(7) }, token, ("@i", id));
+        var invoices = await Rows(c, null, "SELECT i.invoice_id,i.invoice_no,i.invoice_date,i.total,(SELECT COUNT(*) FROM itam_data.asset a JOIN itam_data.po_receipt r ON r.receipt_id=a.receipt_id WHERE r.invoice_id=i.invoice_id) FROM itam_data.invoice i WHERE i.po_id=@i ORDER BY i.invoice_date",
+            r => new { id = r.GetInt32(0), no = r.GetString(1), date = Day(r, 2), total = r.GetDecimal(3), devices = r.GetInt32(4) }, token, ("@i", id));
         var prints = await Rows(c, null, "SELECT k.print_id,k.printed_at_utc,e.display_name,k.devices,k.notes_signed,k.notes_unsigned,k.sent_on,f.display_name FROM itam_data.pack_print k " +
             "LEFT JOIN itam_access.employee e ON e.employee_id=k.printed_by LEFT JOIN itam_access.employee f ON f.employee_id=k.sent_by WHERE k.po_id=@i ORDER BY k.print_id DESC",
             r => new { id = r.GetInt32(0), at = Utc(r, 1), by = S(r, 2), devices = r.GetInt32(3), signed = r.GetInt32(4), unsigned = r.GetInt32(5), sentOn = Day(r, 6), sentBy = S(r, 7) }, token, ("@i", id));
@@ -234,7 +237,7 @@ public sealed partial class ItamStore
                 fields = ItamTypeFields.For(l.Type), manufacturerUsed = ItamTypeFields.ManufacturerUsed(l.Type), modelUsed = ItamTypeFields.ModelUsed(l.Type), serialUsed = ItamTypeFields.SerialUsed(l.Type), serialRequired = ItamTypeFields.SerialRequired(l.Type), serviceTag = ItamTypeFields.ServiceTagUsed(l.Type), mac = ItamTypeFields.MacUsed(l.Type), macRequired = ItamTypeFields.MacRequired(l.Type), ip = ItamTypeFields.IpUsed(l.Type), key = ItamTypeFields.KeyUsed(l.Type) }),
             devices = p.Devices.Select(d => new { d.Id, d.AssetNo, d.Type, d.Model, d.Serial, d.ServiceTag, status = ItamStatuses.Label(d.Status), d.KeptAt, d.Region, line = d.LineNo, d.ReceivedAt,
                 d.DeliveryId, d.DeliveryNo, d.Employee, d.DeliveredOn, d.SignedAt, signed = d.Signed }),
-            counts = Counts(p), totals = new { net, vat = decimal.Round(net * Vat, 2), total = decimal.Round(net * (1 + Vat), 2) },
+            invoices, invoicedDevices = invoices.Sum(x => x.devices), counts = Counts(p), totals = new { net, vat = decimal.Round(net * Vat, 2), total = decimal.Round(net * (1 + Vat), 2) },
             receipts, prints, canManage = s.PoManage
         };
     }

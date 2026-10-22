@@ -49,6 +49,8 @@ export const ICONS={
   user:'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
   back:'<path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
   tag:'<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.5"/>',
+  ink:'<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>',
+  invoices:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/>',
   tasks:'<path d="M9 6h11M9 12h11M9 18h11"/><path d="M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17"/>'
 };
 const initials=n=>(n||'').split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase();
@@ -72,7 +74,9 @@ export async function shell(current){
   if(m.can.viewAssets)link(nav,'assets','Assets','/');
   if(m.can.handover)link(nav,'handover','Handover','/handover.html');
   if(m.can.tasks){const t=link(nav,'tasks','Tasks','/tasks.html');if(m.openTasks)t.append(el('span',String(m.openTasks),'x-count x-count-hot'));}
+  {const k=link(nav,'ink','Ink','/ink.html');if(m.pendingApprovals)k.append(el('span',String(m.pendingApprovals),'x-count x-count-hot'));}
   if(m.can.poView)link(nav,'pos','Purchase orders','/pos.html');
+  if(m.can.invoices)link(nav,'invoices','Invoices','/invoices.html');
   if(m.can.ownBackup||m.can.backupsView)link(nav,'backups','My Backup','/backups.html');
   if(m.can.admin){adminH.hidden=false;link(adminNav,'admin','Administration Center','/admin.html');const areas=$('side');if(areas&&current==='admin'){areas.className='it-subnav';adminNav.append(areas);}}
   const roles=[...new Set(m.roles.map(r=>r.label))].join(', ')||'Employee';
