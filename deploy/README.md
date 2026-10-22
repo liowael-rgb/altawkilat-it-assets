@@ -28,7 +28,7 @@ accept the site's own Windows identity (the IIS application pool identity).
    *Windows Authentication* on.
 2. **Application pool**: *No managed code*, integrated pipeline, identity a **group managed service account** (recommended,
    for example `ALTAWKILAT\svc-itassets$`) or *ApplicationPoolIdentity* (then SQL and AD see the server's computer account).
-3. **Site**: its own site (for example `itassets.altawkilat.com`), **HTTPS only** with the company certificate, physical
+3. **Site**: its own site (for example `it.altawkilat.com`), **HTTPS only** with the company certificate, physical
    path for example `D:\ITAssets\Site`. In *Authentication*: Windows Authentication **on**, Anonymous **off** (the
    package's web.config sets the same).
 4. **Folders** (outside the site folder), with *Modify* for the application pool identity:
@@ -55,7 +55,7 @@ accept the site's own Windows identity (the IIS application pool identity).
 3. On the server, as an administrator with db_owner on the database:
 
    ```powershell
-   .\Install-ItamSite.ps1 -Package "<the zip>" -SitePath D:\ITAssets\Site -BackupRoot D:\ITAssets\Backups -HealthUrl https://itassets.altawkilat.com/health -InstallDatabase
+   .\Install-ItamSite.ps1 -Package "<the zip>" -SitePath D:\ITAssets\Site -BackupRoot D:\ITAssets\Backups -HealthUrl https://it.altawkilat.com/health -InstallDatabase
    ```
 
    It puts the site offline, backs up the current files, copies the new ones (your appsettings.Production.json and logs

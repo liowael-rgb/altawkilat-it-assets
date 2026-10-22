@@ -511,3 +511,5 @@ Emails and the weekly summary (IT-EM-12, IT-EM-61) will use the same list when t
 - **Servers** (owner, 22 October 2026): the same as the shared platform: IIS on ATWK-WEB-1, SQL Server 2025 on ATWK-SQL-1,
   with IT Assets' own site, application pool, folders and database ITAM_Production. The SQL connection trusts the server
   certificate as the shared platform does (setting `SqlTrustServerCertificate`), and stays encrypted.
+- **Site address** (owner, 22 October 2026): **https://it.altawkilat.com** on ATWK-WEB-1, with the installed wildcard
+  certificate *.altawkilat.com; a DNS record it.altawkilat.com -> ATWK-WEB-1 (192.168.201.20) is needed.
