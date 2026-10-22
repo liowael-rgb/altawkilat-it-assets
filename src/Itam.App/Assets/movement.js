@@ -35,7 +35,7 @@ async function load(note){
       l.receivedAt?`${when(l.receivedAt)}${l.receivedBy?' by '+l.receivedBy:''}${l.newDeliveryNo?' · new delivery note '+l.newDeliveryNo:''}`:'',
       l.resolution?`${RES[l.resolution]||l.resolution} · ${l.resolutionNote||''} (${l.resolvedBy||''})`:''],
     l=>can.resolve&&['Missing','Damaged','Incorrect','Dispatched'].includes(l.state)?[['Resolve',()=>resolve(l)]]:l.hasEvidence?[['Evidence',()=>open(`/api/movements/${id}/evidence/${l.id}`)]]:[]);
-  $('view').replaceChildren(withSide(adCard(d.employeeAd),card('Movement',null,info),card('Assets',x.kind==='Branch'?'The named receiver confirms each asset; when the receiver is not the person who had it, the custody passes with a new delivery note to sign.':
+  $('view').replaceChildren(withSide(adCard(d.employeeAd),card('Movement',null,info),card('Assets',x.kind==='Branch'?'The named receiver confirms each asset. When the receiver is not the person who had it, the old custody closes and the asset is In Store at the destination: IT there delivers it to the receiver (delivery note signed on paper).':
     x.kind==='Warehouse'?'Dispatch some or all assets; the destination IT receiver confirms each one. Missing, damaged or incorrect assets stay open until an approver (Team Leader, System Administrator or IT Manager) resolves them.':'Security checks the printed pass against the labels.',lines)));
   if(note)message(note);
 }

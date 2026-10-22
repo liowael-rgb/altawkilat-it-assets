@@ -242,12 +242,12 @@ public sealed partial class ItamStore
     }
 
     /// <summary>An asset accepted at the destination: a warehouse asset is In Store there; on a branch transfer the asset's branch
-    /// changes, and when the receiver is not the person who had it, the custody passes to the receiver with a new delivery note.</summary>
+    /// changes; when the receiver is not the person who had it, the old custody closes and the asset is In Store there, for IT to deliver.</summary>
     async Task Arrive(DbConnection c, DbTransaction tx, ItamScope s, MoveRow m, int lineId, string state, string? note, CancellationToken token)
     {
         var l = (await Rows(c, tx, "SELECT asset_id,previous_status,holder_id FROM itam_data.movement_line WHERE line_id=@l", r => (Asset: r.GetInt32(0), Previous: r.GetString(1), Holder: G0(r, 2)), token, ("@l", lineId))).Single();
         var kind = await Scalar(c, tx, "SELECT kind FROM itam_ref.location WHERE location_id=@l", token, ("@l", m.To)) as string ?? "Branch";
-        int? newDelivery = null;
+        int? newDelivery = null; var handOver = false;
         var open = (await Rows(c, tx, "SELECT delivery_id,employee_id,owner_type,computer_name FROM itam_data.delivery WHERE asset_id=@a AND received_at_utc IS NULL", r => (Id: r.GetInt32(0), Employee: r.GetGuid(1), Owner: r.GetString(2), Computer: S(r, 3)), token, ("@a", l.Asset))).SingleOrDefault();
         if (m.Kind == "Warehouse" || open.Id == 0)
             await Exec(c, tx, "UPDATE itam_data.asset SET status=N'InStore',location_id=@t,stock_location=@k WHERE asset_id=@a", token, ("@t", m.To), ("@k", kind), ("@a", l.Asset));
@@ -255,17 +255,18 @@ public sealed partial class ItamStore
             await Exec(c, tx, "UPDATE itam_data.asset SET status=N'InUse',location_id=@t WHERE asset_id=@a", token, ("@t", m.To), ("@a", l.Asset));
         else
         {
-            // Custody changes: the outgoing custody closes on this transfer (no receipt note: IT did not take it back), and the
-            // receiver gets a new delivery note to sign on paper.
+            // Custody changes: the outgoing custody closes on this transfer (no receipt note: IT did not take it back) and the
+            // asset is In Store at the destination. A delivery starts only from In Store (owner, 22 October 2026): IT of the
+            // destination then delivers it to the receiver with a new delivery note, signed on paper.
             await Exec(c, tx, "UPDATE itam_data.delivery SET received_at_utc=SYSUTCDATETIME(),received_by=@b,receipt_location_id=@t,receipt_notes=@n,closed_by_movement_id=@m,closure_reason=N'Transfer' WHERE delivery_id=@d", token,
                 ("@b", s.Id), ("@t", m.To), ("@n", $"Custody passed on {m.No}"), ("@m", m.Id), ("@d", open.Id));
-            await Exec(c, tx, "UPDATE itam_data.asset SET location_id=@t WHERE asset_id=@a", token, ("@t", m.To), ("@a", l.Asset));
-            var asset = await LoadHandAsset(c, tx, l.Asset, true, token);
-            newDelivery = (await IssueDelivery(c, tx, s.Id, s.Name, asset, m.Receiver!.Value, DateOnly.FromDateTime(UtcNow.AddHours(3)), open.Owner, open.Computer, null, $"received on {m.No}", token)).Id;
+            await Exec(c, tx, "UPDATE itam_data.asset SET status=N'InStore',location_id=@t,stock_location=@k WHERE asset_id=@a", token, ("@t", m.To), ("@k", kind), ("@a", l.Asset));
+            await Exec(c, tx, "DELETE itam_data.asset_attribute WHERE asset_id=@a AND attr_code=N'ComputerName'", token, ("@a", l.Asset));
+            handOver = true;
         }
         await Exec(c, tx, "UPDATE itam_data.movement_line SET state=@st,received_at_utc=SYSUTCDATETIME(),received_by=@b,condition_note=COALESCE(@n,condition_note),new_delivery_id=@d WHERE line_id=@l", token,
             ("@st", state), ("@b", s.Id), ("@n", note), ("@d", newDelivery), ("@l", lineId));
-        await Event(c, tx, l.Asset, s.Id, m.Kind == "Warehouse" ? "Warehouse transfer" : "Gate pass", $"{m.No}: received at the destination{(newDelivery is null ? "" : "; custody passed to the receiver")}", token);
+        await Event(c, tx, l.Asset, s.Id, m.Kind == "Warehouse" ? "Warehouse transfer" : "Gate pass", $"{m.No}: received at the destination{(handOver ? "; the previous custody closed on the transfer; In Store, to deliver to the receiver" : "")}", token);
     }
 
     /// <summary>The movement status from its lines: outstanding (pending or dispatched), disputed, custody notes not yet signed.</summary>

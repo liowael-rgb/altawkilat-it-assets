@@ -327,8 +327,9 @@ and the applied matrix is regenerated as "IT Assets - Permission Matrix (applied
   exit pass completes on dispatch; a returnable one completes when IT confirms the return.
 - **Receipt** by the named receiver only, line by line: Received, Missing, Damaged or Incorrect.
   - Same holder: the asset's branch changes.
-  - Different holder: the old delivery note is closed by the transfer (no receipt note) and a new delivery note is issued
-    to the receiver; the transfer waits for the signed copy (Awaiting custody), then completes.
+  - Different holder: the old delivery note is closed by the transfer (no receipt note) and the asset is In Store at the
+    destination; a delivery starts only from In Store (owner, 22 October 2026), so IT of the destination delivers it to
+    the receiver with a new delivery note signed on paper.
 - **Warehouse transfer WT-n**: IT of the source region moves In Store stock to another IT warehouse; no approval; the
   receiver must be IT of the destination region. Lines can be dispatched in parts; the rest stays reserved or is
   cancelled. On receipt the assets are In Store at the destination, with no delivery note.

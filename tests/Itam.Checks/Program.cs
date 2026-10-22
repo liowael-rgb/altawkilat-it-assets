@@ -462,12 +462,12 @@ try
     var gpLine = (int)(await Scalar($"SELECT line_id FROM itam_data.movement_line WHERE movement_id={gpId}"))!;
     var oldDl = (int)(await Scalar($"SELECT delivery_id FROM itam_data.delivery WHERE asset_id={rMon} AND received_at_utc IS NULL"))!;
     await store.ReceiveMovement(U(12), gpId, new([new(gpLine, "Received", null)]), default);
-    var newDl = (int)(await Scalar($"SELECT new_delivery_id FROM itam_data.movement_line WHERE line_id={gpLine}"))!;
-    Check(await Scalar($"SELECT employee_id FROM itam_data.delivery WHERE delivery_id={newDl}") is Guid nd && nd == G(12) && await Scalar($"SELECT location_id FROM itam_data.asset WHERE asset_id={rMon}") is 2
-        && await Scalar($"SELECT status FROM itam_data.movement WHERE movement_id={gpId}") as string == "AwaitingCustody" && await Throws<ArgumentException>(() => store.ReceiptNote(U(1), oldDl, default)),
-        "Received by another employee: the branch changes, custody passes with a new delivery note (no receipt note); waits for the signed copy");
-    await store.UploadSigned(U(1), newDl, scan, default);
-    Check(JsonSerializer.SerializeToElement(await store.Movement(U(10), gpId, default)).GetProperty("movement").GetProperty("status").GetString() == "Completed", "Completed once the new delivery note is signed");
+    Check(await Scalar($"SELECT new_delivery_id FROM itam_data.movement_line WHERE line_id={gpLine}") is null && await Scalar($"SELECT CAST(location_id AS varchar(5))+status FROM itam_data.asset WHERE asset_id={rMon}") as string == "2InStore"
+        && await Scalar($"SELECT closure_reason FROM itam_data.delivery WHERE delivery_id={oldDl}") as string == "Transfer" && await Throws<ArgumentException>(() => store.ReceiptNote(U(1), oldDl, default))
+        && await Scalar($"SELECT status FROM itam_data.movement WHERE movement_id={gpId}") as string == "Completed",
+        "Received by another employee: the old custody closes on the transfer (no receipt note) and the asset is In Store at the destination");
+    var newDl = JsonSerializer.SerializeToElement(await store.Deliver(U(4), rMon, Dl(G(12), null), default)).GetProperty("id").GetInt32();
+    Check(await Scalar($"SELECT employee_id FROM itam_data.delivery WHERE delivery_id={newDl}") is Guid nd && nd == G(12), "IT of the destination delivers it to the receiver from In Store, with a new delivery note");
     // Warehouse transfer: no approval; partial dispatch; cancel the rest; a missing asset resolved by the Team Leader with evidence.
     var w1 = JsonSerializer.SerializeToElement(await store.Register(U(1), A("MON", 1, 2, "WT-MON-1"), default)).GetProperty("id").GetInt32();
     var w2 = JsonSerializer.SerializeToElement(await store.Register(U(1), A("MON", 1, 2, "WT-MON-2"), default)).GetProperty("id").GetInt32();
