@@ -21,7 +21,7 @@ function show(){
   const box=document.querySelector('.x-mail-preview');const m=d.mails.find(x=>x.id===openId);if(!m){box.replaceChildren();return;}
   const f=document.createElement('iframe');f.src=`/api/mail/${m.id}/html`;f.title=m.subject;f.setAttribute('height','760');f.className='x-mail-frame';
   const info=el('div',null,'x-mail-meta');
-  for(const [k,v] of [['To',m.to||'—'],['CC',m.cc],['Recipients',m.recipients],['Status',LABEL[m.status]],['Error',m.error],['Sent',m.sentAt?when(m.sentAt):null]])if(v){info.append(el('b',k),el('span',v));}
+  for(const [k,v] of [['To',m.to||'—'],['CC',m.cc],['Reply-To',m.replyTo||'None (automatic email)'],['Recipients',m.recipients],['Status',LABEL[m.status]],['Error',m.error],['Sent',m.sentAt?when(m.sentAt):null]])if(v){info.append(el('b',k),el('span',v));}
   const acts=[];if(m.status==='Failed')acts.push(btn('Send again',async()=>{try{await api(`/mail/${m.id}/retry`,{method:'POST',json:{}});await load('Queued again.');}catch(e){fail(e);}},'primary'));
   acts.push(btn('Close',()=>{openId=null;show();}));
   const a=el('div',null,'actions');a.append(...acts);

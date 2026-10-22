@@ -64,15 +64,17 @@ public sealed partial class ItamStore
         if (approval) { to = L(to, await Backups(c, tx, to)); to = to.Where(p => p.Id != actor).ToList(); }
         var toList = to.GroupBy(p => p.Id).Select(g => g.First()).ToList();
         var ccList = cc.GroupBy(p => p.Id).Select(g => g.First()).Where(p => toList.All(t => t.Id != p.Id)).ToList();
-        var actorName = actor is Guid a ? await Scalar(c, tx, "SELECT display_name FROM itam_access.employee WHERE employee_id=@a", default, ("@a", a)) as string : null;
+        // Replies reach the person who acted (owner, 22 October 2026), never the system address.
+        var who = actor is Guid a ? (await Rows(c, tx, "SELECT display_name,email,mobile,ip_phone FROM itam_access.employee WHERE employee_id=@a", r => (Name: r.GetString(0), Email: S(r, 1), Mobile: S(r, 2), Ext: S(r, 3)), default, ("@a", a))).SingleOrDefault() : default;
+        var actorName = who.Name; var replyTo = string.IsNullOrWhiteSpace(who.Email) ? null : who.Email.Trim();
         var links = decide is { } dl ? DecisionLinks(dl.Kind, dl.Id, dl.Stage) : default;
         var view = new ItamMailView(code, MailNames[code], reference, toList.Count == 1 ? toList[0].Name : "Colleagues", action, details, sections ?? [], SiteUrl + path, linkText, actorName,
-            decide is null ? null : links.Approve, decide is null ? null : links.Reject);
+            decide is null ? null : links.Approve, decide is null ? null : links.Reject, replyTo is null ? null : actorName, replyTo is null ? null : who.Mobile, replyTo is null ? null : who.Ext);
         var toMails = toList.Where(p => !string.IsNullOrWhiteSpace(p.Email)).Select(p => p.Email!.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var ccMails = ccList.Where(p => !string.IsNullOrWhiteSpace(p.Email)).Select(p => p.Email!.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Where(m => !toMails.Contains(m, StringComparer.OrdinalIgnoreCase)).ToList();
         var status = toMails.Count == 0 ? "NoRecipient" : "Queued";
-        var inserted = await Exec(c, tx, "IF NOT EXISTS(SELECT 1 FROM itam_data.mail_outbox WHERE event_key=@k) INSERT itam_data.mail_outbox(template,event_key,record_ref,to_list,cc_list,recipients,subject,body_html,status) " +
-            "VALUES(@t,@k,@r,@to,@cc,@who,@s,@b,@st)", default, ("@t", code), ("@k", key), ("@r", reference), ("@to", string.Join("; ", toMails)), ("@cc", ccMails.Count == 0 ? null : string.Join("; ", ccMails)),
+        var inserted = await Exec(c, tx, "IF NOT EXISTS(SELECT 1 FROM itam_data.mail_outbox WHERE event_key=@k) INSERT itam_data.mail_outbox(template,event_key,record_ref,to_list,cc_list,recipients,subject,body_html,status,reply_to) " +
+            "VALUES(@t,@k,@r,@to,@cc,@who,@s,@b,@st,@rt)", default, ("@rt", replyTo), ("@t", code), ("@k", key), ("@r", reference), ("@to", string.Join("; ", toMails)), ("@cc", ccMails.Count == 0 ? null : string.Join("; ", ccMails)),
             ("@who", string.Join("; ", toList.Select(p => p.Name)) + (ccList.Count == 0 ? "" : " | CC " + string.Join("; ", ccList.Select(p => p.Name)))),
             ("@s", $"[IT Assets] {MailNames[code]} - {reference}"), ("@b", ItamMailLayout.Html(view, null)), ("@st", status));
         // Nobody to send to (no manager in AD, no email address): the IT Manager is told, never by recursion of the same failure.
@@ -408,9 +410,9 @@ public sealed partial class ItamStore
         await using var c = await Open(token);
         var s = await Scope(c, null, user, token);
         Require(s.Manager, "Only the IT Manager sees the email outbox.");
-        var rows = await Rows(c, null, "SELECT TOP 500 mail_id,template,record_ref,to_list,cc_list,recipients,subject,status,attempts,last_error,created_at_utc,sent_at_utc FROM itam_data.mail_outbox WHERE (@s IS NULL OR status=@s) ORDER BY mail_id DESC",
+        var rows = await Rows(c, null, "SELECT TOP 500 mail_id,template,record_ref,to_list,cc_list,recipients,subject,status,attempts,last_error,created_at_utc,sent_at_utc,reply_to FROM itam_data.mail_outbox WHERE (@s IS NULL OR status=@s) ORDER BY mail_id DESC",
             r => new { id = r.GetInt64(0), template = r.GetString(1), name = MailNames.GetValueOrDefault(r.GetString(1)), record = S(r, 2), to = r.GetString(3), cc = S(r, 4), recipients = S(r, 5), subject = r.GetString(6), status = r.GetString(7),
-                attempts = r.GetInt32(8), error = S(r, 9), createdAt = Utc(r, 10), sentAt = r.IsDBNull(11) ? (DateTime?)null : Utc(r, 11) }, token, ("@s", string.IsNullOrEmpty(status) ? null : status));
+                attempts = r.GetInt32(8), error = S(r, 9), createdAt = Utc(r, 10), sentAt = r.IsDBNull(11) ? (DateTime?)null : Utc(r, 11), replyTo = S(r, 12) }, token, ("@s", string.IsNullOrEmpty(status) ? null : status));
         var counts = await Rows(c, null, "SELECT status,COUNT(*) FROM itam_data.mail_outbox GROUP BY status", r => new { status = r.GetString(0), count = r.GetInt32(1) }, token);
         return new { mails = rows, counts };
     }
@@ -443,8 +445,8 @@ public sealed partial class ItamStore
     public async Task<int> SendQueuedMail(IItamMailer mailer, string? testRecipient, byte[] logo, CancellationToken token)
     {
         await using var c = await Open(token);
-        var queued = await Rows(c, null, "SELECT TOP 20 mail_id,to_list,cc_list,subject,body_html FROM itam_data.mail_outbox WHERE status=N'Queued' ORDER BY mail_id",
-            r => (Id: r.GetInt64(0), To: r.GetString(1), Cc: S(r, 2), Subject: r.GetString(3), Html: r.GetString(4)), token);
+        var queued = await Rows(c, null, "SELECT TOP 20 mail_id,to_list,cc_list,subject,body_html,reply_to FROM itam_data.mail_outbox WHERE status=N'Queued' ORDER BY mail_id",
+            r => (Id: r.GetInt64(0), To: r.GetString(1), Cc: S(r, 2), Subject: r.GetString(3), Html: r.GetString(4), ReplyTo: S(r, 5)), token);
         var sent = 0;
         foreach (var m in queued)
         {
@@ -458,7 +460,7 @@ public sealed partial class ItamStore
             }
             try
             {
-                await mailer.Send(new ItamMailMessage(to, cc, m.Subject, html, [new ItamMailImage("logo", "logo.png", "image/png", logo)]), token);
+                await mailer.Send(new ItamMailMessage(to, cc, m.Subject, html, [new ItamMailImage("logo", "logo.png", "image/png", logo)], m.ReplyTo), token);
                 await Exec(c, null, "UPDATE itam_data.mail_outbox SET status=N'Sent',sent_at_utc=SYSUTCDATETIME(),sent_to=@t,attempts=attempts+1,last_error=NULL WHERE mail_id=@i", token,
                     ("@t", string.Join("; ", to.Concat(cc))), ("@i", m.Id));
                 sent++;

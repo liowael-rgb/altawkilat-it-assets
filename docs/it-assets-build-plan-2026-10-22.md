@@ -472,3 +472,7 @@ Emails and the weekly summary (IT-EM-12, IT-EM-61) will use the same list when t
   the record is still at that step, so an old email, a second click or another step does nothing ("Already decided"),
   and anyone else sees "Not your decision". The same rules as on the record's page apply. Loss decisions need the signed
   decision file, so their email links to the case.
+- **Replies reach the person who acted** (owner, 22 October 2026): every email caused by a person's action (for example the
+  delivery note email, from the IT person who issued it) has that person as Reply-To, and the line under the title reads
+  "Questions? Reply to this email to reach <name>, or call <mobile> · ext <extension>" (tap-to-call). Automatic emails
+  (reminders, weekly summary) have no Reply-To and keep "please don't reply". No shared mailbox.

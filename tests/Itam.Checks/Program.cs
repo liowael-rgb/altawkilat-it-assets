@@ -683,6 +683,9 @@ try
     Check(!qDone.GetProperty("waiting").GetBoolean() && await Scalar($"SELECT status FROM itam_data.request WHERE request_id={qpr}") as string == "InReview"
         && await Throws<ArgumentException>(() => store.QuickDecide(U(12), new("request", qpr, "WaitingRequestApproval", true, null), default)),
         "One click on Approve records the approval; the same email cannot act twice");
+    var em01 = (await Scalar("SELECT TOP 1 reply_to+N'|'+body_html FROM itam_data.mail_outbox WHERE template=N'IT-EM-01' ORDER BY mail_id") as string)!;
+    Check(em01.StartsWith("u1@example.invalid|") && em01.Contains("Reply to this email to reach <b>Person 1</b>") && !em01.Contains("please don't reply"),
+        "The delivery note email replies to the IT person who issued it, not to the system address");
     foreach (var t in new[] { "IT-EM-18", "IT-EM-26", "IT-EM-19", "IT-EM-20", "IT-EM-32", "IT-EM-09", "IT-EM-10", "IT-EM-41", "IT-EM-42", "IT-EM-44", "IT-EM-11", "IT-EM-64", "IT-EM-01", "IT-EM-02", "IT-EM-13" })
         Check(Convert.ToInt32(await Scalar($"SELECT COUNT(*) FROM itam_data.mail_outbox WHERE template=N'{t}'")) > 0, $"{t} is written by its action");
     Check(Convert.ToInt32(await Scalar("SELECT COUNT(*) FROM (SELECT event_key FROM itam_data.mail_outbox GROUP BY event_key HAVING COUNT(*)>1) x")) == 0, "Each event writes its email once");
@@ -707,7 +710,8 @@ try
         "An approval email is not sent to the person who acted; a person without an email address is left out");
     var sunday = DateTime.UtcNow.Date; while (sunday.DayOfWeek != DayOfWeek.Sunday) sunday = sunday.AddDays(1);
     var weekly = await store.RunMailJobs(sunday.AddHours(6), default);
-    Check(Convert.ToInt32(await Scalar("SELECT COUNT(*) FROM itam_data.mail_outbox WHERE template=N'IT-EM-12'")) > 0 && await store.RunMailJobs(sunday.AddHours(7), default) == 0,
+    Check(Convert.ToInt32(await Scalar("SELECT COUNT(*) FROM itam_data.mail_outbox WHERE template=N'IT-EM-12'")) > 0 && await Scalar("SELECT TOP 1 reply_to FROM itam_data.mail_outbox WHERE template=N'IT-EM-12'") is null
+        && (await Scalar("SELECT TOP 1 body_html FROM itam_data.mail_outbox WHERE template=N'IT-EM-12'") as string)!.Contains("please don't reply") && await store.RunMailJobs(sunday.AddHours(7), default) == 0,
         "Weekly summary to the IT Manager (IT-EM-12) and the reminders are written once per period");
     Console.WriteLine("PASS emails");
 

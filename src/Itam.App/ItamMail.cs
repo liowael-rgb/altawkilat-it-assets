@@ -7,7 +7,7 @@ namespace Itam.App;
 /// <summary>An image embedded in the email and referenced as cid:ContentId (the logo).</summary>
 public sealed record ItamMailImage(string ContentId, string FileName, string ContentType, byte[] Content);
 /// <summary>One email as it leaves the outbox.</summary>
-public sealed record ItamMailMessage(IReadOnlyList<string> To, IReadOnlyList<string> Cc, string Subject, string Html, IReadOnlyList<ItamMailImage> Images);
+public sealed record ItamMailMessage(IReadOnlyList<string> To, IReadOnlyList<string> Cc, string Subject, string Html, IReadOnlyList<ItamMailImage> Images, string? ReplyTo = null);
 
 /// <summary>The mail service (SMTP in production, configured at the production step). When none is registered, emails stay
 /// queued in the outbox and nothing leaves the server.</summary>
@@ -16,7 +16,7 @@ public interface IItamMailer { Task Send(ItamMailMessage message, CancellationTo
 /// <summary>What an email shows: the action sentence, the details table, extra sections and the link to the record.</summary>
 public sealed record ItamMailView(string Template, string Name, string Reference, string Greeting, string ActionLine,
     IReadOnlyList<(string Label, string? Value)> Details, IReadOnlyList<(string Title, string Text)> Sections, string Link, string LinkText, string? ActionBy,
-    string? ApproveLink = null, string? RejectLink = null);
+    string? ApproveLink = null, string? RejectLink = null, string? ContactName = null, string? ContactMobile = null, string? ContactExtension = null);
 
 /// <summary>The IT Assets email layout, the same as the CMS emails (owner, 22 October 2026): a centred white card on a light
 /// background, the logo, the system name underlined in navy, the automatic-notification line, "Dear ..." in red, the
@@ -52,7 +52,7 @@ public static class ItamMailLayout
         var body = "<div style=\"" + Font + "\">" +
             "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"><tr><td align=\"center\" style=\"padding:0 0 4px\"><img src=\"cid:logo\" alt=\"ALTAWKILAT\" width=\"200\" height=\"56\" style=\"display:block;margin:0 auto;border:0;width:200px;height:56px\"></td></tr></table>" +
             "<div style=\"text-align:center;color:" + Navy + ";font-size:19px;font-weight:bold;margin:6px 0 0;padding-bottom:10px;border-bottom:3px solid " + Navy + "\">IT Assets Management System</div>" +
-            "<div style=\"color:#6b7280;font-size:12px;margin:8px 0 14px\">This is an automatic notification, please don't reply to it.</div>" +
+            Notice(v) +
             "<div style=\"color:" + Red + ";font-weight:bold;font-size:15px;margin-bottom:6px\">Dear " + E(v.Greeting) + ",</div>" +
             "<div style=\"margin-bottom:14px\">" + E(v.ActionLine) + (v.ApproveLink is null ? " Please action as appropriate by clicking the link below." : " One click on Approve records your approval (you may be asked to sign in); Reject asks for a short reason.") + "</div>" +
             Buttons(v) +
@@ -70,6 +70,19 @@ public static class ItamMailLayout
          .Append("px;max-width:100%;background:#ffffff;border:1px solid #d5dce6\"><tr><td style=\"padding:22px 24px 20px;").Append(Font).Append("\">").Append(body).Append("</td></tr></table>")
          .Append("<div style=\"font-family:Calibri,Arial,sans-serif;font-size:11px;color:#8a94a6;padding-top:10px\">IT Assets Management System · Altawkilat · ").Append(E(v.Template)).Append("</div>");
         return h.Append("</td></tr></table></body></html>").ToString();
+    }
+
+    // The notice under the title: an email sent because a person acted replies to that person (owner, 22 October 2026), with
+    // their mobile and extension as tap-to-call links; an automatic email (reminder, weekly summary) asks not to reply.
+    static string Notice(ItamMailView v)
+    {
+        const string style = "color:#6b7280;font-size:12px;margin:8px 0 14px";
+        if (string.IsNullOrWhiteSpace(v.ContactName)) return "<div style=\"" + style + "\">This is an automatic notification, please don't reply to it.</div>";
+        string Tel(string number, string label) => "<a href=\"tel:" + WebUtility.HtmlEncode(new string(number.Where(ch => char.IsDigit(ch) || ch == '+').ToArray())) + "\" style=\"color:" + Navy + ";font-weight:bold;text-decoration:none\">" + E(label) + "</a>";
+        var phones = new List<string>();
+        if (!string.IsNullOrWhiteSpace(v.ContactMobile)) phones.Add(Tel(v.ContactMobile, v.ContactMobile));
+        if (!string.IsNullOrWhiteSpace(v.ContactExtension)) phones.Add("ext " + Tel(v.ContactExtension, v.ContactExtension));
+        return "<div style=\"" + style + ";color:#374151;font-size:13px\">Questions? Reply to this email to reach <b>" + E(v.ContactName) + "</b>" + (phones.Count == 0 ? "" : ", or call " + string.Join(" · ", phones)) + ".</div>";
     }
 
     // Approve (green) and Reject (red) as in the owner's IT-EM-31 template; table-based so Outlook shows them as buttons.
