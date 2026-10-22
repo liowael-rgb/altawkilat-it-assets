@@ -61,6 +61,17 @@ function newOrder(assetNo){
     catch(e){info.append(el('p',e.message,'msg error'));}};
   no.onchange=find;
   const sup=sel(m.lists.suppliers.filter(s=>s.active).map(s=>[s.id,s.name]),'Choose');const quote=inp('text',60);const cost=inp('number');cost.step='0.01';cost.min='0';
+  // A supplier not yet in the list is added on the spot (the IT Assets Officer adds suppliers; kept in the audit log).
+  sup.append(option('new','+ Add a new supplier'));
+  sup.onchange=()=>{if(sup.value!=='new')return;sup.value='';
+    edit('Add a supplier',[
+      {key:'name',label:'Supplier name (English)',required:true,max:200,hint:'As on the supplier\'s quotation or tax invoice.'},
+      {key:'nameAr',label:'Supplier name (Arabic)',max:200},
+      {key:'vat',label:'VAT number',max:20,hint:'15 digits, on the tax invoice.'},{key:'cr',label:'CR number',max:20},
+      {key:'contact',label:'Contact person',max:200},{key:'phone',label:'Phone',max:30},{key:'email',label:'Email',max:200,wide:true}],
+      async x=>{const r=await api('/suppliers',{method:'POST',json:{name:x.name,nameAr:x.nameAr,vatNo:x.vat,crNo:x.cr,contactName:x.contact,phone:x.phone,email:x.email,active:true}});
+        m.lists.suppliers.push({id:r.id,name:x.name.trim(),active:true});const o=option(r.id,x.name.trim());sup.insertBefore(o,sup.lastChild);sup.value=String(r.id);message(`${x.name.trim()} added to the suppliers.`);},
+      {reason:false,button:'Add the supplier'});};
   const details=document.createElement('textarea');details.maxLength=1000;const exp=inp('date');exp.min=today();const file=inp('file');file.accept='.pdf,.jpg,.jpeg,.png';
   const grid=el('div',null,'x-sec-body');
   grid.append(field('Asset No.',no,{req:true,hint:'Typed or scanned from the asset label; the product details fill in below.'}),field('Supplier',sup,{req:true}),info,
