@@ -395,3 +395,17 @@
 .x .it-subnav button{text-align:left;height:auto;min-height:34px;padding:7px 10px}
 .x label :where(input,select,textarea){font-weight:500}
 .x label :where(input,textarea)::placeholder{font-weight:400}
+/* Handover on the asset page: one block per delivery note */
+.x .x-dn{margin:14px 0 0;padding:16px 18px;border:1px solid var(--line);border-radius:14px;background:var(--fill)}
+.x .x-dn.closed{background:#fff}
+.x .x-dn-top{display:flex;align-items:center;gap:12px;margin:0 0 6px}
+.x .x-dn-top b{font-size:16px;color:var(--acc2)}
+.x .x-dn .actions{margin-top:12px}
+.x .x-dn .actions button,.x .x-side-actions button{height:38px;padding:0 14px;font-size:13.5px}
+.x .x-side-actions{display:flex;flex-direction:column;gap:10px;padding:14px 16px 16px}
+.x .x-side-actions button{width:100%}
+.x .x-gap{margin-top:12px}
+.x .tag.bad{background:var(--badbg);color:var(--bad)}
+.x .x-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 18px}
+.x .x-filterbar{display:flex;align-items:center;gap:14px;margin:0 0 14px}
+.x .x-filterbar input{max-width:380px}

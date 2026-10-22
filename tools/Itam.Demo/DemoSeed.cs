@@ -8,7 +8,9 @@ static class DemoSeed
 
     public static async Task Run(string cs, ItamStore store, ItamPdf pdf)
     {
-        await store.SyncEmployees([.. DemoPeople.All.Select(p => new ItamEmployee(p.Id, p.Account, p.Name, p.Account + "@example.invalid", p.Role, "IT (demo)", p.Id == G(2) ? null : G(2), true))], default);
+        // Invented directory details (no real people): mobile, branch, company and HR code as printed on the delivery note.
+        await store.SyncEmployees([.. DemoPeople.All.Select((p, i) => new ItamEmployee(p.Id, p.Account, p.Name, p.Account + "@example.invalid", p.Role, i >= 9 ? "Sales (demo)" : "IT (demo)", p.Id == G(2) ? null : G(2), true,
+            $"050000{i + 1:0000}", i >= 9 ? "Riyadh Showroom (demo)" : "Head Office (demo)", "ALTAWKILAT (demo)", $"DEMO-{i + 1:000}"))], default);
         await using (var c = new SqlConnection(cs))
         {
             await c.OpenAsync();
@@ -65,6 +67,24 @@ static class DemoSeed
             [.. Enumerable.Range(1, 3).Select(i => new ItamDeviceInput($"DEMOLT000{i}", $"DEMOLTAG{i}", null, null, "New", new() { ["ComputerType"] = "Notebook", ["MemoryGb"] = "16", ["OperatingSystem"] = "Win11" }, null, null, null))]), null, default);
         await store.Receive(officer, poId, new ItamReceiveInput(line2, await Loc("Riyadh IT Warehouse (demo)"), null, null, null,
             [.. Enumerable.Range(1, 2).Select(i => new ItamDeviceInput($"DEMOMN010{i}", null, null, null, "New", null, null, null, null))]), null, default);
+        // Handover (step 2): deliveries in every state, one overdue for its signed copy, two returns with their clean-up tasks.
+        async Task<int> AssetBy(string column, string value) { await using var c = new SqlConnection(cs); await c.OpenAsync(); using var q = new SqlCommand($"SELECT asset_id FROM itam_data.asset WHERE {column}=@v", c); q.Parameters.AddWithValue("@v", value); return (int)(await q.ExecuteScalarAsync())!; }
+        static int DeliveryId(object result) => (int)result.GetType().GetProperty("id")!.GetValue(result)!;
+        async Task Sql(string sql) { await using var c = new SqlConnection(cs); await c.OpenAsync(); using var q = new SqlCommand(sql, c); await q.ExecuteNonQueryAsync(); }
+        var scan = pdf.Start(); scan.Text("Delivery note signed by the employee (demo scan, invented)", ItamPdf.Doc.M, scan.Y, 14); var scanPdf = scan.Build();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(3));
+        var d1 = DeliveryId(await store.Deliver(officer, await AssetBy("serial_no", "DEMOLT0001"), new(G(10), today.AddDays(-6), "Personal", "SD-1001", "ATWK-DEMO-001", null), default));
+        await store.UploadSigned(officer, d1, new ItamUpload("signed.pdf", "application/pdf", scanPdf), default);
+        var d2 = DeliveryId(await store.Deliver(officer, await AssetBy("serial_no", "DEMOLT0002"), new(G(11), today.AddDays(-5), "Personal", "SD-1002", "ATWK-DEMO-002", null), default));
+        await Sql($"UPDATE itam_data.delivery SET issued_at_utc=DATEADD(day,-5,SYSUTCDATETIME()) WHERE delivery_id={d2}");
+        await store.Deliver(officer, await AssetBy("serial_no", "DEMOMN0101"), new(G(10), today, "Personal", null, null, "Second screen"), default);
+        var d4 = DeliveryId(await store.Deliver(officer, await AssetBy("mac_address", "00:11:22:33:44:55"), new(G(12), today.AddDays(-20), "Department", null, null, "Reception desk"), default));
+        await store.UploadSigned(officer, d4, new ItamUpload("signed.pdf", "application/pdf", scanPdf), default);
+        await store.ReturnAsset(officer, d4, new(DateTime.UtcNow.AddDays(-2), "Working", await Loc("Dammam IT Warehouse (demo)"), "Department moved"), default);
+        var d5 = DeliveryId(await store.Deliver(officer, await AssetBy("serial_no", "DEMOSN0001"), new(G(11), today.AddDays(-40), "Personal", "SD-0990", "ATWK-DEMO-009", null), default));
+        await store.UploadSigned(officer, d5, new ItamUpload("signed.pdf", "application/pdf", scanPdf), default);
+        await store.ReturnAsset(officer, d5, new(DateTime.UtcNow.AddDays(-1), "Faulty", await Loc("Riyadh IT Warehouse (demo)"), "Does not start"), default);
+        await store.Assess(officer, d5, new("Motherboard failure; repair costs more than the device is worth.", "Dispose"), null, default);
         Console.WriteLine("IT Assets demo data seeded.");
     }
 }

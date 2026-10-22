@@ -20,7 +20,7 @@ await using (var c = new SqlConnection(master)) { await c.OpenAsync(); using var
 try
 {
     Check(Throws<InvalidOperationException>(() => { ItamSchemaInstaller.RequireTarget("FMMS_Production"); return Task.CompletedTask; }).Result, "Installer refuses other databases");
-    await using (var c = new SqlConnection(cs)) Check(await ItamSchemaInstaller.Apply(c, name) == 1, "Migration applied");
+    await using (var c = new SqlConnection(cs)) Check(await ItamSchemaInstaller.Apply(c, name) == ItamSchemaInstaller.Count, "Migrations applied");
     await using (var c = new SqlConnection(cs)) Check(await ItamSchemaInstaller.Apply(c, name) == 0, "Second run applies nothing");
     var font = File.ReadAllBytes(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "arial.ttf"));
     var pdf = new ItamPdf(font);
@@ -163,6 +163,75 @@ try
     var report = await store.PoReport(U(2), po, default);
     Check(System.Text.Encoding.ASCII.GetString(report.Content, 0, 5) == "%PDF-", "PO Delivery Report is a PDF");
     Console.WriteLine("PASS PO pack");
+
+    // ---- Handover (build step 2) -------------------------------------------------------------------------------------------------
+    var hpcAttrs = new Dictionary<string, string?> { ["ComputerType"] = "Notebook" };
+    var hpc = JsonSerializer.SerializeToElement(await store.Register(U(1), A("PC", 1, 1, "SN-H01", "TAGH01", null, hpcAttrs), default)).GetProperty("id").GetInt32();
+    var hpc2 = JsonSerializer.SerializeToElement(await store.Register(U(1), A("PC", 1, 1, "SN-H02", "TAGH02", null, hpcAttrs), default)).GetProperty("id").GetInt32();
+    var handDay = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(3));
+    ItamDeliveryInput Dl(Guid? who, string? computer) => new(who, handDay, "Personal", "SD-1", computer, null);
+    Check(await Throws<ItamAccessDenied>(() => store.Deliver(U(4), hpc, Dl(G(9), "ATWK-H01"), default)) && await Throws<ItamAccessDenied>(() => store.Deliver(U(8), hpc, Dl(G(9), "ATWK-H01"), default)),
+        "Specialists deliver in their regions only; the Auditor cannot deliver");
+    Check(await Throws<ArgumentException>(() => store.Deliver(U(1), hpc, Dl(G(11), "ATWK-H01"), default)), "Deliveries go to active employees only");
+    Check(await Throws<ArgumentException>(() => store.Deliver(U(1), hpc, Dl(G(9), null), default)) && await Throws<ArgumentException>(() => store.Deliver(U(1), hpc, Dl(G(9), "BAD NAME!"), default)),
+        "A computer needs a valid computer name");
+    var dn1 = JsonSerializer.SerializeToElement(await store.Deliver(U(1), hpc, Dl(G(9), "atwk-h01"), default));
+    var dn1Id = dn1.GetProperty("id").GetInt32();
+    Check(dn1.GetProperty("deliveryNo").GetString()!.EndsWith("-4133", StringComparison.Ordinal)
+        && await Scalar($"SELECT status+'|'+stock_location FROM itam_data.asset WHERE asset_id={hpc}") as string == "InUse|Employee"
+        && await Scalar($"SELECT value FROM itam_data.asset_attribute WHERE asset_id={hpc} AND attr_code='ComputerName'") as string == "ATWK-H01",
+        "Delivery note Asset No.-4133; the asset is In Use with the employee; computer name kept");
+    Check(await Throws<ArgumentException>(() => store.Deliver(U(1), hpc, Dl(G(10), "ATWK-H09"), default)), "One open custody per asset");
+    Check(await Throws<ArgumentException>(() => store.Deliver(U(1), hpc2, Dl(G(10), "ATWK-H01"), default)), "A computer name on an open delivery cannot be reused");
+    var note = await store.DeliveryNote(U(8), dn1Id, default);
+    Check(System.Text.Encoding.ASCII.GetString(note.Content, 0, 5) == "%PDF-", "Delivery note PDF (the Auditor can read it)");
+    var scanPage = pdf.Start(); scanPage.Text("signed", 40, scanPage.Y, 12); var scan = new ItamUpload("signed.pdf", "application/pdf", scanPage.Build());
+    Check(await Throws<ItamAccessDenied>(() => store.UploadSigned(U(8), dn1Id, scan, default)), "The Auditor cannot upload signed copies");
+    await store.UploadSigned(U(1), dn1Id, scan, default);
+    Check(await Throws<ArgumentException>(() => store.UploadSigned(U(1), dn1Id, scan, default)), "The signed copy is kept unchanged once uploaded");
+    Check(await Throws<ArgumentException>(() => store.Assess(U(1), dn1Id, new("x", "Reuse"), null, default)), "No technical assessment while the employee still has the asset");
+    var ret = JsonSerializer.SerializeToElement(await store.ReturnAsset(U(1), dn1Id, new(null, "Faulty", 2, "Broken screen"), default));
+    Check(ret.GetProperty("receiptNo").GetString() == dn1.GetProperty("deliveryNo").GetString() + "-R"
+        && await Scalar($"SELECT status+'|'+stock_location+'|'+CAST(location_id AS varchar(9)) FROM itam_data.asset WHERE asset_id={hpc}") as string == "InStore|ITWarehouse|2"
+        && await Scalar($"SELECT COUNT(*) FROM itam_data.asset_attribute WHERE asset_id={hpc} AND attr_code='ComputerName'") is 0,
+        "Receipt note -R: the asset is In Store where it is received; computer name freed");
+    Check(await Throws<ArgumentException>(() => store.ReturnAsset(U(1), dn1Id, new(null, "Working", 1, null), default)), "A delivery is received back once");
+    await store.Deliver(U(1), hpc2, Dl(G(10), "ATWK-H01"), default);
+    Check(await Scalar($"SELECT COUNT(*) FROM itam_data.delivery WHERE computer_name='ATWK-H01'") is 2, "The freed computer name can be used again");
+    var adTask = (int)(await Scalar($"SELECT task_id FROM itam_data.task WHERE delivery_id={dn1Id} AND kind='RemoveFromAd'"))!;
+    Check(await Throws<ItamAccessDenied>(() => store.TaskDone(U(6), adTask, new(null), default)), "Only the System Administrator confirms the AD and Endpoint Central removal");
+    await store.TaskDone(U(5), adTask, new("Removed"), default);
+    Check(await Throws<ArgumentException>(() => store.TaskDone(U(5), adTask, new(null), default)), "A task is done once");
+    await store.Assess(U(1), dn1Id, new("Screen and board damaged.", "Dispose"), null, default);
+    Check(await Scalar($"SELECT status FROM itam_data.asset WHERE asset_id={hpc}") as string == "PendingDisposal"
+        && await Throws<ArgumentException>(() => store.Assess(U(1), dn1Id, new("again", "Reuse"), null, default))
+        && System.Text.Encoding.ASCII.GetString((await store.AssessmentNote(U(1), dn1Id, default)).Content, 0, 5) == "%PDF-"
+        && System.Text.Encoding.ASCII.GetString((await store.ReceiptNote(U(1), dn1Id, default)).Content, 0, 5) == "%PDF-",
+        "Technical assessment TA-: Dispose starts Pending disposal approval; receipt and assessment PDFs");
+    var phoneDn = JsonSerializer.SerializeToElement(await store.Deliver(U(1), phoneId, Dl(G(9), null), default)).GetProperty("id").GetInt32();
+    await store.ReturnAsset(U(1), phoneDn, new(null, "Working", 1, null), default);
+    var cucm = (int)(await Scalar($"SELECT task_id FROM itam_data.task WHERE delivery_id={phoneDn} AND kind='RemoveFromCucm'"))!;
+    Check(await Throws<ItamAccessDenied>(() => store.TaskDone(U(5), cucm, new(null), default)), "Only the Voice Administrator confirms the CUCM removal");
+    await store.TaskDone(U(6), cucm, new(null), default);
+    Check(await Throws<ItamAccessDenied>(() => store.LabelPdf(U(4), hpc2, default)) && await Throws<ItamAccessDenied>(() => store.LabelPdf(U(8), hpc2, default)), "Labels: own regions for specialists; not the Auditor");
+    var label = await store.LabelPdf(U(7), hpc2, default); var zpl = System.Text.Encoding.UTF8.GetString((await store.LabelZpl(U(1), hpc2, default)).Content);
+    Check(System.Text.Encoding.ASCII.GetString(label.Content, 0, 5) == "%PDF-" && zpl.Contains("^BQN", StringComparison.Ordinal) && zpl.Contains("TAGH02", StringComparison.Ordinal), "Label as PDF and Zebra ZPL (QR code, Asset No., service tag)");
+    // The PO pack carries the delivery notes: unsigned ones marked, signed ones as uploaded.
+    var poDevice = (int)(await Scalar($"SELECT TOP 1 asset_id FROM itam_data.asset WHERE po_id={po} AND status='InStore' ORDER BY asset_seq"))!;
+    var poIsPc = await Scalar($"SELECT type_code FROM itam_data.asset WHERE asset_id={poDevice}") as string == "PC";
+    var poDn = JsonSerializer.SerializeToElement(await store.Deliver(U(1), poDevice, Dl(G(10), poIsPc ? "ATWK-PO1" : null), default)).GetProperty("id").GetInt32();
+    var pack2 = await store.PoPack(U(1), po, default);
+    using (var ms = new MemoryStream(pack2.Content)) using (var read = PdfReader.Open(ms, PdfDocumentOpenMode.Import)) Check(read.PageCount == 3, "PO pack adds the delivery note (not yet signed)");
+    await store.UploadSigned(U(1), poDn, scan, default);
+    await store.PoPack(U(1), po, default);
+    var poCounts = JsonSerializer.SerializeToElement(await store.Po(U(1), po, default)).GetProperty("counts");
+    Check(await Scalar($"SELECT CAST(notes_unsigned AS varchar(5))+'|'+CAST(notes_signed AS varchar(5)) FROM itam_data.pack_print WHERE print_id=(SELECT MIN(print_id) FROM itam_data.pack_print WHERE po_id={po} AND notes_unsigned=1)") as string == "1|0"
+        && await Scalar($"SELECT notes_signed FROM itam_data.pack_print WHERE print_id=(SELECT MAX(print_id) FROM itam_data.pack_print WHERE po_id={po})") is 1
+        && poCounts.GetProperty("deliveredSigned").GetInt32() == 1, "Pack prints record signed and unsigned notes; PO counts follow the signed copy");
+    var hv = JsonSerializer.SerializeToElement(await store.Handover(U(4), "all", null, default));
+    Check(hv.GetProperty("items").EnumerateArray().All(x => x.GetProperty("region").GetString() == "West"), "The Handover page shows a specialist his own regions");
+    Check(await Throws<ItamAccessDenied>(() => store.Handover(U(10), "all", null, default)), "People without an IT role cannot open the Handover page");
+    Console.WriteLine("PASS handover");
 
     // ---- My Backup ----------------------------------------------------------------------------------------------------------------
     var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(3));

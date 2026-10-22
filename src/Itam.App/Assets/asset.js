@@ -1,5 +1,6 @@
 import {$,el,api,shell,fail,message,when,date,money,card,dl,table,statusTag,svg} from '/itam.js';
 import {assetForm,labelCard} from '/assetform.js';
+import {custody} from '/custody.js';
 const id=Number(new URLSearchParams(location.search).get('id'));
 let m,d;
 async function load(note){
@@ -30,6 +31,10 @@ async function load(note){
   lc.set({type:a.typeName,no:a.assetNo,model:`${product}`,cells:[['Serial',a.serial],a.serviceTag?['Service tag',a.serviceTag]:first?[first.label,listName(first,d.attributes[first.code])]:['Service tag',''],
     ['Kept at',a.keptAt],a.mac?['MAC',a.mac]:['Condition',a.condition]]});
   const side=el('aside',null,'x-side');side.append(lc.card);
+  // Handover: delivery notes, signed copies, receipt back, technical assessment; and the label.
+  try{const hc=await custody(m,{id,assetNo:a.assetNo,status:a.status},msg=>load(msg));left.insertBefore(hc.card,left.children[1]||null);if(hc.side)side.append(hc.side);
+    // With an employee: say who has it, rather than the IT warehouse it came from.
+    if(hc.holder){$('subtitle').textContent=`${product} · with ${hc.holder}`;lc.set({type:a.typeName,no:a.assetNo,model:product,cells:[['Serial',a.serial],a.serviceTag?['Service tag',a.serviceTag]:['Condition',a.condition],['With',hc.holder],a.mac?['MAC',a.mac]:['Condition',a.condition]]});}}catch(e){fail(e);}
   const grid=el('div',null,'x-detail');grid.append(left,side);
   $('view').replaceChildren(grid);$('view').hidden=false;$('asset-form').hidden=true;$('head-actions').hidden=false;
   if(note)message(note);

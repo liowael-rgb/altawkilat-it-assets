@@ -13,8 +13,15 @@ of the shared platform.
 Step 1 of 7 built as a local demo (not deployed): employees from Active Directory (read-only copy), roles with regional
 scope, master data, the asset register (fields per type, Asset No. continuing after 4808, duplicate checks, encrypted
 keys with logged views, history), purchase orders (PO document, lines, receiving devices with partial receipts and no
-over-receipt), the PO Delivery Report and the PO pack (report + PO document; delivery notes join in step 2), My Backup,
-Administration Center and audit log.
+over-receipt), the PO Delivery Report and the PO pack, My Backup, Administration Center and audit log. Desktop design
+approved 22 October 2026.
+
+Step 2 (handover) built as a local demo: delivery to an active employee (one open custody per asset, computer-name rule,
+owner type), the bilingual delivery note PDF signed on paper by the employee himself and its scan uploaded by IT
+(Waiting for signed copy / Signed, overdue after 3 days), receipt back (-R) with condition and where it is kept, the
+technical assessment (TA-; Dispose starts Pending disposal approval), the AD/Endpoint Central and CUCM removal tasks after
+a return, asset labels (PDF at 63.5 x 38.1 mm with QR code, and Zebra ZPL), the Handover page, and the PO pack with every
+delivery note (signed copy, or the issued note marked "Not yet signed"). Email reminders come with the email service.
 
 ## Run
 
@@ -30,4 +37,5 @@ dotnet run --project tests/Itam.Checks -c Release      # throwaway LocalDB datab
 | `tools/Itam.Demo` | Local demo host (never deployed) |
 | `tests/Itam.Checks` | Checks on a throwaway database |
 
-No real personal data, passwords or keys in this repository. PDFsharp (MIT) is used only to join PDFs.
+No real personal data, passwords or keys in this repository. PDFsharp (MIT) joins PDFs; QRCoder (MIT) draws the QR code on
+the PDF label.

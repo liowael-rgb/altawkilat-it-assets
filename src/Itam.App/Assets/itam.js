@@ -42,7 +42,13 @@ export const ICONS={
   save:'<path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5h7V3M8 21v-7h8v7"/>',
   edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
   shield:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
-  chev:'<path d="M9 6l6 6-6 6"/>'
+  chev:'<path d="M9 6l6 6-6 6"/>',
+  handover:'<path d="M7 11l3-3 4 2 4-4"/><path d="M3 14l4-3 3 3 5-1 6-5"/><path d="M3 20h18"/>',
+  doc:'<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>',
+  upload:'<path d="M12 15V4M7.5 8.5L12 4l4.5 4.5"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/>',
+  user:'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  back:'<path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
+  tag:'<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.5"/>'
 };
 const initials=n=>(n||'').split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase();
 /** The page frame: white side menu (logo, the pages the person may open, who is signed in) and a top bar with the asset
@@ -63,6 +69,7 @@ export async function shell(current){
     f.append(svg('search'),q,el('span','Enter','x-kbd'));f.onsubmit=e=>{e.preventDefault();location.assign('/?q='+encodeURIComponent(q.value.trim()));};top.append(f);}
   const link=(n,key,text,href)=>{const a=el('a',null,'x-nav'+(key===current?' on':''));a.href=href;a.append(svg(key),el('span',text));if(key===current)a.setAttribute('aria-current','page');n.append(a);return a;};
   if(m.can.viewAssets)link(nav,'assets','Assets','/');
+  if(m.can.handover)link(nav,'handover','Handover','/handover.html');
   if(m.can.poView)link(nav,'pos','Purchase orders','/pos.html');
   if(m.can.ownBackup||m.can.backupsView)link(nav,'backups','My Backup','/backups.html');
   if(m.can.admin){adminH.hidden=false;link(adminNav,'admin','Administration Center','/admin.html');const areas=$('side');if(areas&&current==='admin'){areas.className='it-subnav';adminNav.append(areas);}}
@@ -82,7 +89,8 @@ export function edit(title,fields,save,{hint,button,reason=true,done}={}){
     else if(f.type==='person'){input=document.createElement('input');input.setAttribute('list','people');input.placeholder='Type a name or account';input.autocomplete='off';
       // Search the employees as the person types (the list shows the best 30 matches).
       let timer;input.addEventListener('input',()=>{clearTimeout(timer);const q=input.value.trim();if(q.includes('('))return;timer=setTimeout(()=>people(q).catch(()=>{}),250);});}
-    else if(f.type==='textarea'){input=document.createElement('textarea');}
+    else if(f.type==='textarea'){input=document.createElement('textarea');if(f.max)input.maxLength=f.max;}
+    else if(f.type==='file'){input=document.createElement('input');input.type='file';input.accept=f.accept||'application/pdf,image/png,image/jpeg';}
     else{input=document.createElement('input');input.type=f.type||'text';if(f.max)input.maxLength=f.max;if(f.type==='number')input.step='0.01';}
     if(f.type==='checkbox')input.checked=!!f.value;else if(f.value!==undefined&&f.value!==null)input.value=String(f.value);
     if(f.required&&f.type!=='checkbox')input.required=true;
@@ -93,6 +101,7 @@ export function edit(title,fields,save,{hint,button,reason=true,done}={}){
   for(const f of fields)if(f.onchange){inputs[f.key].addEventListener('change',()=>f.onchange(inputs));f.onchange(inputs);}
   const read=()=>{const out={};for(const f of fields){const i=inputs[f.key];
     if(f.type==='checkbox')out[f.key]=i.checked;else if(f.type==='number')out[f.key]=i.value===''?null:Number(i.value);
+    else if(f.type==='file')out[f.key]=i.files[0]||null;
     else if(f.type==='person'){const p=(window.itamPeople||[]).find(s=>s.label===i.value.trim());out[f.key]=p?p.id:null;if(i.value.trim()&&!p)throw Error(`${f.label}: choose a person from the list.`);}
     else out[f.key]=i.value===''?null:i.value;}return out;};
   $('dialog-form').onsubmit=async e=>{e.preventDefault();try{await save(read(),$('dialog-reason').value);$('dialog').close();if(done)await done();}catch(err){alert(err.message);}};

@@ -24,7 +24,7 @@ async function load(note){
         l=>[String(l.no),l.typeName,[l.manufacturer,l.model].filter(Boolean).join(' ')||'-',l.specification||'',String(l.quantity),money(l.unitCost),money(l.lineTotal),String(l.received),String(l.toCome)])),
     d.canManage&&toCome.length?receiveCard(toCome):null,
     card('Devices received','Each device has its own Asset No.; open one to see its details and history.',
-      table(['Asset No.','Line','Model','Serial / service tag','Status','Kept at','Received'],d.devices,x=>[x.assetNo,String(x.line),x.model,x.serial||x.serviceTag||'',x.status,x.keptAt,when(x.receivedAt)],null,
+      table(['Asset No.','Line','Model','Serial / service tag','Status','Kept at / employee','Delivery note','Received'],d.devices,x=>[x.assetNo,String(x.line),x.model||'',x.serial||x.serviceTag||'',x.status,x.employee||x.keptAt,x.deliveryNo?(()=>{const s=el('span');s.append(x.deliveryNo+' ',el('span',x.signed?'Signed':'Waiting for signed copy','tag '+(x.signed?'ok':'warn')));return s;})():'Not yet delivered',when(x.receivedAt)],null,
         {empty:'No device received yet.',onRow:x=>location.assign('/asset.html?id='+x.id)})),
     card('Receipts',null,table(['When','By','Received at','Devices','Invoice','Evidence','Note'],d.receipts,r=>[when(r.at),r.by||'',r.location,String(r.devices),r.invoiceRef||'',
       r.evidence?(()=>{const a=el('a','Open');a.href='/api/files/'+r.evidence;a.target='_blank';return a;})():'',r.note||''],null,{empty:'No receipt yet.'})),

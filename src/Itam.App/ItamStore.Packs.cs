@@ -35,12 +35,13 @@ public sealed partial class ItamStore
         { d.Text(f.En, M, d.Y, 9.5); d.Fit(f.Value, M + 120, d.Y, 10, 300); d.Text(f.Ar, W - M, d.Y, 9.5, true); d.Y -= 15; }
         d.Y -= 6;
         // Counts.
-        var ordered = p.Lines.Sum(l => l.Quantity); var received = p.Devices.Count; var inStock = p.Devices.Count(x => x.Status == "InStore");
+        var ordered = p.Lines.Sum(l => l.Quantity); var received = p.Devices.Count; var inStock = p.Devices.Count(x => x.Status == "InStore" && !x.Delivered);
+        int waiting = p.Devices.Count(x => x.Delivered && !x.Signed), signed = p.Devices.Count(x => x.Signed);
         (string En, string Ar, int N)[] counts =
         [
             ("Ordered", "الكمية المطلوبة", ordered), ("Received by IT", "المستلم من قبل تقنية المعلومات", received), ("Still to come", "المتبقي", ordered - received),
             ("In IT stock", "في مخزون تقنية المعلومات", inStock), ("Reserved, pending delivery", "محجوز بانتظار التسليم", 0),
-            ("Delivered, waiting for signed copy", "مسلم بانتظار النسخة الموقعة", 0), ("Delivered and signed", "مسلم وموقع", 0)
+            ("Delivered, waiting for signed copy", "مسلم بانتظار النسخة الموقعة", waiting), ("Delivered and signed", "مسلم وموقع", signed)
         ];
         d.Box(M, d.Y - counts.Length * 14 - 4, W - 2 * M, counts.Length * 14 + 14, "0.95 0.97 0.99");
         foreach (var x in counts) { d.Text(x.En, M + 8, d.Y, 9.5); d.Text(x.N.ToString(CultureInfo.InvariantCulture), M + 260, d.Y, 10, true); d.Text(x.Ar, W - M - 8, d.Y, 9.5, true); d.Y -= 14; }
@@ -65,19 +66,22 @@ public sealed partial class ItamStore
         // Devices.
         Need(60);
         d.Text("Devices received on this PO", M, d.Y, 11.5); d.Text("الأجهزة المستلمة على أمر الشراء", W - M, d.Y, 11, true); d.Y -= 15;
-        double[] dc = [M, M + 62, M + 160, M + 262, M + 340, M + 430];
+        double[] dc = [M, M + 55, M + 135, M + 222, M + 278, M + 385];
         d.Text("Asset No.", dc[0], d.Y, 8.5, false, muted); d.Text("Model", dc[1], d.Y, 8.5, false, muted); d.Text("Serial / service tag", dc[2], d.Y, 8.5, false, muted);
         d.Text("Status", dc[3], d.Y, 8.5, false, muted); d.Text("Kept at / employee", dc[4], d.Y, 8.5, false, muted); d.Text("Delivery note, signed", dc[5], d.Y, 8.5, false, muted); d.Y -= 4; d.Line(M, d.Y, W - M, d.Y); d.Y -= 11;
         if (p.Devices.Count == 0) { d.Text("No device received yet.", M, d.Y, 9, false, ink); d.Y -= 12; }
         foreach (var x in p.Devices)
         {
             Need(14);
-            d.Text(x.AssetNo, dc[0], d.Y, 8.5, false, ink); d.Fit(x.Model ?? "", dc[1], d.Y, 8.5, 92); d.Fit(x.Serial ?? x.ServiceTag ?? "", dc[2], d.Y, 8.5, 96);
-            d.Fit(ItamStatuses.Label(x.Status), dc[3], d.Y, 8.5, 74); d.Fit(x.KeptAt, dc[4], d.Y, 8.5, 86); d.Text("Not yet delivered", dc[5], d.Y, 8.5, false, muted); d.Y -= 12;
+            d.Text(x.AssetNo, dc[0], d.Y, 8.5, false, ink); d.Fit(x.Model ?? "", dc[1], d.Y, 8.5, 76); d.Fit(x.Serial ?? x.ServiceTag ?? "", dc[2], d.Y, 8.5, 84);
+            d.Fit(ItamStatuses.Label(x.Status), dc[3], d.Y, 8.5, 54); d.Fit(x.Employee ?? x.KeptAt, dc[4], d.Y, 8.5, 104);
+            if (!x.Delivered) d.Text("Not yet delivered", dc[5], d.Y, 8.5, false, muted);
+            else d.Fit($"{x.DeliveryNo}, {(x.SignedAt is DateTime s ? s.AddHours(3).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) : "not yet signed")}", dc[5], d.Y, 8.5, W - M - dc[5], x.Signed ? ink : "0.60 0.36 0.00");
+            d.Y -= 12;
         }
-        var missing = (ordered - received) + p.Devices.Count;
+        var missing = (ordered - received) + p.Devices.Count(x => !x.Signed);
         d.Y -= 8; Need(30);
-        if (missing > 0) { d.Text($"Not yet complete: {ordered - received} still to come, {p.Devices.Count} not yet delivered with a signed delivery note.", M, d.Y, 9, false, "0.60 0.36 0.00"); d.Y -= 18; }
+        if (missing > 0) { d.Text($"Not yet complete: {ordered - received} still to come, {p.Devices.Count(x => !x.Delivered)} not yet delivered, {waiting} waiting for the signed copy.", M, d.Y, 9, false, "0.60 0.36 0.00"); d.Y -= 18; }
         Need(70); d.Y -= 10;
         d.Text("IT Assets Officer: ______________________   Date: ____________", M, d.Y, 9.5); d.Text("مسؤول أصول تقنية المعلومات", W - M, d.Y, 9, true); d.Y -= 26;
         d.Text("Received by Accounting: _________________   Date: ____________", M, d.Y, 9.5); d.Text("استلام المحاسبة", W - M, d.Y, 9, true); d.Y -= 22;
@@ -121,13 +125,35 @@ public sealed partial class ItamStore
             var pdf = Pdf!; var d = pdf.Start(); d.Text($"The PO document {document?.FileName} could not be added (protected or damaged PDF).", ItamPdf.Doc.M, d.Y, 11);
             d.Y -= 16; d.Text("Print it from the PO page and add it to this pack.", ItamPdf.Doc.M, d.Y, 10); Append(d.Build());
         }
+        // The delivery note of every delivered device, in Asset No. order: the copy the employee signed on paper, or the
+        // issued note marked "Not yet signed". Devices not yet delivered are listed on the cover only.
+        int notesSigned = 0, notesUnsigned = 0;
+        void AppendImage(byte[] bytes)
+        {
+            var page = pack.AddPage(); page.Size = PdfSharp.PageSize.A4;
+            using var gfx = PdfSharp.Drawing.XGraphics.FromPdfPage(page);
+            using var img = PdfSharp.Drawing.XImage.FromStream(new MemoryStream(bytes));
+            double margin = 28, maxW = page.Width.Point - 2 * margin, maxH = page.Height.Point - 2 * margin;
+            var scale = Math.Min(maxW / img.PointWidth, maxH / img.PointHeight);
+            gfx.DrawImage(img, margin, margin, img.PointWidth * scale, img.PointHeight * scale);
+        }
+        foreach (var x in p.Devices.Where(x => x.Delivered))
+        {
+            var dr = await LoadDelivery(c, null, x.DeliveryId!.Value, false, token);
+            var signedCopy = dr.SignedFile is long sf ? await LoadFile(c, null, sf, token) : null;
+            if (signedCopy is null) { Append(NotePdf(NoteKind.Delivery, dr, null, null, "NOT YET SIGNED: the employee has not signed this delivery note yet")); notesUnsigned++; continue; }
+            try { if (signedCopy.MediaType == "application/pdf") Append(signedCopy.Content); else AppendImage(signedCopy.Content); }
+            catch (Exception ex) when (ex is PdfReaderException or InvalidOperationException or NotSupportedException or ArgumentException)
+            { Append(NotePdf(NoteKind.Delivery, dr, null, null, "The signed copy could not be added: print it from the asset page")); }
+            notesSigned++;
+        }
         var pages = pack.PageCount;
         using var output = new MemoryStream(); pack.Save(output, false);
         await using (var tx = await c.BeginTransactionAsync(token))
         {
             var s = await Scope(c, tx, user, token);
-            await Exec(c, tx, "INSERT itam_data.pack_print(po_id,printed_by,devices,notes_signed,notes_unsigned) VALUES(@p,@b,@d,0,0)", token, ("@p", id), ("@b", s.Id), ("@d", p.Devices.Count));
-            await Audit(c, tx, s.Id, "po", p.Number, "Print pack", null, new { devices = p.Devices.Count, pages }, null, token);
+            await Exec(c, tx, "INSERT itam_data.pack_print(po_id,printed_by,devices,notes_signed,notes_unsigned) VALUES(@p,@b,@d,@ns,@nu)", token, ("@p", id), ("@b", s.Id), ("@d", p.Devices.Count), ("@ns", notesSigned), ("@nu", notesUnsigned));
+            await Audit(c, tx, s.Id, "po", p.Number, "Print pack", null, new { devices = p.Devices.Count, pages, notesSigned, notesUnsigned }, null, token);
             await tx.CommitAsync(token);
         }
         return new($"PO {p.Number} pack.pdf", "application/pdf", output.ToArray());

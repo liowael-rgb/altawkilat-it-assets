@@ -135,15 +135,17 @@ public sealed class ItamPdf
     ushort Glyph(int ch) => cmap.TryGetValue(ch, out var g) ? g : cmap.TryGetValue('?', out var q) ? q : (ushort)0;
     public double Width(string text, double size) => Visual(text).Sum(c => advance[Glyph(c)]) * size / unitsPerEm;
 
-    /// <summary>One document being written: pages, text, lines and filled boxes; A4 portrait.</summary>
-    public sealed class Doc(ItamPdf pdf)
+    /// <summary>One document being written: pages, text, lines and filled boxes; A4 portrait unless a page size is given
+    /// (labels: 63.5 x 38.1 mm).</summary>
+    public sealed class Doc(ItamPdf pdf, double pageW = Doc.W, double pageH = Doc.H)
     {
         public const double W = 595.28, H = 841.89, M = 40;
         readonly List<StringBuilder> pages = []; readonly SortedSet<ushort> used = [];
         StringBuilder page = null!;
         public double Y;
         public int Pages => pages.Count;
-        public void NewPage() { page = new StringBuilder(); pages.Add(page); Y = H - M; }
+        public double PageW => pageW; public double PageH => pageH;
+        public void NewPage() { page = new StringBuilder(); pages.Add(page); Y = pageH - M; }
         string Hex(string visual) { var sb = new StringBuilder("<"); foreach (var c in visual) { var g = pdf.Glyph(c); used.Add(g); sb.Append(g.ToString("X4", CultureInfo.InvariantCulture)); } return sb.Append('>').ToString(); }
         public void Text(string? text, double x, double y, double size, bool right = false, string color = "0.08 0.21 0.31")
         {
@@ -159,11 +161,12 @@ public sealed class ItamPdf
         }
         public void Line(double x1, double y1, double x2, double y2, string color = "0.78 0.83 0.88") => page.Append(CultureInfo.InvariantCulture, $"{color} RG 0.5 w {x1:0.##} {y1:0.##} m {x2:0.##} {y2:0.##} l S\n");
         public void Box(double x, double y, double w, double h, string fill) => page.Append(CultureInfo.InvariantCulture, $"{fill} rg {x:0.##} {y:0.##} {w:0.##} {h:0.##} re f\n");
-        public byte[] Build() => pdf.Build(pages, used);
+        public byte[] Build() => pdf.Build(pages, used, pageW, pageH);
     }
     public Doc Start() { var d = new Doc(this); d.NewPage(); return d; }
+    public Doc Start(double width, double height) { var d = new Doc(this, width, height); d.NewPage(); return d; }
 
-    byte[] Build(List<StringBuilder> pages, SortedSet<ushort> used)
+    byte[] Build(List<StringBuilder> pages, SortedSet<ushort> used, double pageW, double pageH)
     {
         var objects = new List<byte[]>();
         int Add(byte[] content) { objects.Add(content); return objects.Count; }
@@ -181,7 +184,7 @@ public sealed class ItamPdf
         foreach (var p in pages)
         {
             var content = Add(Stream("/Filter /FlateDecode", Deflate(Ascii(p.ToString()))));
-            kids.Add(Add(Ascii($"<< /Type /Page /Parent {pagesId} 0 R /MediaBox [0 0 {Doc.W.ToString("0.##", inv)} {Doc.H.ToString("0.##", inv)}] /Resources << /Font << /F1 {type0} 0 R >> >> /Contents {content} 0 R >>")));
+            kids.Add(Add(Ascii($"<< /Type /Page /Parent {pagesId} 0 R /MediaBox [0 0 {pageW.ToString("0.##", inv)} {pageH.ToString("0.##", inv)}] /Resources << /Font << /F1 {type0} 0 R >> >> /Contents {content} 0 R >>")));
         }
         objects[pagesId - 1] = Ascii($"<< /Type /Pages /Kids [{string.Join(" ", kids.Select(k => k + " 0 R"))}] /Count {kids.Count} >>");
         var catalog = Add(Ascii($"<< /Type /Catalog /Pages {pagesId} 0 R >>"));

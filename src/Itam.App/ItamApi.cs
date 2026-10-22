@@ -12,10 +12,10 @@ namespace Itam.App;
 public static class ItamServices
 {
     /// <summary>Registers the store. The host supplies the database connection, IItamSession, IItamSecrets and the PDF font.</summary>
-    public static IServiceCollection AddItam(this IServiceCollection services, Func<IServiceProvider, DbConnection> connections, byte[] pdfFont)
+    public static IServiceCollection AddItam(this IServiceCollection services, Func<IServiceProvider, DbConnection> connections, byte[] pdfFont, string? labelBaseUrl = null)
     {
         var pdf = new ItamPdf(pdfFont);
-        services.AddScoped(sp => new ItamStore(() => connections(sp), sp.GetRequiredService<IItamSecrets>(), sp.GetService<TimeProvider>()) { Pdf = pdf });
+        services.AddScoped(sp => new ItamStore(() => connections(sp), sp.GetRequiredService<IItamSecrets>(), sp.GetService<TimeProvider>()) { Pdf = pdf, LabelBaseUrl = labelBaseUrl ?? "https://hub.altawkilat.com/itasm/a/" });
         return services;
     }
 }
@@ -87,12 +87,29 @@ public static class ItamApi
         api.MapPost("/pos/{id:int}/prints/{print:int}/sent", (HttpContext ctx, ItamStore store, int id, int print, SentIn input) => Guard(ctx, async u => { await store.MarkSent(u, id, print, input.On, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
         api.MapGet("/files/{id:long}", (HttpContext ctx, ItamStore store, long id) => Guard(ctx, async u => { var f = await store.File(u, id, ctx.RequestAborted); return Results.File(f.Content, f.MediaType, f.MediaType == "application/pdf" ? null : f.FileName); }));
 
+        // Handover (build step 2).
+        api.MapGet("/handover", (HttpContext ctx, ItamStore store, string? status, string? q) => Guard(ctx, async u => Results.Ok(await store.Handover(u, status, q, ctx.RequestAborted))));
+        api.MapGet("/assets/{id:int}/handover", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Results.Ok(await store.AssetHandover(u, id, ctx.RequestAborted))));
+        api.MapPost("/assets/{id:int}/deliver", (HttpContext ctx, ItamStore store, int id, ItamDeliveryInput input) => Guard(ctx, async u => Results.Ok(await store.Deliver(u, id, input, ctx.RequestAborted))));
+        api.MapGet("/assets/{id:int}/label.pdf", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Pdf(await store.LabelPdf(u, id, ctx.RequestAborted))));
+        api.MapGet("/assets/{id:int}/label.zpl", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Pdf(await store.LabelZpl(u, id, ctx.RequestAborted), download: true)));
+        api.MapGet("/deliveries/{id:int}/note.pdf", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Pdf(await store.DeliveryNote(u, id, ctx.RequestAborted))));
+        api.MapGet("/deliveries/{id:int}/receipt.pdf", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Pdf(await store.ReceiptNote(u, id, ctx.RequestAborted))));
+        api.MapGet("/deliveries/{id:int}/assessment.pdf", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Pdf(await store.AssessmentNote(u, id, ctx.RequestAborted))));
+        api.MapGet("/deliveries/{id:int}/files/{which}", (HttpContext ctx, ItamStore store, int id, string which) => Guard(ctx, async u => { var f = await store.DeliveryFile(u, id, which == "signed" ? "signed" : "evidence", ctx.RequestAborted); return Results.File(f.Content, f.MediaType, f.MediaType == "application/pdf" ? null : f.FileName); }));
+        api.MapPost("/deliveries/{id:int}/signed", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => { var (_, f) = await Form<object>(ctx.Request); await store.UploadSigned(u, id, f, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+        api.MapPost("/deliveries/{id:int}/return", (HttpContext ctx, ItamStore store, int id, ItamReturnInput input) => Guard(ctx, async u => Results.Ok(await store.ReturnAsset(u, id, input, ctx.RequestAborted))));
+        api.MapPost("/deliveries/{id:int}/assessment", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => { var (d, f) = await Form<ItamAssessmentInput>(ctx.Request); return Results.Ok(await store.Assess(u, id, d, f, ctx.RequestAborted)); }));
+        api.MapPost("/tasks/{id:int}/done", (HttpContext ctx, ItamStore store, int id, ItamTaskDone input) => Guard(ctx, async u => { await store.TaskDone(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+
         api.MapGet("/admin", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Admin(u, ctx.RequestAborted))));
         api.MapPost("/admin", (HttpContext ctx, ItamStore store, ItamAdminChange change) => Guard(ctx, async u => { await store.Change(u, change, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
         api.MapGet("/backups", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Backups(u, ctx.RequestAborted))));
         api.MapPost("/backups", (HttpContext ctx, ItamStore store, ItamBackupInput input) => Guard(ctx, async u => { await store.SetBackup(u, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
         api.MapPost("/backups/{id:int}/cancel", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => { await store.CancelBackup(u, id, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
 
+        // The QR code on the asset label: opens the asset list filtered on the Asset No.
+        app.MapGet("/a/{no}", (string no) => Results.Redirect("/?q=" + Uri.EscapeDataString(no)));
         app.MapGet("/", (HttpContext ctx) => Asset(ctx, "index.html"));
         app.MapGet("/{file}", (HttpContext ctx, string file) => Asset(ctx, file));
     }

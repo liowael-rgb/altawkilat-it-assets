@@ -1,0 +1,11 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=1280"><title>IT Assets · Handover</title><link rel="stylesheet" href="/itam.css"></head>
+<body class="x"><main>
+<div class="page-head"><div><p class="eyebrow">Workspace</p><h1>Handover</h1><p>Delivery notes waiting for the copy the employee signed on paper, assets with employees, returns, and the clean-up tasks after a return.</p></div></div>
+<p id="message" role="status"></p>
+<div id="stats" class="x-stats"></div>
+<section class="card"><h2>Delivery notes</h2><p class="hint">Deliver an asset from its page (Assets › open the asset › Deliver to an employee). Open a row to upload the signed copy or receive the asset back.</p>
+<div class="x-filterbar"><div class="x-seg" id="filter"></div><form id="search"><input id="q" type="search" maxlength="60" placeholder="Delivery note, Asset No., employee or computer name"></form></div>
+<div id="list"></div></section>
+<section class="card" id="tasks-card" hidden><h2>Infrastructure tasks</h2><p class="hint">Created when an asset comes back: the System Administrator removes the computer from Active Directory and Endpoint Central; the Voice Administrator removes the IP phone extension from CUCM.</p><div id="tasks"></div></section>
+<dialog id="dialog"><form id="dialog-form" method="dialog"><h2 id="dialog-title"></h2><div id="dialog-body" class="grid two"></div><label class="wide" id="reason-label">Reason (kept in the audit log)<input id="dialog-reason" maxlength="1000"></label><div class="actions"><button class="primary" id="dialog-save" type="submit">Save</button><button type="button" id="dialog-cancel">Cancel</button></div></form></dialog>
+</main><script type="module" src="/handover.js"></script></body></html>

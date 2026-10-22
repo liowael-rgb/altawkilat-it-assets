@@ -155,3 +155,18 @@ ink sequence (after 601), PR-n, GP-n, WT-n.
 3. Cairo location and UAE assets (open question 1); Zebra printer model and dpi; reminder timings.
 4. Unfilled permission rows in the matrix (liability/write-off, disposal completion, branch discrepancy resolution) stay
    disabled until confirmed.
+
+## Step 2 (handover) — built 22 October 2026, decisions to confirm
+
+Built as a local demo with checks: delivery, paper-signed delivery note with uploaded scan, receipt back (-R), technical
+assessment (TA-), AD/Endpoint Central and CUCM removal tasks, labels (PDF + ZPL), Handover page, delivery notes in the PO pack.
+Permissions from the matrix: delivery, receipt and assessment by the regional IT Support Specialist (own regions), Team
+Leader and IT Assets Officer; labels also by the IT Administrator; AD/Endpoint removal confirmed by the System
+Administrator, CUCM removal by the Voice Administrator.
+
+To confirm:
+1. Overdue signed copy after 3 days (reminder email to the issuer, and the Team Leader when overdue, comes with the email service).
+2. Receipt condition values: Working, Damaged, Faulty.
+3. Owner type Resigned (System Administrator, IT-EM-11) and the Assets to collect page follow with employee clearance (step 5).
+4. The label QR address: the final IT Assets site address (today's example uses hub.altawkilat.com/itasm).
+5. Company Name on the delivery note comes from Active Directory (the employee's company), not from the asset.

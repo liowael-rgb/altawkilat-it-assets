@@ -168,7 +168,13 @@ public sealed partial class ItamStore
                 ordered = r.IsDBNull(6) ? 0 : r.GetInt32(6), received = r.GetInt32(7), total = r.IsDBNull(8) ? 0 : decimal.Round(r.GetDecimal(8) * (1 + Vat), 2), sentOn = Day(r, 9) }, token, ("@q", like));
     }
 
-    internal sealed record PoDevice(int Id, string AssetNo, string Type, string? Model, string? Serial, string? ServiceTag, string Status, string KeptAt, string Region, int LineNo, DateTime ReceivedAt);
+    /// <summary>A device received on the PO, with its first delivery after the purchase (the note that goes to Accounting).</summary>
+    internal sealed record PoDevice(int Id, string AssetNo, string Type, string? Model, string? Serial, string? ServiceTag, string Status, string KeptAt, string Region, int LineNo, DateTime ReceivedAt,
+        int? DeliveryId = null, string? DeliveryNo = null, string? Employee = null, DateOnly? DeliveredOn = null, DateTime? SignedAt = null, long? SignedFile = null)
+    {
+        public bool Delivered => DeliveryId is not null;
+        public bool Signed => SignedFile is not null;
+    }
     internal sealed record PoView(int Id, string Number, DateOnly Date, string Supplier, string? SupplierVat, string RaisedBy, string? RequestRef, string? Invoice,
         string? Note, long DocumentFile, string Version, List<PoLineView> Lines, List<PoDevice> Devices);
     internal sealed record PoLineView(int Id, int No, string Type, string TypeName, int? ManufacturerId, string? Manufacturer, int? ModelId, string? Model, string? Specification, int Quantity, decimal UnitCost, int Received);
@@ -183,22 +189,27 @@ public sealed partial class ItamStore
         var lines = await Rows(c, tx, "SELECT l.po_line_id,l.line_no,l.type_code,t.name_en,l.manufacturer_id,m.name_en,l.model_id,mo.name_en,l.specification,l.quantity,l.unit_cost,(SELECT COUNT(*) FROM itam_data.asset a WHERE a.po_line_id=l.po_line_id) " +
             "FROM itam_data.po_line l JOIN itam_ref.asset_type t ON t.type_code=l.type_code LEFT JOIN itam_ref.manufacturer m ON m.manufacturer_id=l.manufacturer_id LEFT JOIN itam_ref.model mo ON mo.model_id=l.model_id WHERE l.po_id=@i ORDER BY l.line_no",
             r => new PoLineView(r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetString(3), I(r, 4), S(r, 5), I(r, 6), S(r, 7), S(r, 8), r.GetInt32(9), r.GetDecimal(10), r.GetInt32(11)), token, ("@i", id));
-        var devices = await Rows(c, tx, "SELECT a.asset_id,a.asset_no,a.type_code,mo.name_en,a.serial_no,a.service_tag,a.status,g.name_en,g.region_code,l.line_no,r.received_at_utc " +
+        var devices = await Rows(c, tx, "SELECT a.asset_id,a.asset_no,a.type_code,mo.name_en,a.serial_no,a.service_tag,a.status,g.name_en,g.region_code,l.line_no,r.received_at_utc," +
+            "fd.delivery_id,fd.delivery_no,e.display_name,fd.delivered_on,fd.signed_at_utc,fd.signed_file_id " +
             "FROM itam_data.asset a LEFT JOIN itam_ref.model mo ON mo.model_id=a.model_id JOIN itam_ref.location g ON g.location_id=a.location_id JOIN itam_data.po_line l ON l.po_line_id=a.po_line_id " +
-            "JOIN itam_data.po_receipt r ON r.receipt_id=a.receipt_id WHERE a.po_id=@i ORDER BY a.asset_seq",
-            r => new PoDevice(r.GetInt32(0), r.GetString(1), r.GetString(2), S(r, 3), S(r, 4), S(r, 5), r.GetString(6), r.GetString(7), r.GetString(8), r.GetInt32(9), Utc(r, 10)), token, ("@i", id));
+            "JOIN itam_data.po_receipt r ON r.receipt_id=a.receipt_id " +
+            "OUTER APPLY (SELECT TOP 1 d.delivery_id,d.delivery_no,d.employee_id,d.delivered_on,d.signed_at_utc,d.signed_file_id FROM itam_data.delivery d WHERE d.asset_id=a.asset_id ORDER BY d.delivery_id) fd " +
+            "LEFT JOIN itam_access.employee e ON e.employee_id=fd.employee_id WHERE a.po_id=@i ORDER BY a.asset_seq",
+            r => new PoDevice(r.GetInt32(0), r.GetString(1), r.GetString(2), S(r, 3), S(r, 4), S(r, 5), r.GetString(6), r.GetString(7), r.GetString(8), r.GetInt32(9), Utc(r, 10),
+                I(r, 11), S(r, 12), S(r, 13), Day(r, 14), r.IsDBNull(15) ? null : Utc(r, 15), r.IsDBNull(16) ? null : r.GetInt64(16)), token, ("@i", id));
         return new(id, p.No, p.Date, p.Supplier, p.Vat, p.RaisedBy, p.Request, p.Invoice, p.Note, p.File, p.Version, lines, devices);
     }
 
-    /// <summary>The PO page counts. Delivery notes come with the handover (build step 2): until then every received device
-    /// is in IT stock, and the delivered counts are zero.</summary>
+    /// <summary>The PO page counts. Delivered counts follow the first delivery note of each device: waiting for the copy the
+    /// employee signed on paper, or signed (copy uploaded). Reservations arrive with requests (build step 3).</summary>
     internal static object Counts(PoView p)
     {
         int ordered = p.Lines.Sum(l => l.Quantity), received = p.Devices.Count;
         return new
         {
-            ordered, received, stillToCome = ordered - received, inStock = p.Devices.Count(d => d.Status == "InStore"), reserved = 0,
-            deliveredWaitingSigned = 0, deliveredSigned = 0, other = p.Devices.Count(d => d.Status is not ("InStore" or "InUse"))
+            ordered, received, stillToCome = ordered - received, inStock = p.Devices.Count(d => d.Status == "InStore" && !d.Delivered), reserved = 0,
+            deliveredWaitingSigned = p.Devices.Count(d => d.Delivered && !d.Signed), deliveredSigned = p.Devices.Count(d => d.Signed),
+            other = p.Devices.Count(d => !d.Delivered && d.Status != "InStore")
         };
     }
 
@@ -221,7 +232,8 @@ public sealed partial class ItamStore
                 supplierId = await Scalar(c, null, "SELECT supplier_id FROM itam_data.po WHERE po_id=@i", token, ("@i", id)) },
             lines = p.Lines.Select(l => new { l.Id, no = l.No, l.Type, l.TypeName, l.ManufacturerId, l.Manufacturer, l.ModelId, l.Model, l.Specification, l.Quantity, l.UnitCost, lineTotal = l.Quantity * l.UnitCost, l.Received, toCome = l.Quantity - l.Received,
                 fields = ItamTypeFields.For(l.Type), manufacturerUsed = ItamTypeFields.ManufacturerUsed(l.Type), modelUsed = ItamTypeFields.ModelUsed(l.Type), serialUsed = ItamTypeFields.SerialUsed(l.Type), serialRequired = ItamTypeFields.SerialRequired(l.Type), serviceTag = ItamTypeFields.ServiceTagUsed(l.Type), mac = ItamTypeFields.MacUsed(l.Type), macRequired = ItamTypeFields.MacRequired(l.Type), ip = ItamTypeFields.IpUsed(l.Type), key = ItamTypeFields.KeyUsed(l.Type) }),
-            devices = p.Devices.Select(d => new { d.Id, d.AssetNo, d.Type, d.Model, d.Serial, d.ServiceTag, status = ItamStatuses.Label(d.Status), d.KeptAt, d.Region, line = d.LineNo, d.ReceivedAt }),
+            devices = p.Devices.Select(d => new { d.Id, d.AssetNo, d.Type, d.Model, d.Serial, d.ServiceTag, status = ItamStatuses.Label(d.Status), d.KeptAt, d.Region, line = d.LineNo, d.ReceivedAt,
+                d.DeliveryId, d.DeliveryNo, d.Employee, d.DeliveredOn, d.SignedAt, signed = d.Signed }),
             counts = Counts(p), totals = new { net, vat = decimal.Round(net * Vat, 2), total = decimal.Round(net * (1 + Vat), 2) },
             receipts, prints, canManage = s.PoManage
         };

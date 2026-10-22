@@ -7,7 +7,8 @@ namespace Itam.App;
 public sealed record ItamUser(Guid Id, string Account);
 
 /// <summary>One employee as read from the Active Directory users OU (read-only).</summary>
-public sealed record ItamEmployee(Guid Id, string Account, string Name, string? Email, string? JobTitle, string? Department, Guid? ManagerId, bool Enabled);
+public sealed record ItamEmployee(Guid Id, string Account, string Name, string? Email, string? JobTitle, string? Department, Guid? ManagerId, bool Enabled,
+    string? Mobile = null, string? Branch = null, string? Company = null, string? HrCode = null);
 
 public interface IItamSession { Task<ItamUser?> Current(HttpContext context, CancellationToken token); }
 
@@ -102,6 +103,16 @@ public sealed record ItamScope(Guid Id, string Name, string[] Roles, string[] Re
     public bool PoManage => TeamLeader || Officer;
     /// <summary>View POs and print the PO delivery report: Team Leader, System Administrator, Assets Officer, IT Manager, Auditor.</summary>
     public bool PoView => TeamLeader || SysAdmin || Officer || Manager || Auditor;
+    /// <summary>Delivery note, receipt note and technical assessment (matrix rows 25, 27, 28): own regions (specialist), all
+    /// regions (Team Leader), IT Assets Officer. Uploading the signed copy belongs to the delivery note.</summary>
+    public bool CanHandover(string region) => TeamLeader || Officer || (Specialist && Regions.Contains(region));
+    public bool CanHandoverAny => TeamLeader || Officer || Specialist;
+    /// <summary>Print labels (row 24): own regions (specialist), all regions (Team Leader), IT Assets Officer, IT Administrator.</summary>
+    public bool CanPrintLabel(string region) => TeamLeader || Officer || ItAdmin || (Specialist && Regions.Contains(region));
+    /// <summary>Confirm computer removal from AD and Endpoint Central (row 38): System Administrator. Confirm IP phone removal
+    /// from CUCM (row 39): Voice Administrator.</summary>
+    public bool AdTasks => SysAdmin;
+    public bool CucmTasks => Voice;
     public bool RolesManage => Manager || ItAdmin;
     public bool MasterData => ItAdmin;
     public bool AuditView => Manager || ItAdmin || Auditor;

@@ -17,7 +17,7 @@ var font = File.ReadAllBytes(Path.Combine(Environment.GetFolderPath(Environment.
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls(BaseUrl);
 builder.Services.AddAntiforgery(o => { o.HeaderName = "X-CSRF-TOKEN"; o.Cookie.HttpOnly = true; o.Cookie.SameSite = SameSiteMode.Strict; o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest; });
-builder.Services.AddItam(_ => new SqlConnection(cs), font);
+builder.Services.AddItam(_ => new SqlConnection(cs), font, BaseUrl + "/a/");
 builder.Services.AddSingleton<IItamSecrets>(sp => new DemoSecrets(sp.GetRequiredService<IDataProtectionProvider>().CreateProtector("Itam.Keys.v1")));
 builder.Services.AddScoped<IItamSession, DemoSession>();
 var app = builder.Build();
