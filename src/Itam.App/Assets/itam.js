@@ -59,6 +59,7 @@ export const ICONS={
   movements:'<path d="M4 8h13l-3-3M20 16H7l3 3"/>',
   plus:'<path d="M12 5v14M5 12h14"/>',
   phone:'<path d="M5 4h3l2 5-2.5 1.5a11 11 0 0 0 6 6L15 14l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>',
+  mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
   alerts:'<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
   dashboard:'<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/>',
   reports:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
@@ -112,6 +113,7 @@ export async function shell(current){
     if(c.sales)link(eolNav,'sales','Sales','/sales.html');
     if(c.adCompare)link(eolNav,'adcompare','AD comparison','/adcompare.html');
     if(c.licenses)link(eolNav,'licenses','Licenses','/licenses.html');}
+  if(m.can.mailOutbox){adminH.hidden=false;link(adminNav,'mail','Email outbox','/mail.html');}
   if(m.can.admin){adminH.hidden=false;link(adminNav,'admin','Administration Center','/admin.html');const areas=$('side');if(areas&&current==='admin'){areas.className='it-subnav';adminNav.append(areas);}}
   const roles=[...new Set(m.roles.map(r=>r.label))].join(', ')||'Employee';
   const who=el('div');const regs=[...new Set([...(m.regions||[]),...(m.inkRegions||[])])];who.append(el('b',m.name),el('small',roles+(m.viewsAll?' · All regions':regs.length?' · '+regs.join(', '):'')));meBox.append(el('span',initials(m.name),'x-avatar'),who);

@@ -40,6 +40,7 @@ public sealed partial class ItamStore
         if (await Busy(c, tx, a.Id, token) is string busy) throw new ArgumentException($"{a.No} cannot be disposed now: {busy}.");
         var assessment = await Scalar(c, tx, "SELECT TOP 1 ta.assessment_id FROM itam_data.assessment ta JOIN itam_data.delivery d ON d.delivery_id=ta.delivery_id WHERE d.asset_id=@a ORDER BY ta.assessment_id DESC", token, ("@a", a.Id)) as int?;
         var (id, no) = await NewDisposal(c, tx, a, assessment, Text(x.Reason, "Reason", 1000), Text(x.Condition, "Current condition", 500), s.Id, token);
+        await MailDisposal(c, tx, id, "created", s.Id);
         await tx.CommitAsync(token);
         return new { id, disposalNo = no };
     }
@@ -57,8 +58,8 @@ public sealed partial class ItamStore
         return (id, no);
     }
 
-    internal static async Task DisposalFromAssessment(DbConnection c, DbTransaction tx, int assetId, int assessmentId, string assessmentNo, Guid actor, CancellationToken token)
-        => await NewDisposal(c, tx, await LoadEolAsset(c, tx, null, assetId, token), assessmentId, $"Technical assessment {assessmentNo}: dispose", "As assessed", actor, token);
+    internal static async Task<int> DisposalFromAssessment(DbConnection c, DbTransaction tx, int assetId, int assessmentId, string assessmentNo, Guid actor, CancellationToken token)
+        => (await NewDisposal(c, tx, await LoadEolAsset(c, tx, null, assetId, token), assessmentId, $"Technical assessment {assessmentNo}: dispose", "As assessed", actor, token)).Id;
 
     sealed record DisposalRow(int Id, string No, int AssetId, string AssetNo, string Type, string Status, Guid RequestedBy, string Previous, string Region);
     static async Task<DisposalRow> LoadDisposal(DbConnection c, DbTransaction? tx, int id, CancellationToken token)
@@ -86,6 +87,7 @@ public sealed partial class ItamStore
         if (!x.Approve) await Exec(c, tx, "UPDATE itam_data.asset SET status=@p WHERE asset_id=@a AND status=N'PendingDisposal'", token, ("@p", d.Previous), ("@a", d.AssetId));
         await Event(c, tx, d.AssetId, s.Id, "Disposal", x.Approve ? $"{d.No} approved; awaiting completion (the asset stays Pending disposal approval)" : $"{d.No} rejected: {reason}; back {ItamStatuses.Label(d.Previous)}", token);
         await Audit(c, tx, s.Id, "disposal", d.No, x.Approve ? "Approve" : "Reject", null, new { reason }, null, token);
+        await MailDisposal(c, tx, d.Id, "decided", s.Id);
     });
 
     public async Task CompleteDisposal(ItamUser user, int id, ItamDisposalCompletion x, ItamUpload? evidence, CancellationToken token)
@@ -110,6 +112,7 @@ public sealed partial class ItamStore
             await Exec(c, tx, "DELETE itam_data.asset_attribute WHERE asset_id=@a AND attr_code=N'ComputerName'", token, ("@a", d.AssetId));
             await Event(c, tx, d.AssetId, s.Id, "Disposed", $"{d.No}: {DisposalMethods.First(m => m.Code == method).Label} on {on:dd/MM/yyyy} by {by}{(recipient is null ? "" : ", to " + recipient)}", token);
             await Audit(c, tx, s.Id, "disposal", d.No, "Complete", null, new { on, method, by, recipient, x.DataWiped, x.LicensesRemoved }, null, token);
+            await MailDisposal(c, tx, d.Id, "completed", s.Id);
         });
     }
 
@@ -208,6 +211,7 @@ public sealed partial class ItamStore
         }
         await Event(c, tx, a.Id, s.Id, "Sold", $"{no}: sold to {buyerName} for {Money(price)} on {on:dd/MM/yyyy}{(a.DeliveryId is null ? "" : "; custody closed by the sale (no receipt note)")}", token);
         await Audit(c, tx, s.Id, "sale", no, "Record", null, new { asset = a.No, buyer, price, on }, null, token);
+        await MailSaleTasks(c, tx, a.Id, no, s.Id);
         await tx.CommitAsync(token);
         return new { id, saleNo = no };
     }
@@ -253,6 +257,7 @@ public sealed partial class ItamStore
         await Exec(c, tx, "UPDATE itam_data.delivery SET owner_type_before=owner_type,owner_type=N'Resigned' WHERE employee_id=@e AND received_at_utc IS NULL AND owner_type<>N'Resigned'", token, ("@e", who));
         foreach (var o in open2) await Event(c, tx, o.A, s.Id, "Leaver", $"{no}: {name} resigned; {o.No} is Owner Type Resigned, to collect", token);
         await Audit(c, tx, s.Id, "clearance", no, "Mark resigned", null, new { employee = who, x.LastWorkingDay, assets = open2.Count }, null, token);
+        await MailClearance(c, tx, id, "resigned", s.Id);
         await tx.CommitAsync(token);
         return new { id, clearanceNo = no, assets = open2.Count };
     }
@@ -289,6 +294,7 @@ public sealed partial class ItamStore
         await Exec(c, tx, "UPDATE itam_data.clearance SET status=N'Completed',completed_by=@b,completed_at_utc=SYSUTCDATETIME(),completion_note=@n,disable_status=N'Waiting' WHERE clearance_id=@i", token,
             ("@b", s.Id), ("@n", note), ("@i", id));
         await Audit(c, tx, s.Id, "clearance", k.No, "Complete", null, new { note }, null, token);
+        await MailClearance(c, tx, k.Id, "completed", s.Id);
     });
 
     public Task CancelClearance(ItamUser user, int id, ItamCancelInput x, CancellationToken token) => ClearanceStep(user, id, token, async (c, tx, s, k) =>

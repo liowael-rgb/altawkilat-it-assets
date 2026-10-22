@@ -77,6 +77,7 @@ public sealed partial class ItamStore
         var on = x.DeliveredOn ?? today; if (on > today) throw new ArgumentException("The delivery date cannot be in the future.");
         var owner = OwnerTypes.Contains(x.OwnerType) ? x.OwnerType! : throw new ArgumentException("Choose the owner type (Personal, Department, Temporary or Other).");
         var (id, no) = await IssueDelivery(c, tx, s.Id, s.Name, a, x.EmployeeId ?? Guid.Empty, on, owner, x.ComputerName, Optional(x.Notes, "Notes", 1000), null, token);
+        await MailDelivery(c, tx, id, "delivered", s.Id);
         await tx.CommitAsync(token);
         return new { id, deliveryNo = no };
     }
@@ -190,6 +191,7 @@ public sealed partial class ItamStore
         }
         await Event(c, tx, d.AssetId, s.Id, "Received back", $"Receipt note {receipt}: {condition}, kept at {loc.Name}{(notes is null ? "" : ". " + notes)}", token);
         await Audit(c, tx, s.Id, "delivery", d.No, "Receipt", null, new { receipt, condition, location = x.LocationId, at }, null, token);
+        await MailDelivery(c, tx, d.Id, "receipt", s.Id); if (d.Type == "IP" || (d.Type == "PC" && d.Computer is not null)) await MailDelivery(c, tx, d.Id, "tasks", s.Id);
         await tx.CommitAsync(token);
         return new { receiptNo = receipt };
     }
@@ -214,8 +216,9 @@ public sealed partial class ItamStore
         var status = await Scalar(c, tx, "SELECT status FROM itam_data.asset WHERE asset_id=@a", token, ("@a", d.AssetId)) as string;
         await Event(c, tx, d.AssetId, s.Id, "Technical assessment", $"{no}: {RecommendationLabel(rec)}", token);
         // Dispose opens the disposal request (Pending disposal approval); the IT Manager decides it, and only its completion disposes.
-        if (rec == "Dispose" && status == "InStore") await DisposalFromAssessment(c, tx, d.AssetId, assessmentId, no, s.Id, token);
+        if (rec == "Dispose" && status == "InStore") await MailDisposal(c, tx, await DisposalFromAssessment(c, tx, d.AssetId, assessmentId, no, s.Id, token), "created", s.Id);
         await Audit(c, tx, s.Id, "assessment", no, "Add", null, new { rec, evidence = file is not null }, null, token);
+        await MailDelivery(c, tx, d.Id, "assessed", s.Id);
         await tx.CommitAsync(token);
         return new { assessmentNo = no };
     }

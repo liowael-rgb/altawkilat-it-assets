@@ -72,6 +72,7 @@ public sealed partial class ItamStore
             "VALUES(@n,@a,@s,@q,@f,@c,@d,@e,N'WaitingApproval',@b)", token, ("@n", orderNo), ("@a", a.Id), ("@s", x.SupplierId), ("@q", quote), ("@f", file), ("@c", cost), ("@d", details), ("@e", DateParam(expected)), ("@b", s.Id)));
         await Event(c, tx, a.Id, s.Id, "Maintenance order", $"{orderNo} created: {details} (quotation {quote}, {Money(cost)}); waiting for the IT Manager's approval", token);
         await Audit(c, tx, s.Id, "maintenance", orderNo, "Create", null, new { asset = no, x.SupplierId, quote, cost, expected }, null, token);
+        await MailMaintenance(c, tx, id, "created", s.Id);
         await tx.CommitAsync(token);
         return new { id, orderNo };
     }
@@ -95,6 +96,7 @@ public sealed partial class ItamStore
             ("@st", x.Approve ? "Approved" : "Rejected"), ("@b", s.Id), ("@r", reason), ("@i", id));
         await Event(c, tx, o.AssetId, s.Id, "Maintenance order", x.Approve ? $"{o.No} approved" : $"{o.No} rejected: {reason}", token);
         await Audit(c, tx, s.Id, "maintenance", o.No, x.Approve ? "Approve" : "Reject", null, new { reason }, null, token);
+        await MailMaintenance(c, tx, id, "decided", s.Id);
         await tx.CommitAsync(token);
     }
 
@@ -152,6 +154,7 @@ public sealed partial class ItamStore
         await Event(c, tx, o.AssetId, s.Id, "Maintenance order", $"{o.No} closed: {(outcome == "Repaired" ? "repaired" : "not repairable")}, {details} ({Money(cost)}{(invoiceNo is null ? "" : ", invoice " + invoiceNo)}); {(held ? "back with its holder (In Use)" : "In Store")}" +
             (outcome == "NotRepairable" ? ". Record a technical assessment for disposal." : ""), token);
         await Audit(c, tx, s.Id, "maintenance", o.No, "Close", null, new { on, outcome, cost, invoiceNo, location }, null, token);
+        await MailMaintenance(c, tx, id, "returned", s.Id);
         await tx.CommitAsync(token);
     }
 

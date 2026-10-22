@@ -75,6 +75,7 @@ public sealed partial class ItamStore
             "OUTPUT inserted.request_id VALUES(@n,@e,@b,@t,@a,@f,@ta,@d,@r,@dp,N'WaitingRequestApproval',@m)", token,
             ("@n", no), ("@e", who), ("@b", s.Id), ("@t", type), ("@a", type == "Replacement" ? x.ReplacedAssetId : null), ("@f", taFile), ("@ta", taNo), ("@d", description), ("@r", region), ("@dp", e.Dept), ("@m", e.Manager)));
         await Audit(c, tx, s.Id, "request", no, "Create", null, new { employee = who, type, x.ReplacedAssetId, taNo }, null, token);
+        await MailRequest(c, tx, id, "created", s.Id);
         await tx.CommitAsync(token);
         return new { id, requestNo = no };
     }
@@ -93,6 +94,7 @@ public sealed partial class ItamStore
         await Exec(c, tx, x.Approve ? "UPDATE itam_data.request SET status=N'InReview',approved_by=@b,approved_at_utc=SYSUTCDATETIME() WHERE request_id=@i"
             : "UPDATE itam_data.request SET status=N'Rejected',rejected_by=@b,reject_reason=@r WHERE request_id=@i", token, ("@b", s.Id), ("@r", reason), ("@i", id));
         await Audit(c, tx, s.Id, "request", r.No, x.Approve ? "Approve request" : "Reject request", null, new { reason }, null, token);
+        await MailRequest(c, tx, id, x.Approve ? "approved" : "rejected", s.Id);
         await tx.CommitAsync(token);
     }
 
@@ -110,6 +112,7 @@ public sealed partial class ItamStore
             var reason = Text(x.RejectReason, "Reason", 500);
             await Exec(c, tx, "UPDATE itam_data.request SET status=N'Rejected',rejected_by=@b,reject_reason=@r WHERE request_id=@i", token, ("@b", s.Id), ("@r", reason), ("@i", id));
             await Audit(c, tx, s.Id, "request", r.No, "Reject (IT)", null, new { reason }, null, token);
+            await MailRequest(c, tx, id, "rejected", s.Id);
             await tx.CommitAsync(token); return;
         }
         var source = x.Source is "Stock" or "NewDevice" or "Accessory" ? x.Source : throw new ArgumentException("Choose the source: from stock, new device or IT accessory.");
@@ -132,6 +135,7 @@ public sealed partial class ItamStore
         await Exec(c, tx, "UPDATE itam_data.request SET source=@s,status=@st,reserved_asset_id=@a,assigned_to=@t,reviewed_by=@b,reviewed_at_utc=SYSUTCDATETIME() WHERE request_id=@i", token,
             ("@s", source), ("@st", status), ("@a", reserved), ("@t", assigned), ("@b", s.Id), ("@i", id));
         await Audit(c, tx, s.Id, "request", r.No, "Source", null, new { source, reserved, assigned }, null, token);
+        if (status is "StockAssigned" or "PricingInRegion") await MailRequest(c, tx, id, status == "StockAssigned" ? "stock" : "pricing", s.Id);
         await tx.CommitAsync(token);
     }
 
@@ -170,6 +174,7 @@ public sealed partial class ItamStore
         await Exec(c, tx, "UPDATE itam_data.request SET status=N'WaitingCostApproval',supplier_id=@s,shop=@sh,quotation_file_id=COALESCE(@q,quotation_file_id),priced_by=@b,priced_at_utc=SYSUTCDATETIME() WHERE request_id=@i", token,
             ("@s", supplier), ("@sh", shop), ("@q", q), ("@b", s.Id), ("@i", id));
         await Audit(c, tx, s.Id, "request", r.No, "Cost table", null, new { supplier, shop, lines = lines.Count }, null, token);
+        await MailRequest(c, tx, id, r.Source == "Accessory" ? "cost-accessory" : "cost-new", s.Id);
         await tx.CommitAsync(token);
     }
 
@@ -187,6 +192,7 @@ public sealed partial class ItamStore
         await Exec(c, tx, x.Approve ? "UPDATE itam_data.request SET status=@st,cost_approved_by=@b,cost_approved_at_utc=SYSUTCDATETIME() WHERE request_id=@i"
             : "UPDATE itam_data.request SET status=@st,rejected_by=@b,reject_reason=@r WHERE request_id=@i", token, ("@st", next), ("@b", s.Id), ("@r", reason), ("@i", id));
         await Audit(c, tx, s.Id, "request", r.No, x.Approve ? "Approve cost" : "Reject cost", null, new { reason }, null, token);
+        await MailRequest(c, tx, id, x.Approve ? "cost-approved" : "cost-rejected", s.Id);
         await tx.CommitAsync(token);
     }
 
@@ -246,6 +252,7 @@ public sealed partial class ItamStore
         if (await Scalar(c, tx, "SELECT request_no FROM itam_data.request WHERE delivery_id=@d", token, ("@d", x.DeliveryId)) is string other) throw new ArgumentException($"{d.No} already fulfils {other}.");
         await Exec(c, tx, "UPDATE itam_data.request SET status=N'Fulfilled',delivery_id=@d,fulfilled_at_utc=SYSUTCDATETIME(),fulfilled_by=@b WHERE request_id=@i", token, ("@d", x.DeliveryId), ("@b", s.Id), ("@i", id));
         await Audit(c, tx, s.Id, "request", r.No, "Fulfilled", null, new { delivery = d.No }, null, token);
+        await MailRequest(c, tx, id, "fulfilled", s.Id);
         await tx.CommitAsync(token);
     }
 
@@ -451,6 +458,7 @@ public sealed partial class ItamStore
                 ("@r", $"{ExpiredReason} ({ApprovalDays} days, {(r.Status == "WaitingCostApproval" ? "cost approval" : "request approval")})."), ("@i", r.Id));
             await Audit(c, tx, Guid.Empty, "request", r.No, "Expired", null, new { r.Status, days = ApprovalDays }, "Not decided within the approval time", token);
         }
+        foreach (var r in due) await MailRequest(c, tx, r.Id, "expired", Guid.Empty);
         await tx.CommitAsync(token);
         return due.Count;
     }

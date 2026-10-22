@@ -17,6 +17,7 @@ public static class ItamServices
         var pdf = new ItamPdf(pdfFont, pdfLatinFont, pdfLatinBoldFont);
         services.AddScoped(sp => new ItamStore(() => connections(sp), sp.GetRequiredService<IItamSecrets>(), sp.GetService<TimeProvider>()) { Pdf = pdf, LabelBaseUrl = labelBaseUrl ?? "https://hub.altawkilat.com/itasm/a/" });
         services.AddHostedService<ItamRequestTimer>();
+        services.AddHostedService<ItamMailSender>();
         return services;
     }
 }
@@ -94,6 +95,16 @@ public static class ItamApi
         api.MapGet("/requests/{id:int}/files/{which}", (HttpContext ctx, ItamStore store, int id, string which) => Guard(ctx, async u => { var f = await store.RequestFile(u, id, which, ctx.RequestAborted); return Results.File(f.Content, f.MediaType, f.FileName); }));
         api.MapGet("/movements", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Movements(u, ctx.RequestAborted))));
         api.MapGet("/dashboard", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Dashboard(u, ctx.RequestAborted))));
+        api.MapGet("/mail", (HttpContext ctx, ItamStore store, string? status) => Guard(ctx, async u => Results.Ok(await store.MailOutbox(u, status, ctx.RequestAborted))));
+        api.MapGet("/mail/{id:long}/html", (HttpContext ctx, ItamStore store, long id) => Guard(ctx, async u =>
+        {
+            var html = await store.MailHtml(u, id, ctx.RequestAborted);
+            // The email as it was sent, in a sandboxed frame of the outbox page: its own inline styles, no scripts, no forms.
+            ctx.Response.Headers["Content-Security-Policy"] = "sandbox allow-popups allow-popups-to-escape-sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'self'";
+            return Results.Content(html, "text/html; charset=utf-8");
+        }));
+        api.MapPost("/mail/{id:long}/retry", (HttpContext ctx, ItamStore store, long id) => Guard(ctx, async u => { await store.RetryMail(u, id, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+        api.MapPost("/mail/run-reminders", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(new { queued = await store.RunMailJobsNow(u, ctx.RequestAborted) })));
         api.MapGet("/reports", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Reports(u, ctx.RequestAborted))));
         api.MapGet("/reports/{key}", (HttpContext ctx, ItamStore store, string key, DateOnly? from, DateOnly? to, string? region) => Guard(ctx, async u => Results.Ok(await store.Report(u, key, from, to, region, ctx.RequestAborted))));
         api.MapGet("/reports/{key}/excel", (HttpContext ctx, ItamStore store, string key, DateOnly? from, DateOnly? to, string? region) => Guard(ctx, async u => { var f = await store.ReportExcel(u, key, from, to, region, ctx.RequestAborted); return Results.File(f.Content, f.MediaType, f.FileName); }));

@@ -665,6 +665,39 @@ try
         && JsonSerializer.SerializeToElement(await store.Alerts(U(10), default)).GetProperty("total").GetInt32() >= 0, "Alerts: the IT Manager sees the disposal to decide, not the person who asked; the menu shows the same total");
     await store.CancelDisposal(U(1), alDs, new("Alert check"), default);
 
+    // ---- Emails (IT-EM templates, CMS layout): outbox in the action's transaction, once per event; sending after commit ---------------
+    var em31 = await Scalar("SELECT TOP 1 to_list+N'|'+subject FROM itam_data.mail_outbox WHERE template=N'IT-EM-31' ORDER BY mail_id") as string;
+    var body31 = await Scalar("SELECT TOP 1 body_html FROM itam_data.mail_outbox WHERE template=N'IT-EM-31' ORDER BY mail_id") as string;
+    Check(em31 is not null && em31.StartsWith("u12@example.invalid; u3@example.invalid|[IT Assets] Device request approval by the manager - PR-") && body31!.Contains("Dear Colleagues,") && body31.Contains("cid:logo")
+        && body31.Contains("IT Assets Management System") && !body31.Contains("<script"), "A device request writes IT-EM-31 to the direct manager and the manager's backup on leave, in the CMS layout");
+    foreach (var t in new[] { "IT-EM-18", "IT-EM-26", "IT-EM-19", "IT-EM-20", "IT-EM-32", "IT-EM-09", "IT-EM-10", "IT-EM-41", "IT-EM-42", "IT-EM-44", "IT-EM-11", "IT-EM-64", "IT-EM-01", "IT-EM-02", "IT-EM-13" })
+        Check(Convert.ToInt32(await Scalar($"SELECT COUNT(*) FROM itam_data.mail_outbox WHERE template=N'{t}'")) > 0, $"{t} is written by its action");
+    Check(Convert.ToInt32(await Scalar("SELECT COUNT(*) FROM (SELECT event_key FROM itam_data.mail_outbox GROUP BY event_key HAVING COUNT(*)>1) x")) == 0, "Each event writes its email once");
+    var queuedBefore = Convert.ToInt32(await Scalar("SELECT COUNT(*) FROM itam_data.mail_outbox WHERE status=N'Queued'"));
+    var mailer = new TestMailer();
+    var sentNow = 0; for (var i = 0; i < 100 && await Scalar("SELECT COUNT(*) FROM itam_data.mail_outbox WHERE status=N'Queued'") is int n && n > 0; i++) sentNow += await store.SendQueuedMail(mailer, "it-test@example.invalid", [1, 2, 3], default);
+    Check(sentNow == queuedBefore && mailer.Sent.All(m => m.To.SequenceEqual(new[] { "it-test@example.invalid" }) && m.Cc.Count == 0 && m.Html.Contains("TEST: this email was for") && m.Images.Count == 1)
+        && Convert.ToInt32(await Scalar("SELECT COUNT(*) FROM itam_data.mail_outbox WHERE status=N'Sent'")) == sentNow, "Sent after commit through the mail service; the test mailbox receives every email with the original recipients shown");
+    var leaveFor = await store.MarkResigned(U(5), new(G(10), null, null), default);
+    var failId = (long)(await Scalar("SELECT MAX(mail_id) FROM itam_data.mail_outbox WHERE status=N'Queued'"))!;
+    for (var i = 0; i < 5; i++) await store.SendQueuedMail(new FailingMailer(), null, [], default);
+    Check(await Scalar($"SELECT status+N'|'+CAST(attempts AS nvarchar(5)) FROM itam_data.mail_outbox WHERE mail_id={failId}") as string == "Failed|5"
+        && Convert.ToInt32(await Scalar("SELECT COUNT(*) FROM itam_data.mail_outbox WHERE template=N'IT-EM-56' AND event_key LIKE N'%Failed%'")) == 0, "A mail service failure is retried 5 times, then Failed on the outbox page, never emailed");
+    await store.RetryMail(U(2), failId, default);
+    Check(await Scalar($"SELECT status FROM itam_data.mail_outbox WHERE mail_id={failId}") as string == "Queued" && await Throws<ItamAccessDenied>(() => store.MailOutbox(U(1), null, default)), "The IT Manager sends a failed email again; only the IT Manager sees the outbox");
+    await store.CancelClearance(U(5), JsonSerializer.SerializeToElement(leaveFor).GetProperty("id").GetInt32(), new("Check"), default);
+    await Exec($"UPDATE itam_access.employee SET email=NULL WHERE employee_id='{G(3)}'");
+    var noMailMon = JsonSerializer.SerializeToElement(await store.Register(U(1), A("MON", 1, 2, "MAIL-MON-1"), default)).GetProperty("id").GetInt32();
+    await store.CreateMaintenanceOrder(U(2), new((string)(await Scalar($"SELECT asset_no FROM itam_data.asset WHERE asset_id={noMailMon}"))!, 1, "Q-MAIL", 10m, "Check", DateOnly.FromDateTime(DateTime.UtcNow.AddDays(5))), scan, default);
+    Check(Convert.ToInt32(await Scalar("SELECT COUNT(*) FROM itam_data.mail_outbox WHERE template=N'IT-EM-09' AND subject LIKE N'%Q-MAIL%'")) == 0
+        && await Scalar("SELECT TOP 1 to_list FROM itam_data.mail_outbox WHERE template=N'IT-EM-09' ORDER BY mail_id DESC") is string to09 && !to09.Contains("u2@") && !to09.Contains("u3@"),
+        "An approval email is not sent to the person who acted; a person without an email address is left out");
+    var sunday = DateTime.UtcNow.Date; while (sunday.DayOfWeek != DayOfWeek.Sunday) sunday = sunday.AddDays(1);
+    var weekly = await store.RunMailJobs(sunday.AddHours(6), default);
+    Check(Convert.ToInt32(await Scalar("SELECT COUNT(*) FROM itam_data.mail_outbox WHERE template=N'IT-EM-12'")) > 0 && await store.RunMailJobs(sunday.AddHours(7), default) == 0,
+        "Weekly summary to the IT Manager (IT-EM-12) and the reminders are written once per period");
+    Console.WriteLine("PASS emails");
+
     // ---- My Backup ----------------------------------------------------------------------------------------------------------------
     var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(3));
     await store.SetBackup(U(1), new(null, G(3), today.AddDays(1), today.AddDays(5), "Annual leave"), default);
@@ -697,4 +730,14 @@ sealed class TestComputers(ItamAdComputer[] list) : IItamComputerDirectory
 {
     public string ComparedOus => "OU=Computers (test)";
     public Task<IReadOnlyList<ItamAdComputer>> Computers(CancellationToken token) => Task.FromResult<IReadOnlyList<ItamAdComputer>>(list);
+}
+
+sealed class TestMailer : IItamMailer
+{
+    public List<ItamMailMessage> Sent { get; } = [];
+    public Task Send(ItamMailMessage message, CancellationToken token) { Sent.Add(message); return Task.CompletedTask; }
+}
+sealed class FailingMailer : IItamMailer
+{
+    public Task Send(ItamMailMessage message, CancellationToken token) => throw new InvalidOperationException("SMTP not reachable (test)");
 }

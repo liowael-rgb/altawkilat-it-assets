@@ -149,6 +149,7 @@ public sealed partial class ItamStore
             await Event(c, tx, l.Id, s.Id, kind == "Warehouse" ? "Warehouse transfer" : "Gate pass", kind == "Warehouse" ? $"{no} submitted (pass {passNo}): reserved for the transfer" : $"{no}: {purpose}, waiting for approval", token);
         }
         await Audit(c, tx, s.Id, "movement", no, "Create", null, new { kind, purpose, assets = lines.Select(l => l.No), from = from.Id, to, receiver, exit, expected }, null, token);
+        await MailMovement(c, tx, mid, "created", s.Id);
         await tx.CommitAsync(token);
         return new { id = mid, movementNo = no, passNo };
     }
@@ -170,6 +171,7 @@ public sealed partial class ItamStore
             ("@st", x.Approve ? "Approved" : "Rejected"), ("@b", s.Id), ("@r", reason), ("@v", DateParam(valid)), ("@i", id));
         if (!x.Approve) await Exec(c, tx, "UPDATE itam_data.movement_line SET state=N'Cancelled' WHERE movement_id=@i", token, ("@i", id));
         await Audit(c, tx, s.Id, "movement", m.No, x.Approve ? "Approve" : "Reject", null, new { reason, valid }, null, token);
+        await MailMovement(c, tx, id, x.Approve ? "approved" : "rejected", s.Id);
         await tx.CommitAsync(token);
     }
 
@@ -208,6 +210,7 @@ public sealed partial class ItamStore
         await Exec(c, tx, $"UPDATE itam_data.movement SET status=@st,dispatched_at_utc=COALESCE(dispatched_at_utc,SYSUTCDATETIME()),dispatched_by=COALESCE(dispatched_by,@b){(status == "Completed" ? ",completed_at_utc=SYSUTCDATETIME()" : "")} WHERE movement_id=@i", token,
             ("@st", status), ("@b", s.Id), ("@i", id));
         await Audit(c, tx, s.Id, "movement", m.No, "Dispatch", null, new { assets = pick.Count, left }, null, token);
+        await MailMovement(c, tx, id, "dispatched", s.Id);
         await tx.CommitAsync(token);
     }
 
@@ -238,6 +241,7 @@ public sealed partial class ItamStore
         }
         await Recompute(c, tx, id, token);
         await Audit(c, tx, s.Id, "movement", m.No, "Receipt", null, items.Select(i => new { i.LineId, i.Outcome }), null, token);
+        await MailMovement(c, tx, id, "received", s.Id);
         await tx.CommitAsync(token);
     }
 
@@ -317,6 +321,7 @@ public sealed partial class ItamStore
         await Event(c, tx, l.Asset, s.Id, "Transfer discrepancy", $"{m.No}: resolved ({res}): {note}", token);
         await Recompute(c, tx, id, token);
         await Audit(c, tx, s.Id, "movement", m.No, "Resolve", null, new { x.LineId, res }, null, token);
+        await MailMovement(c, tx, id, "resolved", s.Id);
         await tx.CommitAsync(token);
     }
 
@@ -359,6 +364,7 @@ public sealed partial class ItamStore
         }
         else throw new ArgumentException($"{m.No} is {MovementStatusLabel(m.Status)}: after dispatch the movement stays open until each asset is received or resolved.");
         await Audit(c, tx, s.Id, "movement", m.No, "Cancel", null, new { reason }, null, token);
+        await MailMovement(c, tx, id, "cancelled", s.Id);
         await tx.CommitAsync(token);
     }
 
@@ -375,6 +381,7 @@ public sealed partial class ItamStore
             await Exec(c, tx, "UPDATE itam_data.movement SET status=N'Expired' WHERE movement_id=@i", token, ("@i", d.Id));
             await Audit(c, tx, Guid.Empty, "movement", d.No, "Expired", null, null, "Not dispatched within the validity", token);
         }
+        foreach (var d in due) await MailMovement(c, tx, d.Id, "expired", Guid.Empty);
         await tx.CommitAsync(token);
         return due.Count;
     }

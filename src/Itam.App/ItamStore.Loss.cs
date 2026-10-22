@@ -77,6 +77,7 @@ public sealed partial class ItamStore
         var what = Text(x.Circumstances, "What happened", 2000);
         long? file = evidence is null ? null : await SaveFile(c, tx, evidence, CheckFile(evidence, pdfOnly: false), s.Id, token);
         var (id, no) = await NewLossCase(c, tx, a, s.Id, on, last, what, file, null, token);
+        await MailLoss(c, tx, id, "reported", s.Id);
         await tx.CommitAsync(token);
         return new { id, caseNo = no };
     }
@@ -123,6 +124,7 @@ public sealed partial class ItamStore
         await Exec(c, tx, "UPDATE itam_data.loss_case SET investigator_id=@v,assigned_by=@b,assigned_at_utc=SYSUTCDATETIME(),status=N'UnderInvestigation' WHERE case_id=@i", token, ("@v", who), ("@b", s.Id), ("@i", id));
         await Event(c, tx, l.AssetId, s.Id, "Loss investigation", $"{l.No}: investigator {name}", token);
         await Audit(c, tx, s.Id, "loss", l.No, "Assign investigator", null, new { investigator = who }, null, token);
+        await MailLoss(c, tx, l.Id, "assigned", s.Id);
     });
 
     public Task LossSecurity(ItamUser user, int id, ItamLossText x, CancellationToken token) => LossStep(user, id, token, async (c, tx, s, l) =>
@@ -149,6 +151,7 @@ public sealed partial class ItamStore
                 ("@f", findings), ("@r", rec), ("@fi", f), ("@b", s.Id), ("@i", id));
             await Event(c, tx, l.AssetId, s.Id, "Loss investigation", $"{l.No}: findings recorded; awaiting decision (the recommendation does not clear the employee)", token);
             await Audit(c, tx, s.Id, "loss", l.No, "Findings", null, new { rec }, null, token);
+            await MailLoss(c, tx, l.Id, "findings", s.Id);
         });
     }
 
@@ -172,6 +175,7 @@ public sealed partial class ItamStore
             await Event(c, tx, l.AssetId, s.Id, "Loss decision", decision == "NotLiable" ? $"{l.No}: not liable; responsibility cleared and the custody closed by the decision (no receipt note)"
                 : $"{l.No}: settlement of {Money(amount!.Value)} required; responsibility pending the settlement", token);
             await Audit(c, tx, s.Id, "loss", l.No, "Decision", null, new { decision, amount, note }, null, token);
+            await MailLoss(c, tx, l.Id, "decided", s.Id);
         });
     }
 
@@ -191,6 +195,7 @@ public sealed partial class ItamStore
             if (l.DeliveryId is int dl) await CloseCustody(c, tx, dl, s.Id, "LossDecision", $"Closed by loss decision {l.No} after the settlement", token);
             await Event(c, tx, l.AssetId, s.Id, "Loss decision", $"{l.No}: settlement recorded; responsibility cleared and the custody closed (no receipt note)", token);
             await Audit(c, tx, s.Id, "loss", l.No, "Settlement", null, new { note }, null, token);
+            await MailLoss(c, tx, l.Id, "settled", s.Id);
         });
     }
 
@@ -234,6 +239,7 @@ public sealed partial class ItamStore
             ("@o", DateParam(on)), ("@b", s.Id), ("@n", $"{condition}: {note}"), ("@l", x.LocationId), ("@i", id));
         await Event(c, tx, l.AssetId, s.Id, "Lost asset recovered", $"{l.No}: received by IT ({condition}); still Lost until the review", token);
         await Audit(c, tx, s.Id, "loss", l.No, "Recovery", null, new { on, condition, x.LocationId }, null, token);
+        await MailLoss(c, tx, l.Id, "recovered", s.Id);
     });
 
     public Task ReviewRecovery(ItamUser user, int id, ItamLossText x, CancellationToken token) => LossStep(user, id, token, async (c, tx, s, l) =>

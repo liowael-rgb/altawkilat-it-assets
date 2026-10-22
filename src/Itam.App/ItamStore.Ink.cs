@@ -82,6 +82,7 @@ public sealed partial class ItamStore
             "OUTPUT inserted.request_id VALUES(@n,@p,@ns,@nm,@nt,@el,@e,@b,@t,@q,@x,@r,N'Submitted',NULL)", token,
             ("@n", no), ("@p", printerId), ("@ns", newSerial), ("@nm", newModelId), ("@nt", newModel), ("@el", location), ("@e", who), ("@b", s.Id), ("@t", toner), ("@q", qty), ("@x", Optional(x.Note, "Note", 500)), ("@r", region)));
         await Audit(c, tx, s.Id, "ink", no, "Request", null, new { printer = printerNo, newSerial, newModelId, newModel, location, toner, qty, employee = who }, null, token);
+        await MailInk(c, tx, id, "created", s.Id);
         await tx.CommitAsync(token);
         return new { id, requestNo = no };
     }
@@ -107,6 +108,7 @@ public sealed partial class ItamStore
         if (x.ApproverId == r.Employee) throw new ArgumentException("The employee cannot approve their own request.");
         await Exec(c, tx, "UPDATE itam_data.ink_request SET status=N'WaitingApproval',manager_id=@m,sent_by=@b,sent_at_utc=SYSUTCDATETIME() WHERE request_id=@i", token, ("@m", x.ApproverId), ("@b", s.Id), ("@i", requestId));
         await Audit(c, tx, s.Id, "ink", r.No, "Send for approval", null, new { approver = a.Name }, null, token);
+        await MailInk(c, tx, requestId, "sent", s.Id);
         await tx.CommitAsync(token);
     }
 
@@ -177,6 +179,7 @@ public sealed partial class ItamStore
         await Exec(c, tx, "UPDATE itam_data.ink_request SET status=@s,decided_by=@b,decided_at_utc=SYSUTCDATETIME(),reject_reason=@r WHERE request_id=@i", token,
             ("@s", x.Approve ? "Approved" : "Rejected"), ("@b", s.Id), ("@r", reason), ("@i", requestId));
         await Audit(c, tx, s.Id, "ink", r.No, x.Approve ? "Approve" : "Reject", null, new { reason }, null, token);
+        await MailInk(c, tx, requestId, "decided", s.Id);
         await tx.CommitAsync(token);
     }
 

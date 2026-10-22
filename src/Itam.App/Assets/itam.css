@@ -539,3 +539,5 @@
 .x .x-alerts.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
 .x .x-alerts.two a.x-alert{padding:8px 12px}.x .x-alerts.two .x-alert-count{min-width:36px;height:36px;font-size:16px}
 .x tr.x-total td{font-weight:800;color:var(--title);background:var(--thbg)}
+.x .x-mail-frame{display:block;width:100%;border:1px solid var(--line);border-radius:10px;background:#eef1f5;margin-top:10px}
+.x .x-mail-meta{display:grid;grid-template-columns:110px minmax(0,1fr);gap:4px 12px;font-size:13px;margin:4px 0 8px}.x .x-mail-meta b{color:var(--title)}

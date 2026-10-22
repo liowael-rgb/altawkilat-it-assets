@@ -437,3 +437,30 @@ Emails and the weekly summary (IT-EM-12, IT-EM-61) will use the same list when t
   reports only for that module's roles), opens on screen with search and sorting (total rows stay at the bottom), and
   exports to Excel (.xlsx: heading row frozen, filters, numbers as numbers). Opening a report is in the audit log.
 - Still in step 6: the emails (IT-EM templates) and the SharePoint migration (on hold until the owner says).
+
+## Step 6b: emails — built 22 October 2026 (local demo; no SMTP)
+
+- **Layout like CMS** (owner, 22 October 2026): centred white card, embedded logo (cid:logo), "IT Assets Management System"
+  underlined in navy, the automatic-notification line, "Dear ..." in red, the action sentence, a two-column details table
+  with shaded labels and the record link, sections with red headings, "Best Regards", the person who acted and "ALTAWKILAT
+  IT Team", and a footer with the IT-EM number. Values are HTML-encoded. Triggers, recipients and subjects follow the owner's
+  notification manifest (IT Assets\Email Templates\notification_manifest.json); subject "[IT Assets] <name> - <record>".
+- **Outbox**: each email is written in the same transaction as the action (once per event key), then a background sender
+  sends it after commit through the mail service (interface `IItamMailer`; SMTP comes with the production set-up). Without
+  a mail service nothing leaves the server and the emails stay Queued. Failures are retried 5 times, then Failed (never
+  emailed); the IT Manager sends them again from the **Email outbox** page (Administration), which lists every email with
+  its recipients and status and shows it exactly as sent. A **test mailbox** setting redirects every email to one address
+  with an amber notice naming the real recipients (as CMS during its test phase).
+- **Recipients**: approvers and their backups on leave; the person who acted is not asked to act on their own record;
+  To/CC de-duplicated; a person without an email address is left out; an email with nobody to send to is kept as "No
+  recipient" and the IT Manager receives IT-EM-56.
+- **Events**: 01 delivery note to sign (paper), 02 receipt, 09/51/53 maintenance, 10/47/48/50 disposal, 11 leaver collection,
+  13/23 AD and CUCM clean-up (return or sale), 15/18/26/27/28/31/54/55/58 requests, 19/20/57/32/33/34/35/36/38 movements,
+  29/30/59 ink, 41-46 loss (no investigation details in emails), 62 technical assessment, 64 disable the AD user, 25 backup.
+- **Reminders and weekly** (hourly job, each once per period): 04 signed copy waiting 3 days (issuer, every 3 days), 05 overdue
+  7 days (IT Manager, weekly), 21 exit pass return overdue, 37 transfer receipt overdue, 49 disposal not completed in 14 days,
+  52 maintenance overdue at the supplier, 63 loss case without action for 7 days, 11 collection reminder every 3 days, 61
+  daily reminder of pending decisions, 12 weekly summary to the IT Manager and 24 weekly AD comparison report (Sunday 07:00).
+  "Run reminders now" on the outbox page runs them on demand.
+- Not sent (paper signing chosen): 03, 06, 07 (electronic acceptance); 60 (delegation returned) not built. Reminder timings
+  above are defaults to confirm with the owner.
