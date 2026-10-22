@@ -226,3 +226,12 @@ IT Assets reads the employee details the shared platform's VTMS directory import
 | Account, name, email, enabled | `sAMAccountName`, `displayName`, `mail` / `userPrincipalName`, `userAccountControl` |
 
 The national ID (`extensionAttribute6`) is not read: IT Assets does not need it.
+
+### Documents: logo, black-and-white printing, Calibri (owner, 22 October 2026)
+
+Every PDF (delivery, receipt and assessment notes, labels, PO report, toner order, ink request, payment cover memo) has
+the company logo and uses grayscale only (black text, gray rules, light-gray section bands) for black-and-white printers.
+English text is in Calibri; Arabic stays in Arial, because Calibri has no Arabic letters. Each PDF embeds only the letters
+it uses, so a one-page note is about 90 KB instead of 575 KB.
+Deployment: the server needs `calibri.ttf` (it comes with Microsoft Office, not always with Windows Server); without it the
+English text falls back to Arial.

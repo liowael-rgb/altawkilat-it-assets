@@ -12,9 +12,9 @@ namespace Itam.App;
 public static class ItamServices
 {
     /// <summary>Registers the store. The host supplies the database connection, IItamSession, IItamSecrets and the PDF font.</summary>
-    public static IServiceCollection AddItam(this IServiceCollection services, Func<IServiceProvider, DbConnection> connections, byte[] pdfFont, string? labelBaseUrl = null)
+    public static IServiceCollection AddItam(this IServiceCollection services, Func<IServiceProvider, DbConnection> connections, byte[] pdfFont, string? labelBaseUrl = null, byte[]? pdfLatinFont = null)
     {
-        var pdf = new ItamPdf(pdfFont);
+        var pdf = new ItamPdf(pdfFont, pdfLatinFont);
         services.AddScoped(sp => new ItamStore(() => connections(sp), sp.GetRequiredService<IItamSecrets>(), sp.GetService<TimeProvider>()) { Pdf = pdf, LabelBaseUrl = labelBaseUrl ?? "https://hub.altawkilat.com/itasm/a/" });
         return services;
     }

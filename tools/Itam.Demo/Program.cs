@@ -13,11 +13,12 @@ await Exec(master, reset ? $"IF DB_ID(N'{Database}') IS NOT NULL BEGIN ALTER DAT
 await Exec(master, $"IF DB_ID(N'{Database}') IS NULL BEGIN CREATE DATABASE [{Database}]; ALTER DATABASE [{Database}] SET COMPATIBILITY_LEVEL=120; END");
 await using (var c = new SqlConnection(cs)) Console.WriteLine($"IT Assets migrations applied now: {await ItamSchemaInstaller.Apply(c, Database)}");
 var font = File.ReadAllBytes(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "arial.ttf"));
+var calibri = File.ReadAllBytes(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "calibri.ttf"));
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls(BaseUrl);
 builder.Services.AddAntiforgery(o => { o.HeaderName = "X-CSRF-TOKEN"; o.Cookie.HttpOnly = true; o.Cookie.SameSite = SameSiteMode.Strict; o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest; });
-builder.Services.AddItam(_ => new SqlConnection(cs), font, BaseUrl + "/a/");
+builder.Services.AddItam(_ => new SqlConnection(cs), font, BaseUrl + "/a/", calibri);
 builder.Services.AddSingleton<IItamSecrets>(sp => new DemoSecrets(sp.GetRequiredService<IDataProtectionProvider>().CreateProtector("Itam.Keys.v1")));
 builder.Services.AddScoped<IItamSession, DemoSession>();
 var app = builder.Build();
@@ -25,7 +26,7 @@ var app = builder.Build();
 if (await Scalar(cs, "SELECT COUNT(*) FROM itam_access.employee") is 0)
 {
     using var scope = app.Services.CreateScope();
-    await DemoSeed.Run(cs, scope.ServiceProvider.GetRequiredService<ItamStore>(), new ItamPdf(font));
+    await DemoSeed.Run(cs, scope.ServiceProvider.GetRequiredService<ItamStore>(), new ItamPdf(font, calibri));
 }
 
 // Demo badge on every page: who is signed in, and a link back to the chooser (in the approved design).

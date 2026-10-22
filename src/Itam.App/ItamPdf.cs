@@ -4,60 +4,129 @@ using System.Text;
 
 namespace Itam.App;
 
-/// <summary>Writes bilingual A4 pages (English left, Arabic right): embeds a TrueType font with Arabic presentation forms
-/// (for example Windows Arial), joins Arabic letters and writes right-to-left text in visual order. Used for the PO
-/// Delivery Report now and the delivery, receipt and assessment notes later.</summary>
+/// <summary>Writes bilingual A4 pages (English left, Arabic right): English in the Latin font (Calibri), Arabic in a font
+/// with Arabic presentation forms (Windows Arial); joins Arabic letters and writes right-to-left text in visual order. Each
+/// document embeds only the letters it uses (font subset).</summary>
 public sealed class ItamPdf
 {
-    readonly byte[] font; readonly int unitsPerEm; readonly ushort[] advance; readonly Dictionary<int, ushort> cmap = [];
-    readonly string fontName;
-
-    public ItamPdf(byte[] ttf, string fontName = "Arial")
+    /// <summary>One TrueType font: glyph widths and the Unicode character map.</summary>
+    sealed class Face
     {
-        font = ttf; this.fontName = new string(fontName.Where(char.IsLetterOrDigit).ToArray());
-        var tables = new Dictionary<string, (int Offset, int Length)>();
-        int count = U16(4);
-        for (var i = 0; i < count; i++) { var p = 12 + i * 16; tables[Encoding.ASCII.GetString(ttf, p, 4)] = ((int)U32(p + 8), (int)U32(p + 12)); }
-        unitsPerEm = U16(tables["head"].Offset + 18);
-        int numGlyphs = U16(tables["maxp"].Offset + 4), metrics = U16(tables["hhea"].Offset + 34);
-        advance = new ushort[numGlyphs];
-        var hmtx = tables["hmtx"].Offset; ushort last = 0;
-        for (var g = 0; g < numGlyphs; g++) { if (g < metrics) last = (ushort)U16(hmtx + g * 4); advance[g] = last; }
-        var cm = tables["cmap"].Offset; int subtables = U16(cm + 2); int best = -1, bestFormat = 0;
-        for (var i = 0; i < subtables; i++)
+        public readonly byte[] Data; public readonly string Name; public readonly int UnitsPerEm; public readonly ushort[] Advance;
+        readonly Dictionary<int, ushort> cmap = [];
+        public Face(byte[] ttf, string name)
         {
-            int platform = U16(cm + 4 + i * 8), encoding = U16(cm + 6 + i * 8); var offset = cm + (int)U32(cm + 8 + i * 8); int format = U16(offset);
-            if (platform == 3 && (encoding == 10 && format == 12 || encoding == 1 && format == 4 && bestFormat != 12)) { best = offset; bestFormat = format; }
-        }
-        if (best < 0) throw new InvalidOperationException("The PDF font has no Unicode character map.");
-        if (bestFormat == 4)
-        {
-            int segs = U16(best + 6) / 2; int ends = best + 14, starts = ends + segs * 2 + 2, deltas = starts + segs * 2, ranges = deltas + segs * 2;
-            for (var s = 0; s < segs; s++)
+            Data = ttf; Name = new string(name.Where(char.IsLetterOrDigit).ToArray());
+            var tables = Tables(ttf);
+            UnitsPerEm = U16(ttf, tables["head"].Offset + 18);
+            int numGlyphs = U16(ttf, tables["maxp"].Offset + 4), metrics = U16(ttf, tables["hhea"].Offset + 34);
+            Advance = new ushort[numGlyphs];
+            var hmtx = tables["hmtx"].Offset; ushort last = 0;
+            for (var g = 0; g < numGlyphs; g++) { if (g < metrics) last = (ushort)U16(ttf, hmtx + g * 4); Advance[g] = last; }
+            var cm = tables["cmap"].Offset; int subtables = U16(ttf, cm + 2); int best = -1, bestFormat = 0;
+            for (var i = 0; i < subtables; i++)
             {
-                int end = U16(ends + s * 2), start = U16(starts + s * 2), delta = (short)U16(deltas + s * 2), range = U16(ranges + s * 2);
-                for (var ch = start; ch <= end && ch != 0xFFFF; ch++)
+                int platform = U16(ttf, cm + 4 + i * 8), encoding = U16(ttf, cm + 6 + i * 8); var offset = cm + (int)U32(ttf, cm + 8 + i * 8); int format = U16(ttf, offset);
+                if (platform == 3 && (encoding == 10 && format == 12 || encoding == 1 && format == 4 && bestFormat != 12)) { best = offset; bestFormat = format; }
+            }
+            if (best < 0) throw new InvalidOperationException("The PDF font has no Unicode character map.");
+            if (bestFormat == 4)
+            {
+                int segs = U16(ttf, best + 6) / 2; int ends = best + 14, starts = ends + segs * 2 + 2, deltas = starts + segs * 2, ranges = deltas + segs * 2;
+                for (var s = 0; s < segs; s++)
                 {
-                    int g = range == 0 ? (ch + delta) & 0xFFFF : U16(ranges + s * 2 + range + (ch - start) * 2);
-                    if (range != 0 && g != 0) g = (g + delta) & 0xFFFF;
-                    if (g != 0) cmap[ch] = (ushort)g;
+                    int end = U16(ttf, ends + s * 2), start = U16(ttf, starts + s * 2), delta = (short)U16(ttf, deltas + s * 2), range = U16(ttf, ranges + s * 2);
+                    for (var ch = start; ch <= end && ch != 0xFFFF; ch++)
+                    {
+                        int g = range == 0 ? (ch + delta) & 0xFFFF : U16(ttf, ranges + s * 2 + range + (ch - start) * 2);
+                        if (range != 0 && g != 0) g = (g + delta) & 0xFFFF;
+                        if (g != 0) cmap[ch] = (ushort)g;
+                    }
+                }
+            }
+            else
+            {
+                var groups = U32(ttf, best + 12);
+                for (var i = 0u; i < groups; i++)
+                {
+                    var p = best + 16 + (int)i * 12; uint start = U32(ttf, p), end = U32(ttf, p + 4), glyph = U32(ttf, p + 8);
+                    for (var ch = start; ch <= end && ch < 0x110000; ch++) cmap[(int)ch] = (ushort)(glyph + ch - start);
                 }
             }
         }
-        else
+        public bool Has(int ch) => cmap.ContainsKey(ch);
+        public ushort Glyph(int ch) => cmap.TryGetValue(ch, out var g) ? g : cmap.TryGetValue('?', out var q) ? q : (ushort)0;
+
+        /// <summary>A copy of the font that keeps only the used glyphs (and the parts of composite glyphs); glyph numbers stay
+        /// the same, so the PDF text needs no change.</summary>
+        public byte[] Subset(IEnumerable<ushort> used)
         {
-            var groups = U32(best + 12);
-            for (var i = 0u; i < groups; i++)
+            var t = Tables(Data); var head = t["head"].Offset; var longLoca = U16(Data, head + 50) == 1;
+            int numGlyphs = U16(Data, t["maxp"].Offset + 4); var loca = t["loca"].Offset; var glyf = t["glyf"].Offset;
+            int Off(int g) => longLoca ? (int)U32(Data, loca + g * 4) : U16(Data, loca + g * 2) * 2;
+            var keep = new HashSet<int>(); var todo = new Stack<int>(used.Select(g => (int)g).Append(0));
+            while (todo.Count > 0)
             {
-                var p = best + 16 + (int)i * 12; uint start = U32(p), end = U32(p + 4), glyph = U32(p + 8);
-                for (var ch = start; ch <= end && ch < 0x110000; ch++) cmap[(int)ch] = (ushort)(glyph + ch - start);
+                var g = todo.Pop(); if (g >= numGlyphs || !keep.Add(g)) continue;
+                int start = Off(g), end = Off(g + 1); if (end - start < 10 || (short)U16(Data, glyf + start) >= 0) continue;
+                for (var p = glyf + start + 10; ;)
+                {
+                    int flags = U16(Data, p), component = U16(Data, p + 2); todo.Push(component);
+                    p += 4 + ((flags & 1) != 0 ? 4 : 2) + ((flags & 8) != 0 ? 2 : (flags & 0x40) != 0 ? 4 : (flags & 0x80) != 0 ? 8 : 0);
+                    if ((flags & 0x20) == 0) break;
+                }
             }
+            using var newGlyf = new MemoryStream(); var newLoca = new byte[(numGlyphs + 1) * 4];
+            for (var g = 0; g < numGlyphs; g++)
+            {
+                W32(newLoca, g * 4, (uint)newGlyf.Position);
+                if (!keep.Contains(g)) continue;
+                int start = Off(g), end = Off(g + 1); newGlyf.Write(Data, glyf + start, end - start);
+                while (newGlyf.Position % 4 != 0) newGlyf.WriteByte(0);
+            }
+            W32(newLoca, numGlyphs * 4, (uint)newGlyf.Position);
+            var headCopy = Data.AsSpan(head, t["head"].Length).ToArray(); W32(headCopy, 8, 0); headCopy[50] = 0; headCopy[51] = 1;
+            var tables = new SortedDictionary<string, byte[]>(StringComparer.Ordinal) { ["head"] = headCopy, ["loca"] = newLoca, ["glyf"] = newGlyf.ToArray() };
+            foreach (var name in new[] { "hhea", "hmtx", "maxp", "cvt ", "fpgm", "prep", "OS/2", "cmap" })
+                if (t.TryGetValue(name, out var x)) tables[name] = Data.AsSpan(x.Offset, x.Length).ToArray();
+            var n = tables.Count; var pow = 1; var log = 0; while (pow * 2 <= n) { pow *= 2; log++; }
+            var dir = new byte[12 + n * 16]; W32(dir, 0, 0x00010000); W16(dir, 4, n); W16(dir, 6, pow * 16); W16(dir, 8, log); W16(dir, 10, n * 16 - pow * 16);
+            var offset = dir.Length; var i = 0;
+            foreach (var (name, bytes) in tables)
+            {
+                var p = 12 + i++ * 16; Encoding.ASCII.GetBytes(name).CopyTo(dir, p);
+                uint sum = 0;
+                for (var k = 0; k < bytes.Length; k += 4)
+                    sum += (uint)(bytes[k] << 24 | (k + 1 < bytes.Length ? bytes[k + 1] : 0) << 16 | (k + 2 < bytes.Length ? bytes[k + 2] : 0) << 8 | (k + 3 < bytes.Length ? bytes[k + 3] : 0));
+                W32(dir, p + 4, sum); W32(dir, p + 8, (uint)offset); W32(dir, p + 12, (uint)bytes.Length); offset += (bytes.Length + 3) & ~3;
+            }
+            using var o = new MemoryStream();
+            o.Write(dir); foreach (var bytes in tables.Values) { o.Write(bytes); for (var k = bytes.Length; k % 4 != 0; k++) o.WriteByte(0); }
+            return o.ToArray();
         }
-        if (!cmap.ContainsKey(0xFE8D)) throw new InvalidOperationException("The PDF font has no Arabic presentation forms.");
+
+        static Dictionary<string, (int Offset, int Length)> Tables(byte[] ttf)
+        {
+            var tables = new Dictionary<string, (int Offset, int Length)>(); int count = U16(ttf, 4);
+            for (var i = 0; i < count; i++) { var p = 12 + i * 16; tables[Encoding.ASCII.GetString(ttf, p, 4)] = ((int)U32(ttf, p + 8), (int)U32(ttf, p + 12)); }
+            return tables;
+        }
+        static int U16(byte[] b, int p) => b[p] << 8 | b[p + 1];
+        static uint U32(byte[] b, int p) => (uint)(b[p] << 24 | b[p + 1] << 16 | b[p + 2] << 8 | b[p + 3]);
+        static void W16(byte[] b, int p, int v) { b[p] = (byte)(v >> 8); b[p + 1] = (byte)v; }
+        static void W32(byte[] b, int p, uint v) { b[p] = (byte)(v >> 24); b[p + 1] = (byte)(v >> 16); b[p + 2] = (byte)(v >> 8); b[p + 3] = (byte)v; }
     }
 
-    int U16(int p) => font[p] << 8 | font[p + 1];
-    uint U32(int p) => (uint)(font[p] << 24 | font[p + 1] << 16 | font[p + 2] << 8 | font[p + 3]);
+    readonly Face arabic, latin;
+
+    /// <param name="ttf">A font with Arabic presentation forms (Windows Arial).</param>
+    /// <param name="latinTtf">The font for English text (Windows Calibri); Arial when not given.</param>
+    public ItamPdf(byte[] ttf, byte[]? latinTtf = null)
+    {
+        arabic = new Face(ttf, "Arial");
+        if (!arabic.Has(0xFE8D)) throw new InvalidOperationException("The PDF font has no Arabic presentation forms.");
+        latin = latinTtf is null ? arabic : new Face(latinTtf, "Calibri");
+    }
 
     static readonly Dictionary<char, int[]> Forms = new()
     {
@@ -132,26 +201,26 @@ public sealed class ItamPdf
         return string.Concat(output);
     }
 
-    ushort Glyph(int ch) => cmap.TryGetValue(ch, out var g) ? g : cmap.TryGetValue('?', out var q) ? q : (ushort)0;
-    public double Width(string text, double size) => Visual(text).Sum(c => advance[Glyph(c)]) * size / unitsPerEm;
+    Face FaceFor(string visual) => visual.Any(IsArabic) ? arabic : latin;
+    public double Width(string text, double size) { var v = Visual(text); var f = FaceFor(v); return v.Sum(c => f.Advance[f.Glyph(c)]) * size / f.UnitsPerEm; }
 
     /// <summary>One document being written: pages, text, lines and filled boxes; A4 portrait unless a page size is given
     /// (labels: 63.5 x 38.1 mm).</summary>
     public sealed class Doc(ItamPdf pdf, double pageW = Doc.W, double pageH = Doc.H)
     {
         public const double W = 595.28, H = 841.89, M = 40;
-        readonly List<StringBuilder> pages = []; readonly SortedSet<ushort> used = []; readonly List<Picture> pictures = [];
+        readonly List<StringBuilder> pages = []; readonly SortedSet<ushort> usedArabic = [], usedLatin = []; readonly List<Picture> pictures = [];
         StringBuilder page = null!;
         public double Y;
         public int Pages => pages.Count;
         public double PageW => pageW; public double PageH => pageH;
         public void NewPage() { page = new StringBuilder(); pages.Add(page); Y = pageH - M; }
-        string Hex(string visual) { var sb = new StringBuilder("<"); foreach (var c in visual) { var g = pdf.Glyph(c); used.Add(g); sb.Append(g.ToString("X4", CultureInfo.InvariantCulture)); } return sb.Append('>').ToString(); }
+        string Hex(string visual, Face face) { var used = face == pdf.arabic ? usedArabic : usedLatin; var sb = new StringBuilder("<"); foreach (var c in visual) { var g = face.Glyph(c); used.Add(g); sb.Append(g.ToString("X4", CultureInfo.InvariantCulture)); } return sb.Append('>').ToString(); }
         public void Text(string? text, double x, double y, double size, bool right = false, string color = "0 0 0")
         {
             if (string.IsNullOrEmpty(text)) return;
-            var v = Visual(text); var tx = right ? x - v.Sum(c => pdf.advance[pdf.Glyph(c)]) * size / pdf.unitsPerEm : x;
-            page.Append(CultureInfo.InvariantCulture, $"BT {color} rg /F1 {size:0.##} Tf {tx:0.##} {y:0.##} Td {Hex(v)} Tj ET\n");
+            var v = Visual(text); var face = pdf.FaceFor(v); var tx = right ? x - v.Sum(c => face.Advance[face.Glyph(c)]) * size / face.UnitsPerEm : x;
+            page.Append(CultureInfo.InvariantCulture, $"BT {color} rg /{(face == pdf.arabic ? "F1" : "F2")} {size:0.##} Tf {tx:0.##} {y:0.##} Td {Hex(v, face)} Tj ET\n");
         }
         /// <summary>Text cut with "…" to fit a width.</summary>
         public void Fit(string? text, double x, double y, double size, double width, string color = "0.1 0.1 0.1")
@@ -172,7 +241,7 @@ public sealed class ItamPdf
         /// <summary>The company logo with its top at <paramref name="top"/>; returns its height.</summary>
         public double Logo(double x, double top, double width) { var h = width * Logo_.Height / Logo_.Width; Image(Logo_, x, top - h, width); return h; }
         static Picture Logo_ => ItamPdf.Logo;
-        public byte[] Build() => pdf.Build(pages, used, pictures, pageW, pageH);
+        public byte[] Build() => pdf.Build(pages, usedArabic, usedLatin, pictures, pageW, pageH);
     }
     public Doc Start() { var d = new Doc(this); d.NewPage(); return d; }
     public Doc Start(double width, double height) { var d = new Doc(this, width, height); d.NewPage(); return d; }
@@ -237,7 +306,7 @@ public sealed class ItamPdf
         return new(w, h, gray);
     }
 
-    byte[] Build(List<StringBuilder> pages, SortedSet<ushort> used, List<Picture> pictures, double pageW, double pageH)
+    byte[] Build(List<StringBuilder> pages, SortedSet<ushort> usedArabic, SortedSet<ushort> usedLatin, List<Picture> pictures, double pageW, double pageH)
     {
         var objects = new List<byte[]>();
         int Add(byte[] content) { objects.Add(content); return objects.Count; }
@@ -245,11 +314,20 @@ public sealed class ItamPdf
         static byte[] Stream(string dict, byte[] data) { using var ms = new MemoryStream(); var head = Ascii($"<< {dict} /Length {data.Length} >>\nstream\n"); ms.Write(head); ms.Write(data); ms.Write(Ascii("\nendstream")); return ms.ToArray(); }
         static byte[] Deflate(byte[] data) { using var ms = new MemoryStream(); using (var z = new ZLibStream(ms, CompressionLevel.Optimal, true)) z.Write(data); return ms.ToArray(); }
         var inv = CultureInfo.InvariantCulture;
-        var fontFile = Add(Stream($"/Filter /FlateDecode /Length1 {font.Length}", Deflate(font)));
-        var descriptor = Add(Ascii($"<< /Type /FontDescriptor /FontName /{fontName} /Flags 32 /FontBBox [-1000 -400 2000 1100] /ItalicAngle 0 /Ascent 900 /Descent -250 /CapHeight 700 /StemV 80 /FontFile2 {fontFile} 0 R >>"));
-        var widths = string.Join(" ", used.Select(g => $"{g} [{(advance[g] * 1000.0 / unitsPerEm).ToString("0", inv)}]"));
-        var cid = Add(Ascii($"<< /Type /Font /Subtype /CIDFontType2 /BaseFont /{fontName} /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor {descriptor} 0 R /W [{widths}] /CIDToGIDMap /Identity >>"));
-        var type0 = Add(Ascii($"<< /Type /Font /Subtype /Type0 /BaseFont /{fontName} /Encoding /Identity-H /DescendantFonts [{cid} 0 R] >>"));
+        // Each font is embedded as a subset of the glyphs this document uses (F1 Arabic, F2 English).
+        int Font(Face face, SortedSet<ushort> used, string tag)
+        {
+            var name = $"{tag}+{face.Name}"; var data = face.Subset(used);
+            var fontFile = Add(Stream($"/Filter /FlateDecode /Length1 {data.Length}", Deflate(data)));
+            var descriptor = Add(Ascii($"<< /Type /FontDescriptor /FontName /{name} /Flags 32 /FontBBox [-1000 -400 2000 1100] /ItalicAngle 0 /Ascent 900 /Descent -250 /CapHeight 700 /StemV 80 /FontFile2 {fontFile} 0 R >>"));
+            var widths = string.Join(" ", used.Select(g => $"{g} [{(face.Advance[g] * 1000.0 / face.UnitsPerEm).ToString("0", inv)}]"));
+            var cid = Add(Ascii($"<< /Type /Font /Subtype /CIDFontType2 /BaseFont /{name} /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor {descriptor} 0 R /W [{widths}] /CIDToGIDMap /Identity >>"));
+            return Add(Ascii($"<< /Type /Font /Subtype /Type0 /BaseFont /{name} /Encoding /Identity-H /DescendantFonts [{cid} 0 R] >>"));
+        }
+        var fonts = new List<string>();
+        if (usedArabic.Count > 0) fonts.Add($"/F1 {Font(arabic, usedArabic, "ITAMAR")} 0 R");
+        if (usedLatin.Count > 0) fonts.Add($"/F2 {Font(latin, usedLatin, "ITAMEN")} 0 R");
+        var fontDict = fonts.Count == 0 ? "" : $"/Font << {string.Join(" ", fonts)} >>";
         var images = pictures.Select(p => Add(Stream($"/Type /XObject /Subtype /Image /Width {p.Width} /Height {p.Height} /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode", Deflate(p.Gray)))).ToList();
         var xobjects = images.Count == 0 ? "" : $" /XObject << {string.Join(" ", images.Select((id, i) => $"/Im{i} {id} 0 R"))} >>";
         var pagesId = objects.Count + 1; Add([]);
@@ -257,7 +335,7 @@ public sealed class ItamPdf
         foreach (var p in pages)
         {
             var content = Add(Stream("/Filter /FlateDecode", Deflate(Ascii(p.ToString()))));
-            kids.Add(Add(Ascii($"<< /Type /Page /Parent {pagesId} 0 R /MediaBox [0 0 {pageW.ToString("0.##", inv)} {pageH.ToString("0.##", inv)}] /Resources << /Font << /F1 {type0} 0 R >>{xobjects} >> /Contents {content} 0 R >>")));
+            kids.Add(Add(Ascii($"<< /Type /Page /Parent {pagesId} 0 R /MediaBox [0 0 {pageW.ToString("0.##", inv)} {pageH.ToString("0.##", inv)}] /Resources << {fontDict}{xobjects} >> /Contents {content} 0 R >>")));
         }
         objects[pagesId - 1] = Ascii($"<< /Type /Pages /Kids [{string.Join(" ", kids.Select(k => k + " 0 R"))}] /Count {kids.Count} >>");
         var catalog = Add(Ascii($"<< /Type /Catalog /Pages {pagesId} 0 R >>"));
