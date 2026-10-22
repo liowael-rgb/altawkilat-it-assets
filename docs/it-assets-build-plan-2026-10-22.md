@@ -335,7 +335,9 @@ and the applied matrix is regenerated as "IT Assets - Permission Matrix (applied
 - **Discrepancies**: any Missing, Damaged or Incorrect line puts the movement in "Discrepancy pending". An approver
   resolves each line with an evidence file: Arrived later, Accepted at the destination, Returned to the source, Never
   dispatched or Confirmed lost (the asset becomes Lost). A movement with exceptions closes as "Closed with exceptions".
-- An asset is on one open movement at a time; the picker shows only assets that can move.
+- An asset is on one open movement at a time; the picker shows only assets that can move. Several assets go on one pass or
+  transfer at once (owner, 22 October 2026): tick them in the list, "Select all shown", or scan / paste several Asset Nos.
+  or serials (one per line); at most 200 assets on one movement.
 - To confirm: Movements rights are not yet in the permission matrix.
   Emails (IT-EM-19/20/32-38/57) come with the email step.
 

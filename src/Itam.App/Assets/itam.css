@@ -460,3 +460,9 @@
 /* The menu scrolls between the fixed logo and the signed-in person when the screen is short. */
 .x-rail-menu{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin:0 -6px;padding:0 6px;scrollbar-width:thin}
 .x-me{flex:0 0 auto}
+.x .x-check-list{max-height:300px;gap:0;border:1px solid var(--line);border-radius:10px;padding:4px 0}
+.x .x-check{display:flex;flex-direction:row;align-items:flex-start;gap:10px;font-size:13.5px;padding:8px 12px;font-weight:500;cursor:pointer;line-height:1.35}
+.x .x-check:hover{background:var(--fill)}
+.x .x-check input{width:17px;height:17px;margin:1px 0 0;flex:0 0 auto}
+.x .x-pick-bar{justify-content:flex-start;margin:4px 0 10px}
+.x .x-pick-count{margin:4px 0 8px;font-weight:700;color:var(--acc2)}

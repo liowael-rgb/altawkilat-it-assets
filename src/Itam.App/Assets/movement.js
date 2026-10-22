@@ -82,12 +82,28 @@ async function newMovement(kindParam){
   const exit=inp('date');exit.value=today();exit.min=today();const expected=inp('date');expected.value=addDays(today(),3);
   const receiver=person();const sender=person();const carried=sel([['Employee','The employee (sender)'],['Other','Another person']]);if(warehouse)carried.value='Other';
   const carrier=inp('text',200);const mobile=inp('text',30);mobile.placeholder='05XXXXXXXX';
-  // Assets: own custody for employees; the assets of my regions for IT (warehouse: In Store at the source).
-  const picked=new Map();const results=el('div',null,'x-pick-list');const chosen=el('div',null,'x-roles');const search=inp('search',100);search.placeholder='Asset No., serial or service tag';
-  const drawChosen=()=>{chosen.replaceChildren(...[...picked.values()].map(a=>{const t=el('span',`${a.assetNo} · ${a.type}`,'tag');const x=el('button','×','x-tag-x');x.type='button';x.onclick=()=>{picked.delete(a.id);drawChosen();};t.append(x);return t;}));
-    if(!picked.size)chosen.append(el('span','No asset chosen yet.','hint'));};
-  const find=async()=>{try{const list=warehouse&&!from.value?[]:await api(`/movements/assets?q=${encodeURIComponent(search.value.trim())}${warehouse&&from.value?'&warehouse='+from.value:''}`);
-    results.replaceChildren(...(list.length?list.map(a=>{const b=btn([a.assetNo,a.type,a.model,a.serial,a.holder?'with '+a.holder:a.keptAt].filter(Boolean).join(' · '),()=>{picked.set(a.id,a);drawChosen();},'x-pick');return b;}):[el('p',warehouse&&!from.value?'Choose the source warehouse first.':'No asset found that you can move.','hint')]));}catch(e){fail(e);}};
+  // Several assets at once: tick them in the list, "Select all shown", or scan / paste several Asset Nos. (or serials).
+  const picked=new Map();let shown=[];const results=el('div',null,'x-pick-list x-check-list');const chosen=el('div');const count=el('p',null,'x-pick-count');
+  const search=inp('search',100);search.placeholder='Asset No., serial or service tag';
+  const label=a=>[a.assetNo,a.type,a.model,a.serial,a.holder?'with '+a.holder:a.keptAt].filter(Boolean).join(' · ');
+  const drawChosen=()=>{count.textContent=picked.size?`${picked.size} asset${picked.size>1?'s':''} on this ${warehouse?'transfer':'pass'}`:'No asset chosen yet.';
+    chosen.replaceChildren(...(picked.size?[table(['Asset No.','Type','Model','Serial / service tag',''],[...picked.values()],a=>[a.assetNo,a.type,a.model||'',a.serial||'',btn('Remove',()=>{picked.delete(a.id);drawChosen();drawResults();},'link')])]:[]));};
+  const allBtn=btn('Select all shown',()=>{for(const a of shown)picked.set(a.id,a);drawChosen();drawResults();});
+  const clearBtn=btn('Clear the selection',()=>{picked.clear();drawChosen();drawResults();});
+  const drawResults=()=>{allBtn.disabled=!shown.length;
+    results.replaceChildren(...(shown.length?shown.map(a=>{const row=el('label',null,'x-check');const cb=document.createElement('input');cb.type='checkbox';cb.checked=picked.has(a.id);
+      cb.onchange=()=>{cb.checked?picked.set(a.id,a):picked.delete(a.id);drawChosen();};row.append(cb,el('span',label(a)));return row;})
+      :[el('p',warehouse&&!from.value?'Choose the source warehouse first.':'No asset found that you can move.','hint')]));};
+  const query=q=>api(`/movements/assets?q=${encodeURIComponent(q)}${warehouse&&from.value?'&warehouse='+from.value:''}`);
+  const find=async()=>{try{shown=warehouse&&!from.value?[]:await query(search.value.trim());drawResults();}catch(e){fail(e);}};
+  const bulk=document.createElement('textarea');bulk.rows=3;bulk.maxLength=4000;bulk.placeholder='One Asset No. or serial per line';
+  const addBulk=btn('Add these assets',async()=>{try{
+      if(warehouse&&!from.value)throw Error('Choose the source warehouse first.');
+      const want=[...new Set(bulk.value.split(/[\s,;]+/).map(s=>s.trim()).filter(Boolean))];if(!want.length)throw Error('Scan or paste at least one Asset No. or serial.');
+      const missing=[];let added=0;
+      for(const w of want){const a=(await query(w)).find(a=>[a.assetNo,a.serial].some(v=>v&&v.toUpperCase()===w.toUpperCase()));if(a){picked.set(a.id,a);added++;}else missing.push(w);}
+      bulk.value=missing.join('\n');drawChosen();drawResults();
+      message(missing.length?`${added} added. Not found, or cannot move from here: ${missing.join(', ')} (left in the box).`:`${added} added.`,missing.length?'error':'ok');}catch(e){fail(e);}});
   let timer;search.oninput=()=>{clearTimeout(timer);timer=setTimeout(find,250);};from.onchange=()=>{if(warehouse){picked.clear();drawChosen();}find();};
   const g=el('div',null,'x-sec-body');
   const parts={purpose:field('Purpose',warehouse?purposeText:purpose,{req:true}),details:field('Purpose details',details,{wide:true,hint:'Required when the purpose is Other.'}),
@@ -101,7 +117,9 @@ async function newMovement(kindParam){
     parts.sender.hidden=warehouse;parts.carried.hidden=warehouse;const other=warehouse||carried.value==='Other';parts.carrier.hidden=!other;parts.mobile.hidden=!other;
     parts.expected.hidden=!(warehouse||transfer||passType.value==='Returnable');};
   purpose.onchange=show;carried.onchange=show;passType.onchange=show;show();
-  const assetsBox=el('div',null,'wide');assetsBox.append(field('Find assets',search,{hint:warehouse?'Only assets In Store at the source warehouse.':'Your own assets, or (IT) the assets of your regions.'}),results,el('h3','Assets on this movement'),chosen);
+  const assetsBox=el('div',null,'wide');assetsBox.append(field('Find assets',search,{hint:warehouse?'Only assets In Store at the source warehouse.':'Your own assets, or (IT) the assets of your regions.'}),(()=>{const b=el('div',null,'actions x-pick-bar');b.append(allBtn,clearBtn);return b;})(),results,
+    field('Scan or paste several',bulk,{hint:'One Asset No. or serial per line; a barcode scanner adds a new line after each label.'}),(()=>{const b=el('div',null,'actions x-pick-bar');b.append(addBulk);return b;})(),
+    el('h3','Assets on this movement'),count,chosen);
   drawChosen();
   const save=btn(warehouse?'Submit and reserve the stock':'Send for approval',async()=>{try{
       const p=warehouse?'':purpose.value;const transfer=p==='Move to another branch';

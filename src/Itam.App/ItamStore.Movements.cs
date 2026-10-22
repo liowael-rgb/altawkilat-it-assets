@@ -57,6 +57,7 @@ public sealed partial class ItamStore
         if (from.Name is null) throw new ArgumentException(kind == "Warehouse" ? "Choose the source IT warehouse." : "Choose the branch the assets leave from.");
         var ids = (x.AssetIds ?? []).Distinct().ToArray();
         if (ids.Length == 0) throw new ArgumentException("Choose at least one asset.");
+        if (ids.Length > 200) throw new ArgumentException("At most 200 assets on one movement; split it into two.");
         var exit = x.ExitDate ?? today; if (exit < today) throw new ArgumentException("The exit (dispatch) date: today or later.");
         string purpose, passType; int? to = null; string? toRegion = null, destination = null; Guid? employee = null, sender, receiver = null; DateOnly? expected = x.ExpectedDate;
         if (kind == "Warehouse")
@@ -464,7 +465,7 @@ public sealed partial class ItamStore
         await using var c = await Open(token);
         var s = await Scope(c, null, user, token);
         var t = (q ?? "").Trim(); var like = "%" + t.Replace("[", "[[]").Replace("%", "[%]").Replace("_", "[_]") + "%";
-        var rows = await Rows(c, null, "SELECT TOP 60 a.asset_id,a.asset_no,ty.name_en,CONCAT(m.name_en,' ',mo.name_en),COALESCE(a.serial_no,a.service_tag),a.status,g.name_en,g.region_code,a.location_id," +
+        var rows = await Rows(c, null, "SELECT TOP 300 a.asset_id,a.asset_no,ty.name_en,CONCAT(m.name_en,' ',mo.name_en),COALESCE(a.serial_no,a.service_tag),a.status,g.name_en,g.region_code,a.location_id," +
             "(SELECT TOP 1 employee_id FROM itam_data.delivery d WHERE d.asset_id=a.asset_id AND d.received_at_utc IS NULL),(SELECT TOP 1 e.display_name FROM itam_data.delivery d JOIN itam_access.employee e ON e.employee_id=d.employee_id WHERE d.asset_id=a.asset_id AND d.received_at_utc IS NULL) " +
             "FROM itam_data.asset a JOIN itam_ref.asset_type ty ON ty.type_code=a.type_code JOIN itam_ref.location g ON g.location_id=a.location_id LEFT JOIN itam_ref.manufacturer m ON m.manufacturer_id=a.manufacturer_id LEFT JOIN itam_ref.model mo ON mo.model_id=a.model_id " +
             "WHERE a.status IN(N'InUse',N'InStore') AND (@w IS NULL OR (a.location_id=@w AND a.status=N'InStore')) AND (@q=N'' OR a.asset_no LIKE @lk OR a.serial_key LIKE @lk OR a.service_tag_key LIKE @lk) " +

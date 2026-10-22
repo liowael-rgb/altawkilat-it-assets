@@ -475,6 +475,7 @@ try
     ItamMovementInput Wt(int[] ids, Guid receiver) => new("Warehouse", null, ids, "Stock for the West", null, null, 1, 2, null, mvDay, mvDay.AddDays(4), "Other", "Demo Driver", "0555555555", null, receiver, null);
     Check(await Throws<ItamAccessDenied>(() => store.CreateMovement(U(4), Wt([w1], G(4)), default)) && await Throws<ArgumentException>(() => store.CreateMovement(U(9), Wt([w1], G(10)), default)),
         "Only IT of the source region creates a warehouse transfer; the receiver is IT of the destination region");
+    Check(await Throws<ArgumentException>(() => store.CreateMovement(U(9), Wt([.. Enumerable.Range(1, 201)], G(4)), default)), "Several assets on one transfer, at most 200");
     var wt = JsonSerializer.SerializeToElement(await store.CreateMovement(U(9), Wt([w1, w2], G(4)), default)); var wtId = wt.GetProperty("id").GetInt32();
     var wl0 = (int)(await Scalar($"SELECT MIN(line_id) FROM itam_data.movement_line WHERE movement_id={wtId}"))!;
     await store.DispatchMovement(U(9), wtId, new([wl0]), default);
