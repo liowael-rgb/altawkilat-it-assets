@@ -189,3 +189,8 @@ and the three signatures, then each invoice, its order and its signed ink notes;
 To confirm: reading the uploaded invoice automatically (ZATCA XML / text PDF / OCR) comes next; names on the memo cover
 (today: "Checked by (IT)", "Approved by (Head of Department)", "Accountant"); email of approvals with the email service.
 Step 3b next: My IT Assets (and My Team), device and accessory requests with manager approval and cost approval.
+
+Production note (owner, 22 October 2026): person search in production reads Active Directory directly (name, account or
+email), for the approving manager of ink requests and the other person fields (deliver to, give a role, backups). A person
+chosen from Active Directory is added to the employee copy (stable AD identity), so approvals and history stay linked.
+The demo searches the invented employee copy instead.
