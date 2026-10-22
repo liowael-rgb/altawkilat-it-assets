@@ -4,7 +4,7 @@ using System.Data.Common;
 namespace Itam.App;
 
 public sealed record ItamPoLineInput(int? LineNo, string? Type, int? ManufacturerId, int? ModelId, string? NewModel, string? Specification, int? Quantity, decimal? UnitCost);
-public sealed record ItamPoInput(string? PoNumber, DateOnly? PoDate, int? SupplierId, string? Company, string? RaisedBy, string? RequestRef, string? InvoiceNo, string? Note,
+public sealed record ItamPoInput(string? PoNumber, DateOnly? PoDate, int? SupplierId, string? RaisedBy, string? RequestRef, string? InvoiceNo, string? Note,
     ItamPoLineInput[]? Lines, string? Version = null, string? Reason = null);
 public sealed record ItamDeviceInput(string? SerialNo, string? ServiceTag, string? MacAddress, string? IpAddress, string? Condition, Dictionary<string, string?>? Attributes,
     string? OsKey, string? SoftwareKey, string? Notes);
@@ -25,10 +25,10 @@ public sealed partial class ItamStore
         var type = CheckFile(document, pdfOnly: true);
         var header = await CheckPo(c, tx, x, null, token);
         var file = await SaveFile(c, tx, document, type, s.Id, token);
-        var id = Convert.ToInt32(await Scalar(c, tx, "INSERT itam_data.po(po_number,po_date,supplier_id,company_code,raised_by,request_ref,invoice_no,document_file_id,note,created_by) OUTPUT inserted.po_id VALUES(@n,@d,@s,@c,@r,@q,@i,@f,@t,@b)", token,
-            ("@n", header.Number), ("@d", DateParam(x.PoDate)), ("@s", x.SupplierId), ("@c", header.Company), ("@r", header.RaisedBy), ("@q", header.RequestRef), ("@i", header.Invoice), ("@f", file), ("@t", header.Note), ("@b", s.Id)));
+        var id = Convert.ToInt32(await Scalar(c, tx, "INSERT itam_data.po(po_number,po_date,supplier_id,raised_by,request_ref,invoice_no,document_file_id,note,created_by) OUTPUT inserted.po_id VALUES(@n,@d,@s,@r,@q,@i,@f,@t,@b)", token,
+            ("@n", header.Number), ("@d", DateParam(x.PoDate)), ("@s", x.SupplierId), ("@r", header.RaisedBy), ("@q", header.RequestRef), ("@i", header.Invoice), ("@f", file), ("@t", header.Note), ("@b", s.Id)));
         await SaveLines(c, tx, s, id, x.Lines, token);
-        await Audit(c, tx, s.Id, "po", header.Number, "Add", null, new { header.Number, x.PoDate, x.SupplierId, header.Company, lines = x.Lines?.Length }, x.Reason, token);
+        await Audit(c, tx, s.Id, "po", header.Number, "Add", null, new { header.Number, x.PoDate, x.SupplierId, lines = x.Lines?.Length }, x.Reason, token);
         await tx.CommitAsync(token);
         return new { id, poNumber = header.Number };
     }
@@ -45,14 +45,14 @@ public sealed partial class ItamStore
         if (x.Version != version) throw new ItamConflict("Someone changed this PO after you opened it. Reload and try again.");
         var header = await CheckPo(c, tx, x, id, token);
         long? file = document is null ? null : await SaveFile(c, tx, document, CheckFile(document, pdfOnly: true), s.Id, token);
-        await Exec(c, tx, "UPDATE itam_data.po SET po_number=@n,po_date=@d,supplier_id=@s,company_code=@c,raised_by=@r,request_ref=@q,invoice_no=@i,note=@t,document_file_id=COALESCE(@f,document_file_id) WHERE po_id=@id", token,
-            ("@id", id), ("@n", header.Number), ("@d", DateParam(x.PoDate)), ("@s", x.SupplierId), ("@c", header.Company), ("@r", header.RaisedBy), ("@q", header.RequestRef), ("@i", header.Invoice), ("@t", header.Note), ("@f", file));
+        await Exec(c, tx, "UPDATE itam_data.po SET po_number=@n,po_date=@d,supplier_id=@s,raised_by=@r,request_ref=@q,invoice_no=@i,note=@t,document_file_id=COALESCE(@f,document_file_id) WHERE po_id=@id", token,
+            ("@id", id), ("@n", header.Number), ("@d", DateParam(x.PoDate)), ("@s", x.SupplierId), ("@r", header.RaisedBy), ("@q", header.RequestRef), ("@i", header.Invoice), ("@t", header.Note), ("@f", file));
         await SaveLines(c, tx, s, id, x.Lines, token);
         await Audit(c, tx, s.Id, "po", header.Number, "Change", null, new { header.Number, x.PoDate, x.SupplierId, header.Invoice, lines = x.Lines?.Length, newDocument = file is not null }, x.Reason, token);
         await tx.CommitAsync(token);
     }
 
-    sealed record PoHeader(string Number, string Company, string RaisedBy, string? RequestRef, string? Invoice, string? Note);
+    sealed record PoHeader(string Number, string RaisedBy, string? RequestRef, string? Invoice, string? Note);
     async Task<PoHeader> CheckPo(DbConnection c, DbTransaction tx, ItamPoInput x, int? self, CancellationToken token)
     {
         var number = Text(x.PoNumber, "PO number", 40);
@@ -60,12 +60,10 @@ public sealed partial class ItamStore
         if (x.PoDate is null) throw new ArgumentException("The PO date is required.");
         if (x.PoDate > DateOnly.FromDateTime(UtcNow.AddHours(3))) throw new ArgumentException("The PO date cannot be in the future.");
         if (await Scalar(c, tx, "SELECT 1 FROM itam_ref.supplier WHERE supplier_id=@s AND active=1", token, ("@s", x.SupplierId ?? 0)) is null) throw new ArgumentException("Choose the supplier.");
-        var company = (x.Company ?? "").Trim();
-        if (await Scalar(c, tx, "SELECT 1 FROM itam_ref.company WHERE company_code=@c AND active=1", token, ("@c", company)) is null) throw new ArgumentException("Choose the company.");
         var request = Optional(x.RequestRef, "Request number", 20)?.ToUpperInvariant();
         if (request is not null && !System.Text.RegularExpressions.Regex.IsMatch(request, @"^PR-\d+$")) throw new ArgumentException("Request number: PR- and a number, for example PR-12.");
         if ((x.Lines ?? []).Length == 0) throw new ArgumentException("Add at least one PO line.");
-        return new(number, company, Text(x.RaisedBy, "Raised by", 200), request, Optional(x.InvoiceNo, "Invoice number", 60), Optional(x.Note, "Note", 1000));
+        return new(number, Text(x.RaisedBy, "Raised by", 200), request, Optional(x.InvoiceNo, "Invoice number", 60), Optional(x.Note, "Note", 1000));
     }
 
     async Task SaveLines(DbConnection c, DbTransaction tx, ItamScope s, int po, ItamPoLineInput[]? lines, CancellationToken token)
@@ -83,9 +81,12 @@ public sealed partial class ItamStore
         {
             var type = (l.Type ?? "").Trim().ToUpperInvariant();
             if (await Scalar(c, tx, "SELECT 1 FROM itam_ref.asset_type WHERE type_code=@t AND active=1", token, ("@t", type)) is null) throw new ArgumentException($"Line {l.LineNo}: choose the product type.");
-            if (await Scalar(c, tx, "SELECT 1 FROM itam_ref.manufacturer WHERE manufacturer_id=@m AND active=1", token, ("@m", l.ManufacturerId ?? 0)) is null) throw new ArgumentException($"Line {l.LineNo}: choose the manufacturer.");
-            int model;
-            if (!string.IsNullOrWhiteSpace(l.NewModel))
+            // Software has no manufacturer or model; toner has no model (the same rules as registering).
+            int? maker = ItamTypeFields.ManufacturerUsed(type) ? l.ManufacturerId : null;
+            if (ItamTypeFields.ManufacturerUsed(type) && await Scalar(c, tx, "SELECT 1 FROM itam_ref.manufacturer WHERE manufacturer_id=@m AND active=1", token, ("@m", maker ?? 0)) is null) throw new ArgumentException($"Line {l.LineNo}: choose the manufacturer.");
+            int? model;
+            if (!ItamTypeFields.ModelUsed(type)) model = null;
+            else if (!string.IsNullOrWhiteSpace(l.NewModel))
             {
                 var name = Text(l.NewModel, "Model", 150);
                 model = await Scalar(c, tx, "SELECT model_id FROM itam_ref.model WHERE manufacturer_id=@m AND type_code=@t AND name_en=@n", token, ("@m", l.ManufacturerId), ("@t", type), ("@n", name)) is int m ? m
@@ -102,10 +103,10 @@ public sealed partial class ItamStore
                 if (qty < e.Received) throw new ArgumentException($"Line {e.No}: {e.Received} devices are already received; the quantity cannot be lower.");
                 if (e.Received > 0 && e.Type != type) throw new ArgumentException($"Line {e.No}: devices are received; its product type cannot change.");
                 await Exec(c, tx, "UPDATE itam_data.po_line SET type_code=@t,manufacturer_id=@m,model_id=@mo,specification=@s,quantity=@q,unit_cost=@u WHERE po_line_id=@l", token,
-                    ("@l", e.Id), ("@t", type), ("@m", l.ManufacturerId), ("@mo", model), ("@s", spec), ("@q", qty), ("@u", cost));
+                    ("@l", e.Id), ("@t", type), ("@m", maker), ("@mo", model), ("@s", spec), ("@q", qty), ("@u", cost));
             }
             else await Exec(c, tx, "INSERT itam_data.po_line(po_id,line_no,type_code,manufacturer_id,model_id,specification,quantity,unit_cost) VALUES(@p,@n,@t,@m,@mo,@s,@q,@u)", token,
-                ("@p", po), ("@n", l.LineNo), ("@t", type), ("@m", l.ManufacturerId), ("@mo", model), ("@s", spec), ("@q", qty), ("@u", cost));
+                ("@p", po), ("@n", l.LineNo), ("@t", type), ("@m", maker), ("@mo", model), ("@s", spec), ("@q", qty), ("@u", cost));
         }
     }
 
@@ -117,11 +118,11 @@ public sealed partial class ItamStore
         await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var s = await Scope(c, tx, user, token);
         Require(s.PoManage, "Only the IT Helpdesk Team Leader and the IT Assets Officer receive devices on a PO.");
-        var head = (await Rows(c, tx, "SELECT po_number,supplier_id,company_code,po_date,invoice_no FROM itam_data.po WITH (UPDLOCK) WHERE po_id=@p",
-            r => (No: r.GetString(0), Supplier: r.GetInt32(1), Company: r.GetString(2), Date: Day(r, 3), Invoice: S(r, 4)), token, ("@p", po))).SingleOrDefault();
+        var head = (await Rows(c, tx, "SELECT po_number,supplier_id,po_date,invoice_no FROM itam_data.po WITH (UPDLOCK) WHERE po_id=@p",
+            r => (No: r.GetString(0), Supplier: r.GetInt32(1), Date: Day(r, 2), Invoice: S(r, 3)), token, ("@p", po))).SingleOrDefault();
         if (head.No is null) throw new ArgumentException("The PO was not found.");
         var line = (await Rows(c, tx, "SELECT po_line_id,line_no,type_code,manufacturer_id,model_id,quantity,unit_cost,(SELECT COUNT(*) FROM itam_data.asset a WHERE a.po_line_id=l.po_line_id) FROM itam_data.po_line l WHERE po_line_id=@l AND po_id=@p",
-            r => (Id: r.GetInt32(0), No: r.GetInt32(1), Type: r.GetString(2), Manufacturer: r.GetInt32(3), Model: I(r, 4), Qty: r.GetInt32(5), Cost: r.GetDecimal(6), Received: r.GetInt32(7)), token, ("@l", x.PoLineId ?? 0), ("@p", po))).SingleOrDefault();
+            r => (Id: r.GetInt32(0), No: r.GetInt32(1), Type: r.GetString(2), Manufacturer: I(r, 3), Model: I(r, 4), Qty: r.GetInt32(5), Cost: r.GetDecimal(6), Received: r.GetInt32(7)), token, ("@l", x.PoLineId ?? 0), ("@p", po))).SingleOrDefault();
         if (line.Id == 0) throw new ArgumentException("Choose the PO line.");
         var devices = x.Devices ?? [];
         if (devices.Length == 0) throw new ArgumentException("Enter at least one device.");
@@ -140,8 +141,8 @@ public sealed partial class ItamStore
             {
                 // The same serial number twice in this receipt (checked before the rows already saved in it).
                 if (Key(dvc.SerialNo) is string key && devices.Take(row - 1).Any(o => Key(o.SerialNo) == key)) throw new ArgumentException($"Serial number {dvc.SerialNo!.Trim()} is entered twice.");
-                var d = await Check(c, tx, s, new ItamAssetInput(line.Type, head.Company, x.LocationId, line.Manufacturer, line.Model, null, dvc.SerialNo, dvc.ServiceTag, dvc.MacAddress, dvc.IpAddress,
-                    dvc.Condition ?? "New", head.Date, null, head.Supplier, head.No, line.Cost, x.InvoiceRef ?? head.Invoice, dvc.Notes, dvc.Attributes, null, null), line.Type, null, token);
+                var d = await Check(c, tx, s, new ItamAssetInput(line.Type, x.LocationId, line.Manufacturer, line.Model, null, dvc.SerialNo, dvc.ServiceTag, dvc.MacAddress, dvc.IpAddress,
+                    dvc.Condition ?? "New", head.Date, head.Supplier, head.No, line.Cost, x.InvoiceRef ?? head.Invoice, dvc.Notes, dvc.Attributes, null, null), line.Type, null, token);
                 var (_, no) = await Create(c, tx, s.Id, d, po, line.Id, receipt, dvc.OsKey, dvc.SoftwareKey, $"Received on PO {head.No}, line {line.No}", token);
                 created.Add(no);
             }
@@ -160,33 +161,33 @@ public sealed partial class ItamStore
         Require(s.PoView, "You cannot see purchase orders.");
         var like = "%" + (text ?? "").Trim().Replace("[", "[[]").Replace("%", "[%]").Replace("_", "[_]") + "%";
         return await Rows(c, null,
-            "SELECT p.po_id,p.po_number,p.po_date,su.name_en,p.company_code,p.raised_by,p.invoice_no,(SELECT SUM(quantity) FROM itam_data.po_line l WHERE l.po_id=p.po_id)," +
+            "SELECT p.po_id,p.po_number,p.po_date,su.name_en,p.raised_by,p.invoice_no,(SELECT SUM(quantity) FROM itam_data.po_line l WHERE l.po_id=p.po_id)," +
             "(SELECT COUNT(*) FROM itam_data.asset a WHERE a.po_id=p.po_id),(SELECT SUM(quantity*unit_cost) FROM itam_data.po_line l WHERE l.po_id=p.po_id),(SELECT MAX(sent_on) FROM itam_data.pack_print k WHERE k.po_id=p.po_id) " +
             "FROM itam_data.po p JOIN itam_ref.supplier su ON su.supplier_id=p.supplier_id WHERE p.po_number LIKE @q OR su.name_en LIKE @q OR p.invoice_no LIKE @q ORDER BY p.po_date DESC,p.po_id DESC",
-            r => new { id = r.GetInt32(0), poNumber = r.GetString(1), poDate = Day(r, 2), supplier = r.GetString(3), company = r.GetString(4), raisedBy = r.GetString(5), invoiceNo = S(r, 6),
-                ordered = r.IsDBNull(7) ? 0 : r.GetInt32(7), received = r.GetInt32(8), total = r.IsDBNull(9) ? 0 : decimal.Round(r.GetDecimal(9) * (1 + Vat), 2), sentOn = Day(r, 10) }, token, ("@q", like));
+            r => new { id = r.GetInt32(0), poNumber = r.GetString(1), poDate = Day(r, 2), supplier = r.GetString(3), raisedBy = r.GetString(4), invoiceNo = S(r, 5),
+                ordered = r.IsDBNull(6) ? 0 : r.GetInt32(6), received = r.GetInt32(7), total = r.IsDBNull(8) ? 0 : decimal.Round(r.GetDecimal(8) * (1 + Vat), 2), sentOn = Day(r, 9) }, token, ("@q", like));
     }
 
-    internal sealed record PoDevice(int Id, string AssetNo, string Type, string Model, string? Serial, string? ServiceTag, string Status, string KeptAt, string Region, int LineNo, DateTime ReceivedAt);
-    internal sealed record PoView(int Id, string Number, DateOnly Date, string Supplier, string? SupplierVat, string Company, string CompanyName, string RaisedBy, string? RequestRef, string? Invoice,
+    internal sealed record PoDevice(int Id, string AssetNo, string Type, string? Model, string? Serial, string? ServiceTag, string Status, string KeptAt, string Region, int LineNo, DateTime ReceivedAt);
+    internal sealed record PoView(int Id, string Number, DateOnly Date, string Supplier, string? SupplierVat, string RaisedBy, string? RequestRef, string? Invoice,
         string? Note, long DocumentFile, string Version, List<PoLineView> Lines, List<PoDevice> Devices);
-    internal sealed record PoLineView(int Id, int No, string Type, string TypeName, int ManufacturerId, string Manufacturer, int? ModelId, string? Model, string? Specification, int Quantity, decimal UnitCost, int Received);
+    internal sealed record PoLineView(int Id, int No, string Type, string TypeName, int? ManufacturerId, string? Manufacturer, int? ModelId, string? Model, string? Specification, int Quantity, decimal UnitCost, int Received);
 
     internal static async Task<PoView> LoadPo(DbConnection c, DbTransaction? tx, int id, CancellationToken token)
     {
-        var p = (await Rows(c, tx, "SELECT p.po_number,p.po_date,su.name_en,su.vat_no,p.company_code,co.name_en,p.raised_by,p.request_ref,p.invoice_no,p.note,p.document_file_id,CONVERT(varchar(30),CONVERT(varbinary(8),p.version),2) " +
-            "FROM itam_data.po p JOIN itam_ref.supplier su ON su.supplier_id=p.supplier_id JOIN itam_ref.company co ON co.company_code=p.company_code WHERE p.po_id=@i",
-            r => (No: r.GetString(0), Date: Day(r, 1)!.Value, Supplier: r.GetString(2), Vat: S(r, 3), Company: r.GetString(4), CompanyName: r.GetString(5), RaisedBy: r.GetString(6), Request: S(r, 7), Invoice: S(r, 8), Note: S(r, 9), File: r.GetInt64(10), Version: r.GetString(11)),
+        var p = (await Rows(c, tx, "SELECT p.po_number,p.po_date,su.name_en,su.vat_no,p.raised_by,p.request_ref,p.invoice_no,p.note,p.document_file_id,CONVERT(varchar(30),CONVERT(varbinary(8),p.version),2) " +
+            "FROM itam_data.po p JOIN itam_ref.supplier su ON su.supplier_id=p.supplier_id WHERE p.po_id=@i",
+            r => (No: r.GetString(0), Date: Day(r, 1)!.Value, Supplier: r.GetString(2), Vat: S(r, 3), RaisedBy: r.GetString(4), Request: S(r, 5), Invoice: S(r, 6), Note: S(r, 7), File: r.GetInt64(8), Version: r.GetString(9)),
             token, ("@i", id))).SingleOrDefault();
         if (p.No is null) throw new ArgumentException("The PO was not found.");
         var lines = await Rows(c, tx, "SELECT l.po_line_id,l.line_no,l.type_code,t.name_en,l.manufacturer_id,m.name_en,l.model_id,mo.name_en,l.specification,l.quantity,l.unit_cost,(SELECT COUNT(*) FROM itam_data.asset a WHERE a.po_line_id=l.po_line_id) " +
-            "FROM itam_data.po_line l JOIN itam_ref.asset_type t ON t.type_code=l.type_code JOIN itam_ref.manufacturer m ON m.manufacturer_id=l.manufacturer_id LEFT JOIN itam_ref.model mo ON mo.model_id=l.model_id WHERE l.po_id=@i ORDER BY l.line_no",
-            r => new PoLineView(r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetString(3), r.GetInt32(4), r.GetString(5), I(r, 6), S(r, 7), S(r, 8), r.GetInt32(9), r.GetDecimal(10), r.GetInt32(11)), token, ("@i", id));
+            "FROM itam_data.po_line l JOIN itam_ref.asset_type t ON t.type_code=l.type_code LEFT JOIN itam_ref.manufacturer m ON m.manufacturer_id=l.manufacturer_id LEFT JOIN itam_ref.model mo ON mo.model_id=l.model_id WHERE l.po_id=@i ORDER BY l.line_no",
+            r => new PoLineView(r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetString(3), I(r, 4), S(r, 5), I(r, 6), S(r, 7), S(r, 8), r.GetInt32(9), r.GetDecimal(10), r.GetInt32(11)), token, ("@i", id));
         var devices = await Rows(c, tx, "SELECT a.asset_id,a.asset_no,a.type_code,mo.name_en,a.serial_no,a.service_tag,a.status,g.name_en,g.region_code,l.line_no,r.received_at_utc " +
-            "FROM itam_data.asset a JOIN itam_ref.model mo ON mo.model_id=a.model_id JOIN itam_ref.location g ON g.location_id=a.location_id JOIN itam_data.po_line l ON l.po_line_id=a.po_line_id " +
+            "FROM itam_data.asset a LEFT JOIN itam_ref.model mo ON mo.model_id=a.model_id JOIN itam_ref.location g ON g.location_id=a.location_id JOIN itam_data.po_line l ON l.po_line_id=a.po_line_id " +
             "JOIN itam_data.po_receipt r ON r.receipt_id=a.receipt_id WHERE a.po_id=@i ORDER BY a.asset_seq",
-            r => new PoDevice(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetString(3), S(r, 4), S(r, 5), r.GetString(6), r.GetString(7), r.GetString(8), r.GetInt32(9), Utc(r, 10)), token, ("@i", id));
-        return new(id, p.No, p.Date, p.Supplier, p.Vat, p.Company, p.CompanyName, p.RaisedBy, p.Request, p.Invoice, p.Note, p.File, p.Version, lines, devices);
+            r => new PoDevice(r.GetInt32(0), r.GetString(1), r.GetString(2), S(r, 3), S(r, 4), S(r, 5), r.GetString(6), r.GetString(7), r.GetString(8), r.GetInt32(9), Utc(r, 10)), token, ("@i", id));
+        return new(id, p.No, p.Date, p.Supplier, p.Vat, p.RaisedBy, p.Request, p.Invoice, p.Note, p.File, p.Version, lines, devices);
     }
 
     /// <summary>The PO page counts. Delivery notes come with the handover (build step 2): until then every received device
@@ -216,10 +217,10 @@ public sealed partial class ItamStore
         decimal net = p.Lines.Sum(l => l.Quantity * l.UnitCost);
         return new
         {
-            po = new { p.Id, number = p.Number, date = p.Date, p.Supplier, supplierVat = p.SupplierVat, p.Company, p.CompanyName, p.RaisedBy, requestRef = p.RequestRef, invoiceNo = p.Invoice, p.Note, p.Version, documentFile = p.DocumentFile,
+            po = new { p.Id, number = p.Number, date = p.Date, p.Supplier, supplierVat = p.SupplierVat, p.RaisedBy, requestRef = p.RequestRef, invoiceNo = p.Invoice, p.Note, p.Version, documentFile = p.DocumentFile,
                 supplierId = await Scalar(c, null, "SELECT supplier_id FROM itam_data.po WHERE po_id=@i", token, ("@i", id)) },
             lines = p.Lines.Select(l => new { l.Id, no = l.No, l.Type, l.TypeName, l.ManufacturerId, l.Manufacturer, l.ModelId, l.Model, l.Specification, l.Quantity, l.UnitCost, lineTotal = l.Quantity * l.UnitCost, l.Received, toCome = l.Quantity - l.Received,
-                fields = ItamTypeFields.For(l.Type), serialRequired = ItamTypeFields.SerialRequired(l.Type), serviceTag = ItamTypeFields.ServiceTagUsed(l.Type), mac = ItamTypeFields.MacUsed(l.Type), macRequired = ItamTypeFields.MacRequired(l.Type), ip = ItamTypeFields.IpUsed(l.Type), key = ItamTypeFields.KeyUsed(l.Type) }),
+                fields = ItamTypeFields.For(l.Type), manufacturerUsed = ItamTypeFields.ManufacturerUsed(l.Type), modelUsed = ItamTypeFields.ModelUsed(l.Type), serialUsed = ItamTypeFields.SerialUsed(l.Type), serialRequired = ItamTypeFields.SerialRequired(l.Type), serviceTag = ItamTypeFields.ServiceTagUsed(l.Type), mac = ItamTypeFields.MacUsed(l.Type), macRequired = ItamTypeFields.MacRequired(l.Type), ip = ItamTypeFields.IpUsed(l.Type), key = ItamTypeFields.KeyUsed(l.Type) }),
             devices = p.Devices.Select(d => new { d.Id, d.AssetNo, d.Type, d.Model, d.Serial, d.ServiceTag, status = ItamStatuses.Label(d.Status), d.KeptAt, d.Region, line = d.LineNo, d.ReceivedAt }),
             counts = Counts(p), totals = new { net, vat = decimal.Round(net * Vat, 2), total = decimal.Round(net * (1 + Vat), 2) },
             receipts, prints, canManage = s.PoManage

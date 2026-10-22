@@ -43,7 +43,6 @@ try
          ('{G(1)}','AssetsOfficer',NULL,'{G(2)}'),('{G(2)}','ItManager',NULL,'{G(2)}'),('{G(3)}','TeamLeader',NULL,'{G(2)}'),('{G(4)}','SupportSpecialist','West','{G(2)}'),
          ('{G(5)}','SystemAdministrator',NULL,'{G(2)}'),('{G(6)}','VoiceAdministrator',NULL,'{G(2)}'),('{G(7)}','ItAdministrator',NULL,'{G(2)}'),('{G(8)}','Auditor',NULL,'{G(2)}');
         INSERT itam_ref.location(name_en,kind,region_code,city) VALUES(N'Riyadh WH','ITWarehouse','Central',N'Riyadh'),(N'Jeddah WH','ITWarehouse','West',N'Jeddah');
-        INSERT itam_ref.company(company_code,name_en) VALUES(N'CO',N'Company');
         INSERT itam_ref.supplier(name_en) VALUES(N'Supplier One');
         INSERT itam_ref.manufacturer(name_en) VALUES(N'Dell'),(N'Cisco');
         INSERT itam_ref.model(manufacturer_id,type_code,name_en) VALUES(1,'PC',N'Latitude'),(1,'MON',N'P24'),(2,'IP',N'8841');
@@ -60,7 +59,7 @@ try
 
     // ---- Register ----------------------------------------------------------------------------------------------------------------
     ItamAssetInput A(string type, int loc, int model, string? serial, string? tag = null, string? mac = null, Dictionary<string, string?>? at = null, string? osKey = null, int mf = 1)
-        => new(type, "CO", loc, mf, model, null, serial, tag, mac, null, "New", new DateOnly(2026, 1, 10), null, null, null, null, null, null, at, osKey, null);
+        => new(type, loc, mf, model, null, serial, tag, mac, null, "New", new DateOnly(2026, 1, 10), null, null, null, null, null, at, osKey, null);
     var pcAttrs = new Dictionary<string, string?> { ["ComputerType"] = "Notebook", ["OperatingSystem"] = "Win11", ["MemoryGb"] = "16" };
     var pc = JsonSerializer.SerializeToElement(await store.Register(U(1), A("PC", 1, 1, "SN-0001", "TAG1", null, pcAttrs, "AAAAA-BBBBB"), default));
     var mon = JsonSerializer.SerializeToElement(await store.Register(U(1), A("MON", 2, 2, "MN-0001"), default));
@@ -76,6 +75,17 @@ try
     Check(await Throws<ItamAccessDenied>(() => store.Register(U(4), A("MON", 1, 2, "MN-0100"), default)) && (await store.Register(U(4), A("MON", 2, 2, "MN-0101"), default)) is not null,
         "IT Support Specialist registers in own region only");
     Check(await Throws<ItamAccessDenied>(() => store.Register(U(8), A("MON", 2, 2, "MN-0102"), default)), "The Auditor cannot register");
+    // A supplier not in the list is added while registering (old stock bought from a new supplier), and audited.
+    var withSupplier = JsonSerializer.SerializeToElement(await store.Register(U(1), A("MON", 1, 2, "MN-0103") with { NewSupplier = "Check New Supplier", NewSupplierVat = "300000000000077" }, default));
+    Check(await Scalar($"SELECT s.name_en+'|'+s.vat_no FROM itam_data.asset a JOIN itam_ref.supplier s ON s.supplier_id=a.supplier_id WHERE a.asset_id={withSupplier.GetProperty("id").GetInt32()}") as string == "Check New Supplier|300000000000077"
+        && await Scalar("SELECT COUNT(*) FROM itam_access.audit WHERE entity='supplier' AND entity_key=N'Check New Supplier'") is int n1 && n1 == 1, "A new supplier is added while registering");
+    Check(await Throws<ArgumentException>(() => store.Register(U(1), A("MON", 1, 2, "MN-0104") with { NewSupplier = "Bad VAT Co", NewSupplierVat = "123" }, default)), "A new supplier's VAT number must be 15 digits");
+    // Software: no manufacturer, model or serial (the software name identifies it). Toner: no model (the toner code does).
+    var sof = JsonSerializer.SerializeToElement(await store.Register(U(1), A("SOF", 1, 0, null, at: new() { ["Software"] = "Check Office" }) with { ManufacturerId = null, ModelId = null }, default));
+    Check(await Scalar($"SELECT CASE WHEN manufacturer_id IS NULL AND model_id IS NULL AND serial_no IS NULL THEN 1 ELSE 0 END FROM itam_data.asset WHERE asset_id={sof.GetProperty("id").GetInt32()}") is int s1 && s1 == 1, "Software is registered without manufacturer and model");
+    var ton = JsonSerializer.SerializeToElement(await store.Register(U(1), A("TON", 1, 0, null, at: new() { ["TonerCode"] = "W2210A" }) with { ModelId = null }, default));
+    Check(await Scalar($"SELECT CASE WHEN manufacturer_id=1 AND model_id IS NULL THEN 1 ELSE 0 END FROM itam_data.asset WHERE asset_id={ton.GetProperty("id").GetInt32()}") is int t1 && t1 == 1
+        && await Throws<ArgumentException>(() => store.Register(U(1), A("TON", 1, 0, null, at: new() { ["TonerCode"] = "W2211A" }) with { ManufacturerId = null, ModelId = null }, default)), "Toner is registered without a model, but needs its manufacturer");
     Console.WriteLine("PASS register");
 
     // ---- Who sees what -----------------------------------------------------------------------------------------------------------
@@ -101,13 +111,14 @@ try
     var phoneId = phone.GetProperty("id").GetInt32();
     var pv = JsonSerializer.SerializeToElement(await store.Asset(U(6), phoneId, default)).GetProperty("asset").GetProperty("version").GetString();
     await store.Update(U(6), phoneId, A("IP", 1, 3, "CHANGED", mac: "11:22:33:44:55:66", mf: 2, at: new() { ["Extension"] = "5000" }) with { Version = pv }, default);
-    Check(await Scalar($"SELECT serial_no+'|'+mac_address FROM itam_data.asset WHERE asset_id={phoneId}") as string == "IP-0002|11:22:33:44:55:66"
+    // IP phones have no serial number (the MAC identifies them): a serial typed is not kept.
+    Check(await Scalar($"SELECT ISNULL(serial_no,'none')+'|'+mac_address FROM itam_data.asset WHERE asset_id={phoneId}") as string == "none|11:22:33:44:55:66"
         && await Scalar($"SELECT value FROM itam_data.asset_attribute WHERE asset_id={phoneId} AND attr_code='Extension'") as string == "5000", "Voice Administrator changes MAC and extension only");
     Console.WriteLine("PASS who sees what, keys, edit, history");
 
     // ---- Purchase orders ---------------------------------------------------------------------------------------------------------
     var doc = pdf.Start(); doc.Text("Purchase order PO-77 (check document)", 40, doc.Y, 12); var poPdf = doc.Build();
-    var poInput = new ItamPoInput("PO-77", new DateOnly(2026, 10, 1), 1, "CO", "Procurement", "pr-3", null, null,
+    var poInput = new ItamPoInput("PO-77", new DateOnly(2026, 10, 1), 1, "Procurement", "pr-3", null, null,
         [new(1, "PC", 1, 1, null, "i7", 3, 1000m), new(2, "MON", 1, 2, null, null, 2, 500m)]);
     Check(await Throws<ItamAccessDenied>(() => store.CreatePo(U(4), poInput, new("po.pdf", "application/pdf", poPdf), default)), "Specialists cannot record POs");
     Check(await Throws<ArgumentException>(() => store.CreatePo(U(1), poInput, null, default)) && await Throws<ArgumentException>(() => store.CreatePo(U(1), poInput, new("po.png", "image/png", [0x89, 0x50, 0x4E, 0x47, 1, 2]), default)),

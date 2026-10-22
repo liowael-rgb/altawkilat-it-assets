@@ -28,7 +28,6 @@ static class DemoSeed
                  (N'Riyadh IT Warehouse (demo)','ITWarehouse','Central',N'Riyadh'),(N'Jeddah IT Warehouse (demo)','ITWarehouse','West',N'Jeddah'),
                  (N'Dammam IT Warehouse (demo)','ITWarehouse','East',N'Dammam'),(N'Abha Branch (demo)','Branch','South',N'Abha'),
                  (N'Al Kharj Branch (demo)','Branch','Central',N'Al Kharj'),(N'Dubai Office (demo)','Branch','UAE',N'Dubai');
-                INSERT itam_ref.company(company_code,name_en) VALUES(N'DEMO',N'ALTAWKILAT (demo company)');
                 INSERT itam_ref.supplier(name_en,vat_no) VALUES(N'Demo Computers Co.','300000000000003'),(N'Demo Network Supplies',NULL),(N'Demo Office Equipment',NULL);
                 INSERT itam_ref.manufacturer(name_en) VALUES(N'Dell'),(N'HP'),(N'Lenovo'),(N'Cisco'),(N'Canon'),(N'Epson'),(N'Samsung'),(N'Microsoft');
                 INSERT itam_ref.model(manufacturer_id,type_code,name_en) SELECT m.manufacturer_id,v.t,v.n FROM (VALUES
@@ -44,8 +43,8 @@ static class DemoSeed
         async Task<int> Mf(string name) { await using var c = new SqlConnection(cs); await c.OpenAsync(); using var q = new SqlCommand("SELECT manufacturer_id FROM itam_ref.manufacturer WHERE name_en=@n", c); q.Parameters.AddWithValue("@n", name); return (int)(await q.ExecuteScalarAsync())!; }
         async Task<int> Loc(string name) { await using var c = new SqlConnection(cs); await c.OpenAsync(); using var q = new SqlCommand("SELECT location_id FROM itam_ref.location WHERE name_en=@n", c); q.Parameters.AddWithValue("@n", name); return (int)(await q.ExecuteScalarAsync())!; }
         async Task Reg(string type, string mf, string model, string loc, string? serial, Dictionary<string, string?>? attrs = null, string? tag = null, string? mac = null, string? ip = null, string? osKey = null)
-            => await store.Register(officer, new ItamAssetInput(type, "DEMO", await Loc(loc), await Mf(mf), await M(model), null, serial, tag, mac, ip, "New",
-                new DateOnly(2026, 3, 15), new DateOnly(2029, 3, 14), null, null, null, null, null, attrs, osKey, null), default);
+            => await store.Register(officer, new ItamAssetInput(type, await Loc(loc), await Mf(mf), await M(model), null, serial, tag, mac, ip, "New",
+                new DateOnly(2026, 3, 15), null, null, null, null, null, attrs, osKey, null), default);
         await Reg("PC", "Dell", "OptiPlex 7010", "Riyadh IT Warehouse (demo)", "DEMOSN0001", new() { ["ComputerType"] = "Desktop", ["Processor"] = "Intel Core i5", ["MemoryGb"] = "16", ["CapacityGb"] = "512", ["OperatingSystem"] = "Win11" }, "DEMOTAG01", osKey: "DEMO-KEY-11111-22222");
         await Reg("PC", "HP", "EliteBook 840 G10", "Jeddah IT Warehouse (demo)", "DEMOSN0002", new() { ["ComputerType"] = "Notebook", ["MemoryGb"] = "16", ["OperatingSystem"] = "Win11" }, "DEMOTAG02");
         await Reg("PNT", "HP", "LaserJet Pro M404dn", "Abha Branch (demo)", "DEMOPR0001", new() { ["PrinterType"] = "Network", ["PrinterLocation"] = "Reception", ["TonerType"] = "Black" }, ip: "10.20.30.40");
@@ -56,7 +55,7 @@ static class DemoSeed
         // A PO from Procurement (invented document), partly received.
         var doc = pdf.Start(); doc.Text("Purchase Order 4500000101 (demo document, invented)", ItamPdf.Doc.M, doc.Y, 14); doc.Y -= 20;
         doc.Text("Supplier: Demo Computers Co.   Lines: 5 x Dell Latitude 5440, 5 x Dell P2422H", ItamPdf.Doc.M, doc.Y, 10);
-        var po = await store.CreatePo(officer, new ItamPoInput("4500000101", new DateOnly(2026, 10, 12), 1, "DEMO", "Procurement Department", null, null, null,
+        var po = await store.CreatePo(officer, new ItamPoInput("4500000101", new DateOnly(2026, 10, 12), 1, "Procurement Department", null, null, null,
             [new(1, "PC", await Mf("Dell"), await M("Latitude 5440"), null, "Core i7, 16 GB, 512 GB SSD", 5, 4200m), new(2, "MON", await Mf("Dell"), await M("P2422H"), null, "24 inch", 5, 650m)]),
             new ItamUpload("PO 4500000101.pdf", "application/pdf", doc.Build()), default);
         var poId = (int)po.GetType().GetProperty("id")!.GetValue(po)!;

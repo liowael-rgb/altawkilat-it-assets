@@ -45,11 +45,12 @@ app.Use(async (ctx, next) =>
     ctx.Response.ContentLength = null; await ctx.Response.WriteAsync(html.Replace("</body>", badge + "</body>", StringComparison.Ordinal));
 });
 app.MapGet("/demo", () => Results.Content(DemoPage(), "text/html; charset=utf-8"));
-app.MapGet("/demo/as/{n:int}", (HttpContext ctx, int n) =>
+app.MapGet("/demo/as/{n:int}", (HttpContext ctx, int n, string? to) =>
 {
     var p = DemoPeople.All.ElementAtOrDefault(n); if (p is null) return Results.NotFound();
     ctx.Response.Cookies.Append("itam-demo-user", p.Id.ToString(), new CookieOptions { HttpOnly = true, SameSite = SameSiteMode.Lax });
-    return Results.Redirect(p.Start);
+    // Optional page to open after choosing the person (local paths only), used for review screenshots.
+    return Results.Redirect(to is { Length: > 1 } && to[0] == '/' && to[1] != '/' && to[1] != '\\' ? to : p.Start);
 });
 app.MapItam();
 Console.WriteLine($"IT Assets demo: {BaseUrl}/demo (invented data, LocalDB; never deployed)");

@@ -51,14 +51,20 @@ public static class ItamTypeFields
             new("TonerType", "Toner type", "list", false, "TonerType")],
         ["IP"] = [new("Extension", "Extension number", "text", false)],
         ["SOF"] = [new("Software", "Software name", "text", true)],
+        ["TON"] = [new("TonerCode", "Toner code", "text", true)],
         ["DEV"] = [new("DeviceName", "Device name", "text", true), new("DeviceDescription", "Device description", "text", false)]
     };
     public static ItamField[] For(string type) => Fields.TryGetValue(type, out var f) ? f : [];
-    /// <summary>Serial number: required for every type except software. Service tag: required for computers. MAC: required
-    /// for IP phones, optional for computers. IP address: printers and IP phones.</summary>
-    public static bool SerialRequired(string type) => type != "SOF";
+    /// <summary>Serial number: not asked for software and IP phones; optional for toner; required for every other type.
+    /// Service tag: required for computers. MAC: IP phones only (required; it identifies the phone). IP address: printers and IP phones.</summary>
+    public static bool SerialUsed(string type) => type is not ("SOF" or "IP");
+    /// <summary>Manufacturer: every type except software (the software name identifies it). Model: not for software or toner
+    /// (the toner code identifies the cartridge).</summary>
+    public static bool ManufacturerUsed(string type) => type != "SOF";
+    public static bool ModelUsed(string type) => type is not ("SOF" or "TON");
+    public static bool SerialRequired(string type) => SerialUsed(type) && type != "TON";
     public static bool ServiceTagUsed(string type) => type == "PC";
-    public static bool MacUsed(string type) => type is "PC" or "IP";
+    public static bool MacUsed(string type) => type == "IP";
     public static bool MacRequired(string type) => type == "IP";
     public static bool IpUsed(string type) => type is "PNT" or "IP";
     public static bool KeyUsed(string type) => type is "PC" or "SOF";

@@ -53,8 +53,6 @@ CREATE TABLE itam_ref.location(
  name_en nvarchar(200) NOT NULL CONSTRAINT UX_itam_location_name UNIQUE,
  kind nvarchar(20) NOT NULL CHECK(kind IN(N'ITWarehouse',N'Branch')),
  region_code nvarchar(20) NOT NULL REFERENCES itam_ref.region(region_code), city nvarchar(100) NULL, active bit NOT NULL DEFAULT 1);
-CREATE TABLE itam_ref.company(
- company_code nvarchar(20) NOT NULL PRIMARY KEY, name_en nvarchar(200) NOT NULL, active bit NOT NULL DEFAULT 1);
 CREATE TABLE itam_ref.supplier(
  supplier_id int IDENTITY(1,1) NOT NULL PRIMARY KEY, name_en nvarchar(200) NOT NULL CONSTRAINT UX_itam_supplier UNIQUE,
  vat_no nvarchar(20) NULL, active bit NOT NULL DEFAULT 1);
@@ -85,7 +83,6 @@ CREATE TABLE itam_data.po(
  po_id int IDENTITY(1,1) NOT NULL PRIMARY KEY,
  po_number nvarchar(40) NOT NULL CONSTRAINT UX_itam_po_number UNIQUE,
  po_date date NOT NULL, supplier_id int NOT NULL REFERENCES itam_ref.supplier(supplier_id),
- company_code nvarchar(20) NOT NULL REFERENCES itam_ref.company(company_code),
  raised_by nvarchar(200) NOT NULL, request_ref nvarchar(20) NULL, invoice_no nvarchar(60) NULL,
  document_file_id bigint NOT NULL REFERENCES itam_data.stored_file(file_id), note nvarchar(1000) NULL,
  created_by uniqueidentifier NOT NULL, created_at_utc datetime2 NOT NULL DEFAULT SYSUTCDATETIME(), version rowversion NOT NULL);
@@ -93,7 +90,7 @@ CREATE TABLE itam_data.po_line(
  po_line_id int IDENTITY(1,1) NOT NULL PRIMARY KEY,
  po_id int NOT NULL REFERENCES itam_data.po(po_id), line_no int NOT NULL CHECK(line_no>0),
  type_code nvarchar(10) NOT NULL REFERENCES itam_ref.asset_type(type_code),
- manufacturer_id int NOT NULL REFERENCES itam_ref.manufacturer(manufacturer_id), model_id int NULL REFERENCES itam_ref.model(model_id),
+ manufacturer_id int NULL REFERENCES itam_ref.manufacturer(manufacturer_id), model_id int NULL REFERENCES itam_ref.model(model_id),
  specification nvarchar(500) NULL, quantity int NOT NULL CHECK(quantity BETWEEN 1 AND 10000), unit_cost decimal(18,2) NOT NULL CHECK(unit_cost>=0),
  CONSTRAINT UX_itam_po_line UNIQUE(po_id,line_no));
 CREATE TABLE itam_data.po_receipt(
@@ -114,16 +111,15 @@ CREATE TABLE itam_data.asset(
  asset_no nvarchar(20) NOT NULL CONSTRAINT UX_itam_asset_no UNIQUE,
  asset_seq int NOT NULL CONSTRAINT UX_itam_asset_seq UNIQUE,
  type_code nvarchar(10) NOT NULL REFERENCES itam_ref.asset_type(type_code),
- company_code nvarchar(20) NOT NULL REFERENCES itam_ref.company(company_code),
  status nvarchar(20) NOT NULL CHECK(status IN(N'InStore',N'InUse',N'InTransit',N'InRepair',N'PendingDisposal',N'Disposed',N'Sold',N'Expired',N'Lost')),
  stock_location nvarchar(20) NOT NULL CHECK(stock_location IN(N'ITWarehouse',N'Branch',N'Employee')),
  location_id int NOT NULL REFERENCES itam_ref.location(location_id),
- manufacturer_id int NOT NULL REFERENCES itam_ref.manufacturer(manufacturer_id), model_id int NOT NULL REFERENCES itam_ref.model(model_id),
+ manufacturer_id int NULL REFERENCES itam_ref.manufacturer(manufacturer_id), model_id int NULL REFERENCES itam_ref.model(model_id),
  serial_no nvarchar(100) NULL, serial_key nvarchar(100) NULL,
  service_tag nvarchar(100) NULL, service_tag_key nvarchar(100) NULL,
  mac_address char(17) NULL, ip_address varchar(15) NULL,
  device_condition nvarchar(10) NOT NULL CHECK(device_condition IN(N'New',N'Used')),
- purchase_date date NULL, warranty_end date NULL, supplier_id int NULL REFERENCES itam_ref.supplier(supplier_id),
+ purchase_date date NULL, supplier_id int NULL REFERENCES itam_ref.supplier(supplier_id),
  po_id int NULL REFERENCES itam_data.po(po_id), po_line_id int NULL REFERENCES itam_data.po_line(po_line_id),
  receipt_id int NULL REFERENCES itam_data.po_receipt(receipt_id), po_number_text nvarchar(40) NULL,
  unit_cost decimal(18,2) NULL CHECK(unit_cost>=0), invoice_no nvarchar(60) NULL, notes nvarchar(2000) NULL,

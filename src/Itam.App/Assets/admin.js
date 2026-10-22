@@ -1,6 +1,6 @@
 import {$,el,api,shell,fail,message,when,card,table,buttons,edit,people,tags} from '/itam.js';
 let d,area=new URLSearchParams(location.search).get('area')||'roles';
-const AREAS=[['roles','Roles'],['types','Asset types'],['locations','IT warehouses and branches'],['regions','Regions'],['companies','Companies'],['suppliers','Suppliers'],
+const AREAS=[['roles','Roles'],['types','Asset types'],['locations','IT warehouses and branches'],['regions','Regions'],['suppliers','Suppliers'],
   ['manufacturers','Manufacturers and models'],['values','Value lists'],['employees','Employees'],['audit','Audit log']];
 const L=()=>d.lists;const yes=v=>v?'Yes':'No';
 const change=(a,data,reason,action='save')=>api('/admin',{method:'POST',json:{area:a,action,data,reason}});
@@ -27,8 +27,6 @@ const render={
       (v,r)=>change('location',{id:x?.id,...v},r),{done:reload()});
     return [card('IT warehouses and branches','Where assets are kept. Stock can be kept at a branch in cities without an IT warehouse.',
       table(['Name','Kind','Region','City','Active'],L().locations,x=>[x.name,kindLabel(x.kind),x.region,x.city||'',yes(x.active)],d.can.masterData?x=>[['Edit',()=>form(x)]]:null),d.can.masterData&&add('Add',()=>form(null)))];},
-  companies:()=>[card('Companies','The owning company of each asset and PO.',table(['Code','Name','Active'],L().companies,x=>[x.code,x.name,yes(x.active)],
-    d.can.masterData?x=>[['Edit',()=>ref('company',x,[['code','Code',true,true],['name','Name']])]]:null),d.can.masterData&&add('Add a company',()=>ref('company',null,[['code','Code'],['name','Name']])))],
   suppliers:()=>{const form=x=>edit(x?x.name:'Add a supplier',[{key:'name',label:'Name',value:x?.name,required:true},{key:'vat',label:'VAT number (15 digits)',value:x?.vat},{key:'active',label:'Active',type:'checkbox',value:x?x.active:true}],
       (v,r)=>change('supplier',{id:x?.id,...v},r),{done:reload()});
     return [card('Suppliers',null,table(['Supplier','VAT number','Active'],L().suppliers,x=>[x.name,x.vat||'',yes(x.active)],d.can.masterData?x=>[['Edit',()=>form(x)]]:null),d.can.masterData&&add('Add a supplier',()=>form(null)))];},

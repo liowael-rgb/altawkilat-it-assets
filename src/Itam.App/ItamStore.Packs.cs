@@ -28,7 +28,7 @@ public sealed partial class ItamStore
         (string En, string Ar, string? Value)[] fields =
         [
             ("PO number", "رقم أمر الشراء", p.Number), ("PO date", "تاريخ أمر الشراء", p.Date.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)),
-            ("Supplier", "المورد", p.Supplier + (p.SupplierVat is null ? "" : $" (VAT {p.SupplierVat})")), ("Company", "الشركة", p.CompanyName),
+            ("Supplier", "المورد", p.Supplier + (p.SupplierVat is null ? "" : $" (VAT {p.SupplierVat})")),
             ("Raised by", "صادر من", p.RaisedBy), ("Request", "رقم الطلب", p.RequestRef), ("Invoice number", "رقم الفاتورة", p.Invoice)
         ];
         foreach (var f in fields.Where(f => !string.IsNullOrWhiteSpace(f.Value)))
@@ -54,7 +54,7 @@ public sealed partial class ItamStore
         foreach (var l in p.Lines)
         {
             Need(14);
-            d.Text(l.No.ToString(CultureInfo.InvariantCulture), lc[0], d.Y, 8.5, false, ink); d.Fit(l.TypeName, lc[1], d.Y, 8.5, 80); d.Fit($"{l.Manufacturer} {l.Model}", lc[2], d.Y, 8.5, 185);
+            d.Text(l.No.ToString(CultureInfo.InvariantCulture), lc[0], d.Y, 8.5, false, ink); d.Fit(l.TypeName, lc[1], d.Y, 8.5, 80); d.Fit(string.Join(" ", new[] { l.Manufacturer, l.Model }.Where(v => !string.IsNullOrWhiteSpace(v))), lc[2], d.Y, 8.5, 185);
             d.Text(l.Quantity.ToString(CultureInfo.InvariantCulture), lc[3], d.Y, 8.5, false, ink); d.Text(Money(l.UnitCost), lc[4], d.Y, 8.5, false, ink); d.Text(Money(l.Quantity * l.UnitCost), lc[5], d.Y, 8.5, false, ink); d.Y -= 12;
         }
         var net = p.Lines.Sum(l => l.Quantity * l.UnitCost); var vat = decimal.Round(net * Vat, 2);
@@ -72,7 +72,7 @@ public sealed partial class ItamStore
         foreach (var x in p.Devices)
         {
             Need(14);
-            d.Text(x.AssetNo, dc[0], d.Y, 8.5, false, ink); d.Fit(x.Model, dc[1], d.Y, 8.5, 92); d.Fit(x.Serial ?? x.ServiceTag ?? "", dc[2], d.Y, 8.5, 96);
+            d.Text(x.AssetNo, dc[0], d.Y, 8.5, false, ink); d.Fit(x.Model ?? "", dc[1], d.Y, 8.5, 92); d.Fit(x.Serial ?? x.ServiceTag ?? "", dc[2], d.Y, 8.5, 96);
             d.Fit(ItamStatuses.Label(x.Status), dc[3], d.Y, 8.5, 74); d.Fit(x.KeptAt, dc[4], d.Y, 8.5, 86); d.Text("Not yet delivered", dc[5], d.Y, 8.5, false, muted); d.Y -= 12;
         }
         var missing = (ordered - received) + p.Devices.Count;

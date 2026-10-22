@@ -5,7 +5,7 @@ let m,d;
 const stat=(n,t)=>{const s=el('div',null,'stat');s.append(el('b',String(n)),el('span',t));return s;};
 async function load(note){
   d=await api('/pos/'+id);const p=d.po,c=d.counts;
-  $('title').textContent=`PO ${p.number}`;$('subtitle').textContent=`${p.supplier} · ${date(p.date)} · ${p.companyName}`;
+  $('title').textContent=`PO ${p.number}`;$('subtitle').textContent=`${p.supplier} · ${date(p.date)}`;
   const actions=$('po-actions');actions.replaceChildren();
   const btn=(t,fn,cls)=>{const b=el('button',t,cls||'');b.type='button';b.onclick=fn;actions.append(b);};
   btn('Print PO pack',()=>{window.open(`/api/pos/${id}/pack.pdf`,'_blank');setTimeout(()=>load('The PO pack was printed; record the date it goes to Accounting below.'),1500);},'primary');
@@ -17,11 +17,11 @@ async function load(note){
     stat(c.reserved,'reserved'),stat(c.deliveredWaitingSigned,'delivered, waiting for signed copy'),stat(c.deliveredSigned,'delivered and signed'));
   const toCome=d.lines.filter(l=>l.toCome>0);
   $('view').replaceChildren(...[counts,
-    card('PO',null,dl([['PO number',el('strong',p.number)],['PO date',date(p.date)],['Supplier',p.supplier+(p.supplierVat?` (VAT ${p.supplierVat})`:'')],['Company',p.companyName],['Raised by',p.raisedBy],
+    card('PO',null,dl([['PO number',el('strong',p.number)],['PO date',date(p.date)],['Supplier',p.supplier+(p.supplierVat?` (VAT ${p.supplierVat})`:'')],['Raised by',p.raisedBy],
       ['Request',p.requestRef],['Invoice number',p.invoiceNo],['Note',p.note],['PO document',doc]])),
     card('Lines',`Subtotal ${money(d.totals.net)} · VAT 15% ${money(d.totals.vat)} · Total ${money(d.totals.total)}`,
       table(['Line','Type','Manufacturer and model','Specification','Quantity','Unit cost','Line total','Received','To come'],d.lines,
-        l=>[String(l.no),l.typeName,`${l.manufacturer} ${l.model||''}`,l.specification||'',String(l.quantity),money(l.unitCost),money(l.lineTotal),String(l.received),String(l.toCome)])),
+        l=>[String(l.no),l.typeName,[l.manufacturer,l.model].filter(Boolean).join(' ')||'-',l.specification||'',String(l.quantity),money(l.unitCost),money(l.lineTotal),String(l.received),String(l.toCome)])),
     d.canManage&&toCome.length?receiveCard(toCome):null,
     card('Devices received','Each device has its own Asset No.; open one to see its details and history.',
       table(['Asset No.','Line','Model','Serial / service tag','Status','Kept at','Received'],d.devices,x=>[x.assetNo,String(x.line),x.model,x.serial||x.serviceTag||'',x.status,x.keptAt,when(x.receivedAt)],null,
@@ -37,7 +37,7 @@ function sent(k){edit('Sent to Accounting',[{key:'on',label:'Date sent',type:'da
 
 // Receive devices against one line: one row per device with the fields of its type.
 function receiveCard(lines){
-  const L=m.lists;const box=el('div');const lineSel=document.createElement('select');for(const l of lines)lineSel.append(option(l.id,`Line ${l.no}: ${l.typeName} ${l.manufacturer} ${l.model||''} — ${l.toCome} to come`));
+  const L=m.lists;const box=el('div');const lineSel=document.createElement('select');for(const l of lines)lineSel.append(option(l.id,`Line ${l.no}: ${l.typeName} ${[l.manufacturer,l.model].filter(Boolean).join(' ')} — ${l.toCome} to come`));
   const onlySpecialist=m.roles.every(r=>r.code==='SupportSpecialist');
   const locSel=document.createElement('select');locSel.append(option('','Choose'),...L.locations.filter(x=>x.active&&(!onlySpecialist||m.regions.includes(x.region))).map(x=>option(x.id,`${x.region} · ${x.name}`)));
   const at=document.createElement('input');at.type='datetime-local';const inv=document.createElement('input');inv.maxLength=60;inv.value=d.po.invoiceNo||'';
@@ -46,18 +46,18 @@ function receiveCard(lines){
   const f=(label,input,req,hint)=>{const l=el('label',label+(req?' *':''));l.append(input);if(hint)l.append(el('span',hint,'hint'));return l;};
   function build(){
     const line=lines.find(l=>String(l.id)===lineSel.value);rows=[];
-    const t=el('table');const hr=el('tr');const cols=['#',line.serialRequired?'Serial number *':'Serial number',...(line.serviceTag?['Service tag *']:[]),...(line.mac?[line.macRequired?'MAC address *':'MAC address']:[]),...(line.ip?['IP address']:[]),
+    const t=el('table');const hr=el('tr');const cols=['#',...(line.serialUsed?[line.serialRequired?'Serial number *':'Serial number']:[]),...(line.serviceTag?['Service tag *']:[]),...(line.mac?[line.macRequired?'MAC address *':'MAC address']:[]),...(line.ip?['IP address']:[]),
       ...line.fields.map(x=>x.label+(x.required?' *':'')),...(line.key?[line.type==='PC'?'OS key':'Software key']:[]),'Condition',''];
     for(const c of cols)hr.append(el('th',c));const th=el('thead');th.append(hr);const tb=el('tbody');t.append(th,tb);rowsBox.replaceChildren(t);
     const add=()=>{if(rows.length>=line.toCome){alert(`Only ${line.toCome} devices are still to come on this line.`);return;}
       const r={};const tr=el('tr');const cell=x=>{const td=el('td');td.append(x);tr.append(td);};
       const input=(ph)=>{const i=document.createElement('input');i.placeholder=ph||'';i.autocomplete='off';return i;};
-      cell(el('span',String(rows.length+1)));r.serial=input();cell(r.serial);if(line.serviceTag){r.tag=input();cell(r.tag);}if(line.mac){r.mac=input('AA:BB:CC:DD:EE:FF');cell(r.mac);}if(line.ip){r.ip=input();cell(r.ip);}
+      cell(el('span',String(rows.length+1)));if(line.serialUsed){r.serial=input();cell(r.serial);}if(line.serviceTag){r.tag=input();cell(r.tag);}if(line.mac){r.mac=input('AA:BB:CC:DD:EE:FF');cell(r.mac);}if(line.ip){r.ip=input();cell(r.ip);}
       r.attrs={};for(const x of line.fields){let i;if(x.kind==='list'){i=document.createElement('select');i.append(option('',''),...L.values.filter(v=>v.list===x.list&&v.active).map(v=>option(v.code,v.name)));}else{i=input();if(x.kind==='number')i.type='number';}r.attrs[x.code]=i;cell(i);}
       if(line.key){r.key=input();cell(r.key);}
       r.cond=document.createElement('select');r.cond.append(option('New','New'),option('Used','Used'));cell(r.cond);
       const rm=el('button','Remove','link');rm.type='button';rm.onclick=()=>{rows.splice(rows.indexOf(r),1);tr.remove();};cell(rm);
-      rows.push(r);tb.append(tr);r.serial.focus();};
+      rows.push(r);tb.append(tr);(r.serial||tr.querySelector('input'))?.focus();};
     addBtn.onclick=add;add();
   }
   const addBtn=el('button','Add a device');addBtn.type='button';

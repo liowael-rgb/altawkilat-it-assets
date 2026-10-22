@@ -27,11 +27,10 @@ public sealed partial class ItamStore
     static async Task<object> Lists(DbConnection c, CancellationToken token) => new
     {
         types = await Rows(c, null, "SELECT type_code,name_en,sort_order,active FROM itam_ref.asset_type ORDER BY sort_order", r => new { code = r.GetString(0), name = r.GetString(1), sort = r.GetInt32(2), active = r.GetBoolean(3),
-            fields = ItamTypeFields.For(r.GetString(0)), serialRequired = ItamTypeFields.SerialRequired(r.GetString(0)), serviceTag = ItamTypeFields.ServiceTagUsed(r.GetString(0)),
+            fields = ItamTypeFields.For(r.GetString(0)), manufacturerUsed = ItamTypeFields.ManufacturerUsed(r.GetString(0)), modelUsed = ItamTypeFields.ModelUsed(r.GetString(0)), serialUsed = ItamTypeFields.SerialUsed(r.GetString(0)), serialRequired = ItamTypeFields.SerialRequired(r.GetString(0)), serviceTag = ItamTypeFields.ServiceTagUsed(r.GetString(0)),
             mac = ItamTypeFields.MacUsed(r.GetString(0)), macRequired = ItamTypeFields.MacRequired(r.GetString(0)), ip = ItamTypeFields.IpUsed(r.GetString(0)), key = ItamTypeFields.KeyUsed(r.GetString(0)) }, token),
         regions = await Rows(c, null, "SELECT region_code,name_en,sort_order,active FROM itam_ref.region ORDER BY sort_order", r => new { code = r.GetString(0), name = r.GetString(1), sort = r.GetInt32(2), active = r.GetBoolean(3) }, token),
         locations = await Rows(c, null, "SELECT location_id,name_en,kind,region_code,city,active FROM itam_ref.location ORDER BY region_code,name_en", r => new { id = r.GetInt32(0), name = r.GetString(1), kind = r.GetString(2), region = r.GetString(3), city = S(r, 4), active = r.GetBoolean(5) }, token),
-        companies = await Rows(c, null, "SELECT company_code,name_en,active FROM itam_ref.company ORDER BY name_en", r => new { code = r.GetString(0), name = r.GetString(1), active = r.GetBoolean(2) }, token),
         suppliers = await Rows(c, null, "SELECT supplier_id,name_en,vat_no,active FROM itam_ref.supplier ORDER BY name_en", r => new { id = r.GetInt32(0), name = r.GetString(1), vat = S(r, 2), active = r.GetBoolean(3) }, token),
         manufacturers = await Rows(c, null, "SELECT manufacturer_id,name_en,active FROM itam_ref.manufacturer ORDER BY name_en", r => new { id = r.GetInt32(0), name = r.GetString(1), active = r.GetBoolean(2) }, token),
         models = await Rows(c, null, "SELECT model_id,manufacturer_id,type_code,name_en,active FROM itam_ref.model ORDER BY name_en", r => new { id = r.GetInt32(0), manufacturer = r.GetInt32(1), type = r.GetString(2), name = r.GetString(3), active = r.GetBoolean(4) }, token),
@@ -138,13 +137,6 @@ public sealed partial class ItamStore
                 if (d.Id is > 0) await Exec(c, tx, "UPDATE itam_ref.location SET name_en=@n,kind=@k,region_code=@r,city=@c,active=@a WHERE location_id=@i", token, v);
                 else await Exec(c, tx, "INSERT itam_ref.location(name_en,kind,region_code,city,active) VALUES(@n,@k,@r,@c,@a)", token, v);
                 await Log(name, "Save", new { name, kind, d.Region, d.City, d.Active }); break;
-            }
-            case "company":
-            {
-                var code = Text(d.Code, "Code", 20).ToUpperInvariant();
-                if (await Exec(c, tx, "UPDATE itam_ref.company SET name_en=@n,active=@a WHERE company_code=@c", token, ("@c", code), ("@n", name), ("@a", d.Active)) == 0)
-                    await Exec(c, tx, "INSERT itam_ref.company(company_code,name_en,active) VALUES(@c,@n,@a)", token, ("@c", code), ("@n", name), ("@a", d.Active));
-                await Log(code, "Save", new { code, name, d.Active }); break;
             }
             case "supplier":
             {

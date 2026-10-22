@@ -1,7 +1,9 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>IT Assets · Register an asset</title><link rel="stylesheet" href="/itam.css"></head>
-<body><main>
-<div class="page-head"><div><p class="eyebrow">Asset register</p><h1>Register an asset</h1><p>The Asset No. is given by the system when you save (product code and the next number). Devices bought on a recorded PO are received on the PO instead.</p></div><div class="actions"><a href="/"><button type="button">All assets</button></a></div></div>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=1280"><title>IT Assets · Register an asset</title><link rel="stylesheet" href="/itam.css"></head>
+<body class="x"><main>
+<div class="page-head"><div><p class="eyebrow">Assets › Register an asset</p><h1>Register an asset</h1><p>For old stock and any device without a PO. The Asset No. is given when you save (product code and the next number).</p></div></div>
+<div class="x-notice"><svg class="x-i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg><span><b>A new device bought on a PO?</b> Record the PO first, then receive the devices on it: receiving registers each device and gives it its Asset No. <a href="/pos.html">Go to purchase orders</a></span></div>
 <p id="message" role="status"></p>
-<form id="asset-form" class="card"><div id="fields" class="grid two"></div><div class="actions"><button class="primary" type="submit">Register</button></div></form>
+<div class="x-work"><form id="asset-form" novalidate><div id="fields"></div></form><aside class="x-side" id="side"></aside></div>
+<div class="x-cmd"><span class="x-cmd-note" id="cmd-note"></span><a href="/"><button type="button" class="x-btn quiet">Cancel</button></a><button class="primary" type="submit" form="asset-form" id="register">Register asset <span class="x-kbd">Ctrl S</span></button></div>
 <dialog id="dialog"><form id="dialog-form" method="dialog"><h2 id="dialog-title"></h2><div id="dialog-body" class="grid two"></div><label class="wide" id="reason-label">Reason (kept in the audit log)<input id="dialog-reason" maxlength="1000"></label><div class="actions"><button class="primary" id="dialog-save" type="submit">Save</button><button type="button" id="dialog-cancel">Cancel</button></div></form></dialog>
 </main><script type="module" src="/asset-new.js"></script></body></html>

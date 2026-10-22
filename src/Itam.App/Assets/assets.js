@@ -7,7 +7,7 @@ async function load(){
     for(const a of d.items){
       const tr=el('tr',null,'clickable');tr.tabIndex=0;const go=()=>location.assign('/asset.html?id='+a.id);tr.onclick=go;tr.onkeydown=e=>{if(e.key==='Enter')go();};
       const no=el('td');const link=el('a',a.assetNo);link.href='/asset.html?id='+a.id;no.append(link);const st=el('td');st.append(statusTag(a.statusLabel,a.status));
-      tr.append(no,el('td',a.typeName),el('td',`${a.manufacturer} ${a.model}`),el('td',a.serial||a.serviceTag||''),el('td',a.computerName||''),st,el('td',a.keptAt),el('td',a.region),el('td',a.po||''));rows.append(tr);
+      tr.append(no,el('td',a.typeName),el('td',[a.manufacturer,a.model].filter(Boolean).join(' ')),el('td',a.serial||a.serviceTag||''),el('td',a.computerName||''),st,el('td',a.keptAt),el('td',a.region),el('td',a.po||''));rows.append(tr);
     }
     if(!d.items.length){const tr=el('tr');const td=el('td','No assets match.','empty');td.colSpan=9;tr.append(td);rows.append(tr);}
     $('prev').disabled=page<=1;$('next').disabled=!d.hasMore;$('page').textContent='Page '+page;

@@ -1,5 +1,5 @@
-// IT Assets shared page code: API calls with the anti-forgery token, the page frame (navy left pane, as the other
-// company systems), the form dialog, tables and formats. English screens; no inline styles (CSP).
+// IT Assets shared page code: API calls with the anti-forgery token, the page frame (white side menu and top bar, the
+// approved desktop design), the form dialog, tables and formats. English screens; no inline styles (CSP).
 export const $=id=>document.getElementById(id);
 export function el(tag,text,cls){const e=document.createElement(tag);if(text!==undefined&&text!==null)e.textContent=String(text);if(cls)e.className=cls;return e;}
 export function option(v,t){const o=document.createElement('option');o.value=v;o.textContent=t;return o;}
@@ -23,37 +23,51 @@ export const money=v=>v===null||v===undefined?'':Number(v).toLocaleString('en-US
 export function tags(list,cls='tag'){const s=el('span');for(const t of list)s.append(el('span',t,cls));return s;}
 export function statusTag(label,code){return el('span',label,'tag'+(code==='InStore'?' ok':code==='InUse'?'':(code==='Lost'||code==='Disposed')?' off':' warn'));}
 
-const svg=p=>{const s=document.createElementNS('http://www.w3.org/2000/svg','svg');s.setAttribute('viewBox','0 0 24 24');s.setAttribute('aria-hidden','true');s.innerHTML=p;return s;};
-const ICONS={
-  assets:'<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
-  pos:'<path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h8M9 17h6"/>',
-  backups:'<path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M20 8v6M17 11h6"/>',
-  admin:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>'
+export const svg=p=>{const s=document.createElementNS('http://www.w3.org/2000/svg','svg');s.setAttribute('viewBox','0 0 24 24');s.setAttribute('aria-hidden','true');s.setAttribute('class','x-i');s.innerHTML=ICONS[p]||p;return s;};
+export const ICONS={
+  assets:'<path d="M3 7.5L12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5l9 4.5 9-4.5M12 12v9"/>',
+  pos:'<path d="M3 4h2l2.4 11h11.2L21 7H6.2"/><circle cx="9" cy="19" r="1.5"/><circle cx="17" cy="19" r="1.5"/>',
+  backups:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M19 8v6M16 11h6"/>',
+  admin:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
+  laptop:'<rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/>',
+  search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+  check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  alert:'<path d="M12 3l9.5 17h-19z"/><path d="M12 10v4M12 17h.01"/>',
+  info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+  box:'<path d="M3 7.5L12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5l9 4.5 9-4.5M12 12v9"/>',
+  pin:'<path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
+  cart:'<path d="M3 4h2l2.4 11h11.2L21 7H6.2"/><circle cx="9" cy="19" r="1.5"/><circle cx="17" cy="19" r="1.5"/>',
+  key:'<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3M14 9l2 2"/>',
+  barcode:'<path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 8v8M10 8v8M13 8v8M17 8v8"/>',
+  save:'<path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5h7V3M8 21v-7h8v7"/>',
+  edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
+  shield:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
+  chev:'<path d="M9 6l6 6-6 6"/>'
 };
-/** The page frame: navy left pane with the logo and the pages the person may open; the page's <main> moves into it. */
+const initials=n=>(n||'').split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase();
+/** The page frame: white side menu (logo, the pages the person may open, who is signed in) and a top bar with the asset
+ *  search; the page's <main> moves into it. Desktop only. */
 export async function shell(current){
+  document.body.classList.add('x');
   const main=document.querySelector('main');
-  const sh=el('div',null,'it-shell');const side=el('aside',null,'it-sidebar');side.id='it-sidebar';side.setAttribute('aria-label','IT Assets navigation');
-  const brand=el('a',null,'it-brand');brand.href='/';const logo=document.createElement('img');logo.src='/company-logo.png';logo.alt='ALTAWKILAT';
-  const name=el('span',null,'it-brand-name');name.append(el('strong','IT Assets'),el('small','IT asset management'));brand.append(logo,name);
-  const nav=el('nav');nav.setAttribute('aria-label','Pages');const navLabel=el('p','Workspace','it-nav-label');
-  const adminNav=el('nav');adminNav.setAttribute('aria-label','Administration');const adminLabel=el('p','Administration','it-nav-label');adminLabel.hidden=true;
-  side.append(brand,navLabel,nav,adminLabel,adminNav,el('div','IT Assets · ALTAWKILAT','it-side-footer'));
-  const right=el('div',null,'it-main');const top=el('header',null,'it-top');
-  const toggle=el('button','Menu','it-toggle');toggle.type='button';toggle.setAttribute('aria-controls','it-sidebar');toggle.setAttribute('aria-expanded','false');
-  const sys=el('div',null,'it-system');sys.append(el('strong','IT Assets'),el('span','IT asset management'));const who=el('div',null,'who');top.append(toggle,sys,who);
-  right.append(top);if(main)right.append(main);sh.append(side,right);document.body.prepend(sh);
-  const backdrop=el('button',null,'it-backdrop');backdrop.type='button';backdrop.hidden=true;backdrop.setAttribute('aria-label','Close navigation');document.body.append(backdrop);
-  const close=()=>{sh.dataset.navOpen='false';toggle.setAttribute('aria-expanded','false');backdrop.hidden=true;};
-  toggle.onclick=()=>{const open=sh.dataset.navOpen!=='true';sh.dataset.navOpen=String(open);toggle.setAttribute('aria-expanded',String(open));backdrop.hidden=!open;};
-  backdrop.onclick=close;side.addEventListener('click',e=>{if(e.target.closest('a'))close();});
-  let m;try{m=await me();}catch(e){who.append(el('span',e.message));throw e;}
-  const link=(n,key,text,href)=>{const a=el('a');a.href=href;a.append(svg(ICONS[key]),el('span',text));if(key===current){a.className='is-current';a.setAttribute('aria-current','page');}n.append(a);};
+  const sh=el('div',null,'x-shell');const rail=el('aside',null,'x-rail');rail.setAttribute('aria-label','IT Assets navigation');
+  const logo=el('a',null,'x-logo');logo.href='/';const img=document.createElement('img');img.src='/company-logo.png';img.alt='ALTAWKILAT';
+  const app=el('div',null,'x-app');const mark=el('span',null,'x-app-mark');mark.append(svg('laptop'));const appText=el('div');appText.append(el('b','IT Assets'),el('small','Asset management'));app.append(mark,appText);logo.append(img,app);
+  const navh=el('div','Workspace','x-navh');const nav=el('nav');nav.setAttribute('aria-label','Pages');
+  const adminH=el('div','Administration','x-navh');adminH.hidden=true;const adminNav=el('nav');adminNav.setAttribute('aria-label','Administration');
+  const meBox=el('div',null,'x-me');rail.append(logo,navh,nav,adminH,adminNav,meBox);
+  const right=el('div');const top=el('header',null,'x-top');right.append(top);if(main)right.append(main);sh.append(rail,right);document.body.prepend(sh);
+  let m;try{m=await me();}catch(e){top.append(el('span',e.message,'hint'));throw e;}
+  if(m.can.viewAssets){const f=el('form',null,'x-search');f.setAttribute('role','search');const q=document.createElement('input');q.name='q';q.type='search';q.maxLength=100;
+    q.placeholder='Search assets: Asset No., serial, service tag, model or PO';q.value=current==='assets'?new URLSearchParams(location.search).get('q')||'':'';q.setAttribute('aria-label','Search assets');
+    f.append(svg('search'),q,el('span','Enter','x-kbd'));f.onsubmit=e=>{e.preventDefault();location.assign('/?q='+encodeURIComponent(q.value.trim()));};top.append(f);}
+  const link=(n,key,text,href)=>{const a=el('a',null,'x-nav'+(key===current?' on':''));a.href=href;a.append(svg(key),el('span',text));if(key===current)a.setAttribute('aria-current','page');n.append(a);return a;};
   if(m.can.viewAssets)link(nav,'assets','Assets','/');
   if(m.can.poView)link(nav,'pos','Purchase orders','/pos.html');
   if(m.can.ownBackup||m.can.backupsView)link(nav,'backups','My Backup','/backups.html');
-  if(m.can.admin){adminLabel.hidden=false;link(adminNav,'admin','Administration Center','/admin.html');const areas=$('side');if(areas&&current==='admin'){areas.className='it-subnav';adminNav.append(areas);}}
-  who.append(el('div',m.name,'who-name'));
+  if(m.can.admin){adminH.hidden=false;link(adminNav,'admin','Administration Center','/admin.html');const areas=$('side');if(areas&&current==='admin'){areas.className='it-subnav';adminNav.append(areas);}}
+  const roles=[...new Set(m.roles.map(r=>r.label))].join(', ')||'Employee';
+  const who=el('div');who.append(el('b',m.name),el('small',roles+(m.viewsAll?' · All regions':m.regions.length?' · '+m.regions.join(', '):'')));meBox.append(el('span',initials(m.name),'x-avatar'),who);
   return m;
 }
 
