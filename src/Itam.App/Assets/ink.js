@@ -63,22 +63,30 @@ function linkPrinter(r){
       await api(`/ink/${r.id}/printer`,{method:'POST',json:{printerId:p.id}});await load(`${r.no} linked to ${p.assetNo}. Send it for approval.`);},{reason:false,button:'Link'});
 }
 function registerPrinter(r){
-  const models=printerModels();const pick=models.find(([,n])=>n===r.printerModel);
+  // Manufacturer first, then its printer models (or a new model name), as on the register form.
+  const makers=m.lists.manufacturers.filter(f=>f.active);const pnt=m.lists.models.filter(x=>x.type==='PNT'&&x.active);
+  const full=x=>`${(makers.find(f=>f.id===x.manufacturer)||{}).name||''} ${x.name}`.trim();
+  const pick=pnt.find(x=>full(x)===r.printerModel);
+  const guess=pick?null:makers.find(f=>(r.printerModel||'').toLowerCase().startsWith(f.name.toLowerCase()+' '));
+  const typed=pick?'':guess?(r.printerModel||'').slice(guess.name.length).trim():(r.printerModel||'');
+  let want=pick?String(pick.id):r.printerModel?'other':'';
   const locs=m.lists.locations.filter(l=>l.active);const here=locs.find(l=>l.name===r.printerLocation);
   edit(`Register the printer of ${r.no}`,[
     {key:'location',label:'Kept at',type:'select',required:true,options:[['','Choose'],...locs.map(l=>[l.id,`${l.name} (${l.region})`])],value:here?.id,hint:r.printerLocation?`The employee's office in Active Directory: ${r.printerLocation}.`:'The employee has no office in Active Directory.'},
-    {key:'model',label:'Model',type:'select',required:true,options:[['','Choose'],...models,['other','New model']],value:pick?pick[0]:r.printerModel?'other':'',onchange:i=>{const o=i.model.value==='other';i.maker.closest('label').hidden=!o;i.modelText.closest('label').hidden=!o;}},
-    {key:'maker',label:'Manufacturer',type:'select',options:[['','Choose'],...m.lists.manufacturers.filter(f=>f.active).map(f=>[f.id,f.name])]},
-    {key:'modelText',label:'New model name',max:100,value:pick?'':(r.printerModel||'')},
+    {key:'maker',label:'Manufacturer',type:'select',required:true,options:[['','Choose'],...makers.map(f=>[f.id,f.name])],value:pick?.manufacturer??guess?.id,
+      onchange:i=>{const keep=i.model.value||want;want='';i.model.replaceChildren(option('','Choose'),...pnt.filter(x=>String(x.manufacturer)===i.maker.value).map(x=>option(x.id,x.name)),option('other','New model (type its name)'));
+        i.model.value=[...i.model.options].some(o=>o.value===keep)?keep:'';i.model.dispatchEvent(new Event('change'));}},
+    {key:'model',label:'Model',type:'select',required:true,options:[['','Choose']],onchange:i=>{i.modelText.closest('label').hidden=i.model.value!=='other';i.modelText.required=i.model.value==='other';}},
+    {key:'modelText',label:'New model name',max:100,value:typed,hint:'As written on the printer, without the manufacturer (for example HL-L2350DW).'},
     {key:'serial',label:'Serial number',required:true,max:100,value:r.newSerial},
     {key:'toner',label:'Toner code',max:100,value:r.toner},
     {key:'where',label:'Printer location',max:200,hint:'For example Reception or 2nd floor.'},
     {key:'condition',label:'Condition',type:'select',options:[['Used','Used'],['New','New']]}],
-    async x=>{const other=x.model==='other';const mo=other?null:models.find(([id])=>String(id)===x.model);
-      const res=await api(`/ink/${r.id}/register-printer`,{method:'POST',json:{locationId:Number(x.location)||null,manufacturerId:other?Number(x.maker)||null:m.lists.models.find(q=>String(q.id)===x.model)?.manufacturer??null,
-        modelId:other?null:mo?Number(mo[0]):null,newModel:other?x.modelText:null,serialNo:x.serial,tonerCode:x.toner,printerLocation:x.where,condition:x.condition}});
+    async x=>{const other=x.model==='other';if(!x.maker)throw Error('Choose the manufacturer.');if(!x.model)throw Error('Choose the model.');if(other&&!(x.modelText||'').trim())throw Error('Type the new model name.');
+      const res=await api(`/ink/${r.id}/register-printer`,{method:'POST',json:{locationId:Number(x.location)||null,manufacturerId:Number(x.maker),
+        modelId:other?null:Number(x.model),newModel:other?x.modelText:null,serialNo:x.serial,tonerCode:x.toner,printerLocation:x.where,condition:x.condition}});
       open(`/api/assets/${res.id}/label.pdf`);await load(`Printer ${res.assetNo} registered and linked to ${r.no}. Stick its label on the printer, then send the request for approval.`);},
-    {reason:false,button:'Register and print the label',hint:'Old stock, no PO. The printer is In Use where it is kept.'});
+    {reason:false,button:'Register and print the label',hint:`The employee typed: ${r.printerModel||'no model'}, serial number ${r.newSerial}. Old stock, no PO; the printer is In Use where it is kept.`});
 }
 
 
