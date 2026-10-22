@@ -262,12 +262,15 @@ public sealed partial class ItamStore
             token, ("@st", st), ("@q", t), ("@lk", like));
         var visible = rows.Where(x => s.CanView(x.type, x.region)).Select(x => new { x.id, x.no, x.assetId, x.assetNo, x.typeName, x.region, x.employee, x.deliveredOn, x.issuedAt, x.signedAt, x.receivedAt, x.computerName, x.ownerType, x.issuedBy,
             state = x.receivedAt is not null ? "Returned" : x.signedAt is not null ? "Signed" : "Waiting for signed copy", overdue = x.signedAt is null && x.receivedAt is null && x.issuedAt < UtcNow.AddDays(-SignedCopyDays) }).ToList();
-        var counts = (await Rows(c, null, "SELECT a.type_code,g.region_code,d.signed_file_id,d.received_at_utc,d.issued_at_utc FROM itam_data.delivery d JOIN itam_data.asset a ON a.asset_id=d.asset_id JOIN itam_ref.location g ON g.location_id=a.location_id WHERE d.received_at_utc IS NULL",
-            r => (Type: r.GetString(0), Region: r.GetString(1), Signed: !r.IsDBNull(2), Issued: Utc(r, 4)), token)).Where(x => s.CanView(x.Type, x.Region)).ToList();
+        var every = (await Rows(c, null, "SELECT a.type_code,g.region_code,d.signed_file_id,d.received_at_utc,d.issued_at_utc FROM itam_data.delivery d JOIN itam_data.asset a ON a.asset_id=d.asset_id JOIN itam_ref.location g ON g.location_id=a.location_id",
+            r => (Type: r.GetString(0), Region: r.GetString(1), Signed: !r.IsDBNull(2), Returned: !r.IsDBNull(3), Issued: Utc(r, 4)), token)).Where(x => s.CanView(x.Type, x.Region)).ToList();
+        var counts = every.Where(x => !x.Returned).ToList();
         var tasks = await Tasks(c, s, token);
         return new
         {
             status = st, items = visible, signedCopyDays = SignedCopyDays, tasks,
+            // The number on each filter button.
+            filterCounts = new { waiting = counts.Count(x => !x.Signed), open = counts.Count, returned = every.Count(x => x.Returned), all = every.Count },
             counts = new { waiting = counts.Count(x => !x.Signed), overdue = counts.Count(x => !x.Signed && x.Issued < UtcNow.AddDays(-SignedCopyDays)), withEmployees = counts.Count, tasks = tasks.Count(x => x.done is null) }
         };
     }

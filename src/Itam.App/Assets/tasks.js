@@ -13,7 +13,7 @@ async function load(note){
     :'Clean-up tasks after an asset comes back. The System Administrator and the Voice Administrator mark them done.';
   $('stats').replaceChildren(...[(d.mine.ad||!d.mine.cucm)&&stat(ad.filter(t=>!t.done).length,'computers to remove from AD and Endpoint Central'),
     (d.mine.cucm||!d.mine.ad)&&stat(cucm.filter(t=>!t.done).length,'extensions to remove from CUCM'),stat(d.tasks.filter(t=>t.done).length,'done')].filter(Boolean));
-  $('filter').replaceChildren(...FILTERS.map(([k,t])=>{const b=el('button',t);b.type='button';b.setAttribute('aria-pressed',String(k===filter));b.onclick=()=>{filter=k;load();};return b;}));
+  $('filter').replaceChildren(...FILTERS.map(([k,t])=>{const b=el('button',t);const n=k==='all'?d.tasks.length:d.tasks.filter(x=>k==='open'?!x.done:!!x.done).length;b.append(el('span',String(n),'x-segc'+(k==='open'&&n?' hot':'')));b.type='button';b.setAttribute('aria-pressed',String(k===filter));b.onclick=()=>{filter=k;load();};return b;}));
   const list=d.tasks.filter(t=>filter==='all'||(filter==='open'?!t.done:!!t.done));
   $('list-hint').textContent='Created automatically when an asset is received back. Open the asset to see its history.';
   $('list').replaceChildren(table(['Task','Asset No.','Created','State'],list,

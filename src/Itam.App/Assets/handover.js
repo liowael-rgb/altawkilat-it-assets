@@ -7,7 +7,7 @@ const stat=(n,t,cls)=>{const s=el('div',null,'stat'+(cls?' '+cls:''));s.append(e
 async function load(note){
   const d=await api(`/handover?status=${filter}&q=${encodeURIComponent($('q').value.trim())}`);
   $('stats').replaceChildren(stat(d.counts.waiting,'waiting for the signed copy'),stat(d.counts.overdue,`overdue (more than ${d.signedCopyDays} days)`),stat(d.counts.withEmployees,'assets with employees'),stat(d.counts.tasks,'open infrastructure tasks'));
-  $('filter').replaceChildren(...FILTERS.map(([k,t])=>{const b=el('button',t);b.type='button';b.setAttribute('aria-pressed',String(k===filter));b.onclick=()=>{filter=k;history.replaceState(null,'','?status='+k);load();};return b;}));
+  $('filter').replaceChildren(...FILTERS.map(([k,t])=>{const b=el('button',t);const n=d.filterCounts[k];b.append(el('span',String(n),'x-segc'+(k==='waiting'&&n?' hot':'')));b.type='button';b.setAttribute('aria-pressed',String(k===filter));b.onclick=()=>{filter=k;history.replaceState(null,'','?status='+k);load();};return b;}));
   const stTag=x=>el('span',x.state+(x.overdue?' (overdue)':''),'tag '+(x.state==='Returned'?'off':x.state==='Signed'?'ok':x.overdue?'bad':'warn'));
   $('list').replaceChildren(table(['Delivery note','Asset No.','Type','Employee','Delivered','Issued by','Region','State'],d.items,
     x=>[el('span',x.no,'mono'),x.assetNo,x.typeName,x.employee,date(x.deliveredOn),x.issuedBy||'',x.region,stTag(x)],null,

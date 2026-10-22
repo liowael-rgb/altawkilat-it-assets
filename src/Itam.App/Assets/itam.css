@@ -426,3 +426,7 @@
 .x .x-row-actions{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:6px}
 .x .x-row-actions button.link{padding:2px 0}
 .x .x-state-cell{min-width:190px}
+/* Counts on filter buttons */
+.x .x-seg .x-segc{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:20px;margin-left:8px;padding:0 7px;border-radius:999px;background:#fff;color:var(--acc2);font-size:11.5px;font-weight:800}
+.x .x-seg .x-segc.hot{background:var(--acc);color:#fff}
+.x .x-seg button[aria-pressed=true] .x-segc{background:#fff;color:var(--acc2)}

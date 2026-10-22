@@ -14,7 +14,7 @@ async function load(note){
   if(d.categories.length)acts.append(btn('Record an invoice',()=>newInvoice(),'primary','invoices'));
   if(d.canPack)acts.append(btn('Prepare a payment pack',()=>newPack()));
   const seg=el('div',null,'x-seg');
-  for(const [k,t] of [['all','All'],['Toners','Toners'],['Devices','Devices'],['PartsMaintenance','Parts and maintenance']]){const b=el('button',t);b.type='button';b.setAttribute('aria-pressed',String(k===cat));b.onclick=()=>{cat=k;load();};seg.append(b);}
+  for(const [k,t] of [['all','All'],['Toners','Toners'],['Devices','Devices'],['PartsMaintenance','Parts and maintenance']]){const b=el('button',t);const n=k==='all'?d.invoices.length:d.invoices.filter(i=>i.category===k).length;b.append(el('span',String(n),'x-segc'));b.type='button';b.setAttribute('aria-pressed',String(k===cat));b.onclick=()=>{cat=k;load();};seg.append(b);}
   const bar=el('div',null,'x-filterbar');bar.append(seg);
   const list=d.invoices.filter(i=>cat==='all'||i.category===cat);
   $('view').replaceChildren(

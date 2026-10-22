@@ -28,7 +28,7 @@ async function load(note){
 // IT: approved requests to order or deliver; tick several approved requests to put them in one supplier order.
 function handleCard(){
   const box=el('div');const seg=el('div',null,'x-seg');
-  for(const [k,t] of FILTERS){const b=el('button',t);b.type='button';b.setAttribute('aria-pressed',String(k===filter));b.onclick=()=>{filter=k;load();};seg.append(b);}
+  for(const [k,t] of FILTERS){const n=k==='all'?d.handle.length:d.handle.filter(r=>r.status===k).length;const b=el('button',t);b.append(el('span',String(n),'x-segc'+(n&&k!=='all'&&k!=='Delivered'?' hot':'')));b.type='button';b.setAttribute('aria-pressed',String(k===filter));b.onclick=()=>{filter=k;load();};seg.append(b);}
   const bar=el('div',null,'x-filterbar');bar.append(seg);
   const list=d.handle.filter(r=>filter==='all'||r.status===filter);
   const picked=new Set();
