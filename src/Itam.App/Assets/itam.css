@@ -457,3 +457,6 @@
 .x .x-ad dl.kv{grid-template-columns:118px minmax(0,1fr);gap:0 12px;grid-auto-flow:row}
 .x .x-ad dl.kv>dt:nth-of-type(n){grid-column:1;padding:10px 0;border-bottom:1px solid var(--line);font-size:11px}
 .x .x-ad dl.kv>dd:nth-of-type(n){grid-column:2;padding:8px 0;font-size:14px}
+/* The menu scrolls between the fixed logo and the signed-in person when the screen is short. */
+.x-rail-menu{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin:0 -6px;padding:0 6px;scrollbar-width:thin}
+.x-me{flex:0 0 auto}

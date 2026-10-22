@@ -72,7 +72,7 @@ export async function shell(current){
   const app=el('div',null,'x-app');const mark=el('span',null,'x-app-mark');mark.append(svg('laptop'));const appText=el('div');appText.append(el('b','IT Assets'),el('small','Asset management'));app.append(mark,appText);logo.append(img,app);
   const navh=el('div','Workspace','x-navh');const nav=el('nav');nav.setAttribute('aria-label','Pages');
   const adminH=el('div','Administration','x-navh');adminH.hidden=true;const adminNav=el('nav');adminNav.setAttribute('aria-label','Administration');
-  const meBox=el('div',null,'x-me');rail.append(logo,navh,nav,adminH,adminNav,meBox);
+  const meBox=el('div',null,'x-me');const menu=el('div',null,'x-rail-menu');menu.append(navh,nav,adminH,adminNav);rail.append(logo,menu,meBox);
   const right=el('div');const top=el('header',null,'x-top');right.append(top);if(main)right.append(main);sh.append(rail,right);document.body.prepend(sh);
   let m;try{m=await me();}catch(e){top.append(el('span',e.message,'hint'));throw e;}
   if(m.can.viewAssets){const f=el('form',null,'x-search');f.setAttribute('role','search');const q=document.createElement('input');q.name='q';q.type='search';q.maxLength=100;
