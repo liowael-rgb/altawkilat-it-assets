@@ -29,8 +29,8 @@ accept the site's own Windows identity (the IIS application pool identity).
 2. **Application pool**: *No managed code*, integrated pipeline, identity a **group managed service account** (recommended,
    for example `ALTAWKILAT\svc-itassets$`) or *ApplicationPoolIdentity* (then SQL and AD see the server's computer account).
 3. **Site**: its own site (for example `it.altawkilat.com`), **HTTPS only** with the company certificate, physical
-   path for example `D:\ITAssets\Site`. In *Authentication*: Windows Authentication **on**, Anonymous **off** (the
-   package's web.config sets the same).
+   path `E:\ITAssets\Site`. In *Authentication*, set for the site in IIS (not in web.config: IIS locks these sections):
+   Windows Authentication **on**, Anonymous **off**.
 4. **Folders** (outside the site folder), with *Modify* for the application pool identity:
    - `D:\ITAssets\Keys` – the keys that encrypt the OS and software keys (DPAPI, this server). **Back it up with the
      database.** Without it, the stored keys cannot be read. A move to another server needs these keys moved by IT.
