@@ -267,3 +267,24 @@ repaired; linked to the recorded invoice of that supplier when it exists); the a
 Store at the chosen location. Not repairable does not dispose: record a technical assessment. Overdue returns are shown.
 Repairs IT does itself are not orders: "Record an IT repair" on the asset history. Emails IT-EM-09/51/52/53 come with the
 email step.
+
+## Step 3b (My IT Assets and device and accessory requests) — built 22 October 2026
+
+- **My IT Assets** (every employee, first menu item; employees without an IT role land here): Waiting for your decision
+  (request and cost approvals as the direct manager or the backup on leave; link to ink approvals), My assets (custody, with
+  the delivery note PDF and whether the signed copy is in), My requests, My documents (delivery and receipt notes), My team
+  (managers: each direct report's assets, open requests and notes not yet signed). No costs, keys or supplier details.
+  Delivery notes stay paper-signed (no electronic Accept); gate passes and transfers come with step 4.
+- **Device requests PR-n**: New or Replacement (the device replaced from the person's custody; its technical assessment is
+  linked when recorded, otherwise attached); a manager can ask for a team member. The direct manager (or backup) approves;
+  nobody approves their own request. The IT Assets Officer chooses the source:
+  - From stock: reserves an In Store device (one request per device) and assigns an IT Support Specialist, who delivers it
+    from the asset page and links the delivery note: Fulfilled.
+  - New device: cost table (item, specification, quantity, unit cost before VAT; subtotal, VAT 15%, grand total) with the
+    supplier and the quotation; the direct manager approves the cost; request document for Accounting (date recorded);
+    Ordered (optional PO); delivered and linked: the request document and the delivery note print together.
+  - IT accessory: assigned to a specialist, who prices it with the local shop; the manager approves the cost; bought with
+    petty cash (shop, date, amount not above the approved total, receipt required): Fulfilled; no Asset No.
+- **Request document** (bilingual A4 with logo): header, employee information with the cost center, request details, cost
+  table with the amount in words, approvals recorded in IT Assets (who and when), IT Manager and Accounting signatures, and
+  a QR code to /r/PR-n. No ServiceDesk ticket fields. Emails (IT-EM-15/18/26/27/28/31) come with the email step.

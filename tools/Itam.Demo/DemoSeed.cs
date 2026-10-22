@@ -132,6 +132,22 @@ static class DemoSeed
         await store.ReturnMaintenance(officer, mo1, new(today, null, "Repaired", "Keyboard replaced and tested", 250m, "R-2201"), default);
         await store.CreateMaintenanceOrder(officer, new("MON-4820", 1, "Q-1002", 380m, "No picture: replace the panel under warranty", today.AddDays(10)), quote, default);
         await store.ItRepair(officer, await One("SELECT asset_id FROM itam_data.asset WHERE asset_no=N'PC-4816'"), new("Windows profile repaired and Office reinstalled"), default);
+        // Device and accessory requests (invented), one at each stage.
+        var r1 = DeliveryId(await store.CreateRequest(Who(10), new(null, "New", null, "A laptop for visits to the branches"), null, default));
+        await store.DecideRequest(Who(2), r1, new(true, null), default);
+        await store.ReviewRequest(officer, r1, new("Stock", await One("SELECT asset_id FROM itam_data.asset WHERE asset_no=N'PC-4818'"), G(5), null), default);
+        var taDoc = pdf.Start(); taDoc.Text("Technical assessment (demo, invented): PC-4817 battery and keyboard worn out", ItamPdf.Doc.M, taDoc.Y, 12);
+        var r2 = DeliveryId(await store.CreateRequest(Who(11), new(null, "Replacement", await One("SELECT asset_id FROM itam_data.asset WHERE asset_no=N'PC-4817'"), "The battery lasts one hour and the keyboard keeps failing"),
+            new ItamUpload("assessment.pdf", "application/pdf", taDoc.Build()), default));
+        await store.DecideRequest(Who(2), r2, new(true, null), default);
+        await store.ReviewRequest(officer, r2, new("NewDevice", null, null, null), default);
+        await store.SubmitCost(officer, r2, new(1, null, [new("Dell Latitude 5440", "Core i7, 16 GB, 512 GB SSD", 1, 4200m), new("Laptop bag", null, 1, 120m)]), quote, default);
+        var r3 = DeliveryId(await store.CreateRequest(Who(12), new(null, "New", null, "A wireless mouse and keyboard for the reception desk"), null, default));
+        await store.DecideRequest(Who(2), r3, new(true, null), default);
+        await store.ReviewRequest(officer, r3, new("Accessory", null, G(4), null), default);
+        await store.SubmitCost(Who(4), r3, new(null, "Abha Computer Shop (demo)", [new("Wireless mouse and keyboard set", null, 1, 95m)]), null, default);
+        await store.DecideCost(Who(2), r3, new(true, null), default);
+        await store.CreateRequest(Who(10), new(null, "New", null, "A second monitor for reports"), null, default);
         Console.WriteLine("IT Assets demo data seeded.");
     }
 }

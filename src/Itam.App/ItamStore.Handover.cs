@@ -323,7 +323,9 @@ public sealed partial class ItamStore
         var c = await Open(token);
         var s = await Scope(c, null, user, token);
         var d = await LoadDelivery(c, null, deliveryId, false, token);
-        if (!s.CanView(d.Type, d.Region)) { await c.DisposeAsync(); throw new ItamAccessDenied("You cannot see this asset."); }
+        // IT of the asset; the employee who received it (My IT Assets); the employee's direct manager (My team).
+        var own = d.EmployeeId == s.Id || await Scalar(c, null, "SELECT 1 FROM itam_access.employee WHERE employee_id=@e AND manager_id=@me", token, ("@e", d.EmployeeId), ("@me", s.Id)) is not null;
+        if (!own && !s.CanView(d.Type, d.Region)) { await c.DisposeAsync(); throw new ItamAccessDenied("You cannot see this asset."); }
         return (c, s, d);
     }
 

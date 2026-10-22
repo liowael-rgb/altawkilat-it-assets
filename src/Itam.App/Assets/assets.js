@@ -15,7 +15,7 @@ async function load(){
 }
 try{
   const m=await shell('assets');
-  if(!m.can.viewAssets){$('filters').hidden=true;$('rows').closest('.card').hidden=true;document.getElementById('message').className='msg info';document.getElementById('message').textContent='You have no IT role that shows assets. Your own assets will appear on My IT Assets (coming in step 3).';}
+  if(!m.can.viewAssets){location.replace('/my.html');$('filters').hidden=true;$('rows').closest('.card').hidden=true;document.getElementById('message').className='msg info';document.getElementById('message').textContent='You have no IT role that shows assets. Your own assets will appear on My IT Assets (coming in step 3).';}
   else{
     $('new-link').hidden=!m.can.register;
     for(const t of m.lists.types)$('type').append(option(t.code,t.name));for(const s of m.lists.statuses)$('status').append(option(s.code,s.label));

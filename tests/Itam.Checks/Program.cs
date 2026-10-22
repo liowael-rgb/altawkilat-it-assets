@@ -375,6 +375,48 @@ try
     Check(await Scalar($"SELECT printer_asset_id FROM itam_data.ink_request WHERE request_id={again}") is int a2 && a2 == regId
         && await Scalar($"SELECT printer_asset_id FROM itam_data.ink_request WHERE request_id={other}") is int a3 && a3 == printer
         && await Throws<ArgumentException>(() => store.LinkInkPrinter(U(9), other, new(printer), default)), "A known serial number links itself; the Ink Officer links the others once");
+    // ---- Device and accessory requests (step 3) and My IT Assets ------------------------------------------------------------------
+    await Exec($"UPDATE itam_access.employee SET manager_id='{G(12)}',department=N'Sales',region=N'Central' WHERE employee_id='{G(10)}'");
+    var rToday = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(3));
+    Check(await Throws<ItamAccessDenied>(() => store.CreateRequest(U(9), new(G(10), "New", null, "x"), null, default))
+        && await Throws<ArgumentException>(() => store.CreateRequest(U(10), new(null, "Replacement", null, "x"), null, default)), "Ask for yourself or your team; a replacement names the device in custody");
+    var pr1 = JsonSerializer.SerializeToElement(await store.CreateRequest(U(10), new(null, "New", null, "A second monitor for reports"), null, default)).GetProperty("id").GetInt32();
+    Check(await Scalar($"SELECT request_no+'|'+status+'|'+region_code FROM itam_data.request WHERE request_id={pr1}") as string == "PR-1|WaitingRequestApproval|Central"
+        && await Throws<ItamAccessDenied>(() => store.DecideRequest(U(10), pr1, new(true, null), default)) && await Throws<ItamAccessDenied>(() => store.DecideRequest(U(1), pr1, new(true, null), default)),
+        "PR-1 waits for the direct manager; the employee and IT cannot approve it");
+    await store.DecideRequest(U(12), pr1, new(true, null), default);
+    var rMon = JsonSerializer.SerializeToElement(await store.Register(U(1), A("MON", 1, 2, "SN-MON-R1"), default)).GetProperty("id").GetInt32();
+    Check(await Throws<ItamAccessDenied>(() => store.ReviewRequest(U(9), pr1, new("Stock", rMon, G(9), null), default)), "Only the IT Assets Officer chooses the source");
+    await store.ReviewRequest(U(1), pr1, new("Stock", rMon, G(9), null), default);
+    var rDl = JsonSerializer.SerializeToElement(await store.Deliver(U(9), rMon, Dl(G(10), null), default)).GetProperty("id").GetInt32();
+    await store.FulfilRequest(U(9), pr1, new(rDl), default);
+    Check(await Scalar($"SELECT status FROM itam_data.request WHERE request_id={pr1}") as string == "Fulfilled", "From stock: reserved, delivered by the assigned specialist, fulfilled by its delivery note");
+    Check(await Throws<ArgumentException>(() => store.CreateRequest(U(10), new(null, "Replacement", rMon, "The screen flickers"), null, default)), "A replacement needs the technical assessment when none is recorded");
+    var pr2 = JsonSerializer.SerializeToElement(await store.CreateRequest(U(10), new(null, "Replacement", rMon, "The screen flickers"), qFile, default)).GetProperty("id").GetInt32();
+    await store.DecideRequest(U(12), pr2, new(true, null), default);
+    await store.ReviewRequest(U(1), pr2, new("NewDevice", null, null, null), default);
+    Check(await Throws<ArgumentException>(() => store.SubmitCost(U(1), pr2, new(1, null, [new("Monitor 24", "IPS", 1, 600m)]), null, default)), "A new device needs the supplier's quotation");
+    await store.SubmitCost(U(1), pr2, new(1, null, [new("Monitor 24", "IPS", 1, 600m), new("Cable", null, 2, 25m)]), qFile, default);
+    Check(await Throws<ItamAccessDenied>(() => store.DecideCost(U(1), pr2, new(true, null), default)), "The cost is approved by the direct manager, not IT");
+    await store.DecideCost(U(12), pr2, new(true, null), default);
+    var prDoc = await store.RequestPdf(U(1), pr2, default);
+    Check(System.Text.Encoding.ASCII.GetString(prDoc.Content, 0, 5) == "%PDF-" && await Scalar($"SELECT status FROM itam_data.request WHERE request_id={pr2}") as string == "Approved"
+        && ItamStore.AmountInWords(747.50m) == "Seven hundred forty-seven riyals and fifty halalas only", "Approved cost; request document with the amount in words (650 + VAT = 747.50)");
+    await store.MarkOrdered(U(1), pr2, new(null), default); await store.RequestAccounting(U(1), pr2, new(null), default);
+    var pr3 = JsonSerializer.SerializeToElement(await store.CreateRequest(U(10), new(null, "New", null, "A wireless mouse"), null, default)).GetProperty("id").GetInt32();
+    await store.DecideRequest(U(12), pr3, new(true, null), default);
+    await store.ReviewRequest(U(1), pr3, new("Accessory", null, G(9), null), default);
+    await store.SubmitCost(U(9), pr3, new(null, "Local shop", [new("Wireless mouse", null, 1, 100m)]), null, default);
+    await store.DecideCost(U(12), pr3, new(true, null), default);
+    var rcpt = new ItamUpload("receipt.pdf", "application/pdf", qFile.Content);
+    Check(await Scalar($"SELECT status FROM itam_data.request WHERE request_id={pr3}") as string == "CashPurchase"
+        && await Throws<ArgumentException>(() => store.RecordCashPurchase(U(9), pr3, new("Local shop", rToday, 116m), rcpt, default)), "Accessory: priced in the region, approved, bought for no more than the approved total (115)");
+    await store.RecordCashPurchase(U(9), pr3, new("Local shop", rToday, 115m), rcpt, default);
+    var my = JsonSerializer.SerializeToElement(await store.MyItAssets(U(10), default));
+    var boss = JsonSerializer.SerializeToElement(await store.MyItAssets(U(12), default));
+    Check(my.GetProperty("assets").GetArrayLength() >= 1 && my.GetProperty("requests").GetArrayLength() == 3 && boss.GetProperty("team").EnumerateArray().Any(t => t.GetProperty("name").GetString() == "Person 10")
+        && System.Text.Encoding.ASCII.GetString((await store.DeliveryNote(U(10), rDl, default)).Content, 0, 5) == "%PDF-" && await Throws<ItamAccessDenied>(() => store.DeliveryNote(U(4), rDl, default)),
+        "My IT Assets: my assets, requests and delivery notes; the manager sees the team; others cannot read the note");
     Console.WriteLine("PASS ink and invoices");
 
     // ---- My Backup ----------------------------------------------------------------------------------------------------------------

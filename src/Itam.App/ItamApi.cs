@@ -74,6 +74,23 @@ public static class ItamApi
             string? computerType, string? processor, string? memory, int? model, string? user, string? sap) => Guard(ctx, async u =>
             Results.Ok(await store.Assets(u, new(q, type, status, region, location, page ?? 1, computerType, processor, memory, model, user, sap), ctx.RequestAborted))));
         api.MapGet("/assets/choices", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.AssetChoices(u, ctx.RequestAborted))));
+        api.MapGet("/my", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.MyItAssets(u, ctx.RequestAborted))));
+        api.MapGet("/requests", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Requests(u, ctx.RequestAborted))));
+        api.MapGet("/requests/find", (HttpContext ctx, ItamStore store, string? no) => Guard(ctx, async u => Results.Ok(await store.RequestByNo(u, no, ctx.RequestAborted))));
+        api.MapGet("/requests/{id:int}", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Results.Ok(await store.Request(u, id, ctx.RequestAborted))));
+        api.MapPost("/requests", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => { var (d, f) = await Form<ItamRequestInput>(ctx.Request); return Results.Ok(await store.CreateRequest(u, d, f, ctx.RequestAborted)); }));
+        api.MapPost("/requests/{id:int}/decision", (HttpContext ctx, ItamStore store, int id, ItamDecision input) => Guard(ctx, async u => { await store.DecideRequest(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+        api.MapPost("/requests/{id:int}/review", (HttpContext ctx, ItamStore store, int id, ItamRequestReview input) => Guard(ctx, async u => { await store.ReviewRequest(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+        api.MapPost("/requests/{id:int}/cost", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => { var (d, f) = await Form<ItamCostInput>(ctx.Request); await store.SubmitCost(u, id, d, f, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+        api.MapPost("/requests/{id:int}/cost-decision", (HttpContext ctx, ItamStore store, int id, ItamDecision input) => Guard(ctx, async u => { await store.DecideCost(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+        api.MapPost("/requests/{id:int}/ordered", (HttpContext ctx, ItamStore store, int id, ItamRequestOrdered input) => Guard(ctx, async u => { await store.MarkOrdered(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+        api.MapPost("/requests/{id:int}/cash", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => { var (d, f) = await Form<ItamCashPurchase>(ctx.Request); await store.RecordCashPurchase(u, id, d, f, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+        api.MapPost("/requests/{id:int}/fulfil", (HttpContext ctx, ItamStore store, int id, ItamRequestFulfil input) => Guard(ctx, async u => { await store.FulfilRequest(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+        api.MapPost("/requests/{id:int}/cancel", (HttpContext ctx, ItamStore store, int id, ItamCancelInput input) => Guard(ctx, async u => { await store.CancelRequest(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+        api.MapPost("/requests/{id:int}/accounting", (HttpContext ctx, ItamStore store, int id, ItamRequestDate input) => Guard(ctx, async u => { await store.RequestAccounting(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+        api.MapGet("/requests/{id:int}/document.pdf", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Pdf(await store.RequestPdf(u, id, ctx.RequestAborted))));
+        api.MapGet("/requests/{id:int}/pack.pdf", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Pdf(await store.RequestPack(u, id, ctx.RequestAborted))));
+        api.MapGet("/requests/{id:int}/files/{which}", (HttpContext ctx, ItamStore store, int id, string which) => Guard(ctx, async u => { var f = await store.RequestFile(u, id, which, ctx.RequestAborted); return Results.File(f.Content, f.MediaType, f.FileName); }));
         api.MapGet("/maintenance", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.MaintenanceOrders(u, ctx.RequestAborted))));
         api.MapGet("/maintenance/asset", (HttpContext ctx, ItamStore store, string? no) => Guard(ctx, async u => Results.Ok(await store.MaintenanceAsset(u, no, ctx.RequestAborted))));
         api.MapPost("/maintenance", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => { var (d, f) = await Form<ItamMaintenanceOrderInput>(ctx.Request); return Results.Ok(await store.CreateMaintenanceOrder(u, d, f, ctx.RequestAborted)); }));
@@ -148,6 +165,7 @@ public static class ItamApi
 
         // The QR code on the asset label: opens the asset list filtered on the Asset No.
         app.MapGet("/a/{no}", (string no) => Results.Redirect("/?q=" + Uri.EscapeDataString(no)));
+        app.MapGet("/r/{no}", (string no) => Results.Redirect("/request.html?no=" + Uri.EscapeDataString(no)));
         app.MapGet("/", (HttpContext ctx) => Asset(ctx, "index.html"));
         app.MapGet("/{file}", (HttpContext ctx, string file) => Asset(ctx, file));
     }

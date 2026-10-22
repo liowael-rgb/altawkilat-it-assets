@@ -95,3 +95,39 @@ CREATE TABLE itam_data.maintenance_order(
  closed_by uniqueidentifier NULL, cancelled_reason nvarchar(500) NULL,
  created_by uniqueidentifier NOT NULL, created_at_utc datetime2 NOT NULL DEFAULT SYSUTCDATETIME(), version rowversion NOT NULL);
 CREATE UNIQUE INDEX UX_itam_maintenance_order_open ON itam_data.maintenance_order(asset_id) WHERE status IN(N'WaitingApproval',N'Approved',N'WithSupplier');
+
+-- IT procurement request PR-n (plan v1.9 step 3, decisions of 20 October 2026): the employee (or the manager for a team
+-- member) asks for a device, New or Replacement (the device replaced and its technical assessment); the direct manager (or
+-- the backup on leave) approves with one click. The IT Assets Officer chooses the source: From stock (reserve an In Store
+-- device, assign an IT Support Specialist who delivers it), New device (cost table, the manager approves the cost, purchase
+-- request PDF for Accounting, ordered on a PO, delivered) or IT accessory (priced in the region by a specialist, the
+-- manager approves the cost, bought with petty cash, receipt required; no Asset No.). No ServiceDesk ticket (owner).
+CREATE TABLE itam_data.request(
+ request_id int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+ request_no nvarchar(20) NOT NULL CONSTRAINT UX_itam_request_no UNIQUE,
+ employee_id uniqueidentifier NOT NULL REFERENCES itam_access.employee(employee_id),
+ requested_by uniqueidentifier NOT NULL, requested_at_utc datetime2 NOT NULL DEFAULT SYSUTCDATETIME(),
+ request_type nvarchar(20) NOT NULL CHECK(request_type IN(N'New',N'Replacement')),
+ replaced_asset_id int NULL REFERENCES itam_data.asset(asset_id), assessment_file_id bigint NULL REFERENCES itam_data.stored_file(file_id),
+ assessment_no nvarchar(40) NULL, description nvarchar(2000) NOT NULL,
+ region_code nvarchar(20) NULL REFERENCES itam_ref.region(region_code), department nvarchar(200) NULL,
+ status nvarchar(30) NOT NULL CHECK(status IN(N'WaitingRequestApproval',N'Rejected',N'InReview',N'StockAssigned',N'PricingInRegion',
+   N'WaitingCostApproval',N'Approved',N'Ordered',N'CashPurchase',N'Fulfilled',N'Cancelled')),
+ manager_id uniqueidentifier NULL, approved_by uniqueidentifier NULL, approved_at_utc datetime2 NULL, reject_reason nvarchar(500) NULL, rejected_by uniqueidentifier NULL,
+ source nvarchar(20) NULL CHECK(source IN(N'Stock',N'NewDevice',N'Accessory')), reviewed_by uniqueidentifier NULL, reviewed_at_utc datetime2 NULL,
+ assigned_to uniqueidentifier NULL, reserved_asset_id int NULL REFERENCES itam_data.asset(asset_id),
+ supplier_id int NULL REFERENCES itam_ref.supplier(supplier_id), shop nvarchar(200) NULL, quotation_file_id bigint NULL REFERENCES itam_data.stored_file(file_id),
+ priced_by uniqueidentifier NULL, priced_at_utc datetime2 NULL, cost_approved_by uniqueidentifier NULL, cost_approved_at_utc datetime2 NULL,
+ po_id int NULL REFERENCES itam_data.po(po_id), ordered_at_utc datetime2 NULL,
+ paid_amount decimal(18,2) NULL CHECK(paid_amount>=0), purchase_date date NULL, receipt_file_id bigint NULL REFERENCES itam_data.stored_file(file_id),
+ delivery_id int NULL REFERENCES itam_data.delivery(delivery_id), fulfilled_at_utc datetime2 NULL, fulfilled_by uniqueidentifier NULL,
+ accounting_sent_on date NULL, accounting_sent_by uniqueidentifier NULL, cancelled_reason nvarchar(500) NULL, version rowversion NOT NULL);
+CREATE INDEX IX_itam_request_status ON itam_data.request(status);
+-- A device reserved on one open request only.
+CREATE UNIQUE INDEX UX_itam_request_reserved ON itam_data.request(reserved_asset_id) WHERE reserved_asset_id IS NOT NULL AND status=N'StockAssigned';
+-- Cost table: item, specification, quantity and unit cost before VAT (line total, subtotal, VAT 15% and grand total computed).
+CREATE TABLE itam_data.request_line(
+ line_id int IDENTITY(1,1) NOT NULL PRIMARY KEY, request_id int NOT NULL REFERENCES itam_data.request(request_id),
+ line_no int NOT NULL, item nvarchar(200) NOT NULL, specification nvarchar(300) NULL,
+ quantity int NOT NULL CHECK(quantity BETWEEN 1 AND 1000), unit_cost decimal(18,2) NOT NULL CHECK(unit_cost>=0),
+ CONSTRAINT UX_itam_request_line UNIQUE(request_id,line_no));
