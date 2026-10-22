@@ -32,9 +32,9 @@ accept the site's own Windows identity (the IIS application pool identity).
    path `E:\ITAssets\Site`. In *Authentication*, set for the site in IIS (not in web.config: IIS locks these sections):
    Windows Authentication **on**, Anonymous **off**.
 4. **Folders** (outside the site folder), with *Modify* for the application pool identity:
-   - `D:\ITAssets\Keys` – the keys that encrypt the OS and software keys (DPAPI, this server). **Back it up with the
+   - `E:\ITAssets\Keys` – the keys that encrypt the OS and software keys (DPAPI, this server). **Back it up with the
      database.** Without it, the stored keys cannot be read. A move to another server needs these keys moved by IT.
-   - `D:\ITAssets\Backups` – the install script's backups of the site folder.
+   - `E:\ITAssets\Backups` – the install script's backups of the site folder.
 5. **SQL Server** (DBA):
    - Create the database `ITAM_Production` on ATWK-SQL-1 (SQL Server 2025; keep the default compatibility level).
    - The person installing (step 7) needs *db_owner* on it for the install only.
@@ -50,12 +50,12 @@ accept the site's own Windows identity (the IIS application pool identity).
 1. On the developer PC: `deploy\Build-ItamPackage.ps1` (runs the checks, then builds
    `outputs\IT Assets site package (<date> <commit>).zip`).
 2. On the server, first time only: copy `appsettings.Production.template.json` from the package to
-   `D:\ITAssets\Site\appsettings.Production.json` and fill it in (SQL server name, site address, keys folder, domain
+   `E:\ITAssets\Site\appsettings.Production.json` and fill it in (SQL server name, site address, keys folder, domain
    controller, OUs, mail relay). It holds no password.
 3. On the server, as an administrator with db_owner on the database:
 
    ```powershell
-   .\Install-ItamSite.ps1 -Package "<the zip>" -SitePath D:\ITAssets\Site -BackupRoot D:\ITAssets\Backups -HealthUrl https://it.altawkilat.com/health -InstallDatabase
+   .\Install-ItamSite.ps1 -Package "<the zip>" -SitePath E:\ITAssets\Site -BackupRoot E:\ITAssets\Backups -HealthUrl https://it.altawkilat.com/health -InstallDatabase
    ```
 
    It puts the site offline, backs up the current files, copies the new ones (your appsettings.Production.json and logs
