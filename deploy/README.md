@@ -30,7 +30,7 @@ accept the site's own Windows identity (the IIS application pool identity).
    for example `ALTAWKILAT\svc-itassets$`) or *ApplicationPoolIdentity* (then SQL and AD see the server's computer account).
 3. **Site**: its own site (for example `it.altawkilat.com`), **HTTPS only** with the company certificate, physical
    path `E:\ITAssets\Site`. In *Authentication*, set for the site in IIS (not in web.config: IIS locks these sections):
-   Windows Authentication **on**, Anonymous **off**.
+   Anonymous **on**, Windows Authentication **off** (people sign in on the site's own sign-in page).
 4. **Folders** (outside the site folder), with *Modify* for the application pool identity:
    - `E:\ITAssets\Keys` – the keys that encrypt the OS and software keys (DPAPI, this server). **Back it up with the
      database.** Without it, the stored keys cannot be read. A move to another server needs these keys moved by IT.
@@ -65,7 +65,11 @@ accept the site's own Windows identity (the IIS application pool identity).
 
 ## How the site behaves
 
-- **Sign-in**: Windows (no password page). A person is let in when their AD account is enabled and copied into IT Assets.
+- **Sign-in**: the site's sign-in page (owner, 22 October 2026): AD username and password, checked with the domain
+  controller over LDAPS (636); the password is never stored or logged. Signed in for 8 hours of work (renewed while working),
+  until *Sign out* or the browser is closed. A person is let in when their AD account is enabled and copied into IT Assets.
+  Five wrong passwords for one account (or 20 from one PC) within 15 minutes wait 15 minutes before AD is asked again, so
+  guessing cannot lock the AD account. Sign-ins and failures are in the event log.
 - **Employees**: copied from the users OU every hour (`Directory:SyncEveryMinutes`). A read that would disable more than
   half of the enabled employees is refused and logged (wrong OU or partial read): nothing changes.
 - **AD computer comparison**: every day at `Directory:CompareAtHour` (Riyadh time), and with *Compare now*.
