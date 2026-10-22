@@ -1,14 +1,14 @@
-// Ink page (build step 3a): ask for ink, approve as the direct manager, and (IT) order from the supplier and deliver with
-// the ink delivery note the employee signs on paper.
-import {$,el,api,shell,fail,message,date,when,card,table,edit,people,form,option,svg} from '/itam.js';
+// Ink page (build step 3a): ask for ink, the ink officer sends it to the approving manager, and IT orders from the supplier
+// and delivers. No delivery note to sign: the request document with its approval goes in the payment pack.
+import {$,el,api,shell,fail,message,date,when,card,table,edit,people,option,svg} from '/itam.js';
 let m,d,filter=new URLSearchParams(location.search).get('filter')||'Submitted';
 const FILTERS=[['Submitted','To send for approval'],['WaitingApproval','Waiting approval'],['Approved','To order or deliver'],['Ordered','Ordered'],['Delivered','Delivered'],['all','All']];
 const stTag=r=>el('span',r.statusLabel,'tag '+(r.status==='Delivered'?'ok':r.status==='Rejected'||r.status==='Cancelled'?'off':r.status==='WaitingApproval'?'warn':''));
 const open=href=>window.open(href,'_blank');
 const btn=(text,fn,cls)=>{const b=el('button',text,cls||'');b.type='button';b.onclick=fn;return b;};
-function noteCell(r){
-  if(!r.deliveryId)return '';
-  const s=el('span');const a=el('a',r.deliveryNo,'mono');a.href=`/api/ink-notes/${r.deliveryId}/note.pdf`;a.target='_blank';s.append(a,' ',el('span',r.signed?'Signed':'Waiting for signed copy','tag '+(r.signed?'ok':'warn')));return s;
+function docCell(r){
+  const s=el('span');const a=el('a','Request PDF');a.href=`/api/ink/${r.id}/request.pdf`;a.target='_blank';s.append(a);
+  if(r.deliveredOn)s.append(el('small',`Delivered ${date(r.deliveredOn)}${r.source==='Invoice'?' · invoice '+r.invoiceNo:r.source==='Shelf'?' · IT shelf':''}`,'x-sub'));return s;
 }
 async function load(note){
   d=await api('/ink');
@@ -18,7 +18,7 @@ async function load(note){
     table(['Request','Employee','Printer','Toner','Qty','Note','Asked','State'],d.approvals,r=>[r.no,r.employee,r.printer,r.toner,String(r.quantity),r.note||'',when(r.requestedAt),stTag(r)],
       r=>r.status==='WaitingApproval'?[['Approve',()=>decide(r,true)],['Reject',()=>decide(r,false)]]:[],{empty:'Nothing waiting for you.'})));
   parts.push(card('My ink requests','Requests for you, or that you asked for someone.',
-    table(['Request','Printer','Toner','Qty','Asked','State','Ink delivery note'],d.mine,r=>[r.no,`${r.printer}${r.printerLocation?' · '+r.printerLocation:''}`,r.toner,String(r.quantity),when(r.requestedAt),stTag(r),noteCell(r)],
+    table(['Request','Printer','Toner','Qty','Asked','State','Document'],d.mine,r=>[r.no,`${r.printer}${r.printerLocation?' · '+r.printerLocation:''}`,r.toner,String(r.quantity),when(r.requestedAt),stTag(r),docCell(r)],
       r=>(r.status==='Submitted'||r.status==='WaitingApproval')&&(r.employeeId===d.me)?[['Cancel',()=>cancel(r)]]:[],{empty:'No ink requests yet. Use Ask for ink.'})));
   if(d.canHandle){parts.push(handleCard());parts.push(ordersCard());}
   $('view').replaceChildren(...parts);
@@ -35,19 +35,17 @@ function handleCard(){
   const orderBtn=btn('Put the ticked requests in a supplier order',()=>order([...picked]),'primary');orderBtn.disabled=true;
   if(filter==='Approved')bar.append(orderBtn);
   const wrap=el('div',null,'table-wrap x-ink-handle');const t=el('table');const hr=el('tr');
-  for(const h of ['','Request','Employee','Printer','Toner','Qty','State','Approver / order','Ink delivery note'])hr.append(el('th',h));
+  for(const h of ['','Request','Employee','Printer','Toner','Qty','State','Approver / order','Document'])hr.append(el('th',h));
   const th=el('thead');th.append(hr);const tb=el('tbody');
   const two=(a,b)=>{const s=el('span');s.append(el('span',a));if(b)s.append(el('small',b,'x-sub'));return s;};
   for(const r of list){
     const tr=el('tr');const cb=document.createElement('input');cb.type='checkbox';cb.disabled=r.status!=='Approved';cb.onchange=()=>{cb.checked?picked.add(r.id):picked.delete(r.id);orderBtn.disabled=!picked.size;};
     const td=x=>{const c=el('td');c.append(x??'');tr.append(c);return c;};
     td(r.status==='Approved'?cb:'');td(r.no).className='nowrap';td(two(r.employee,r.branch));td(two(r.printer,r.printerModel)).className='nowrap';td(r.toner);td(String(r.quantity));const stCell=td(stTag(r));stCell.className='x-state-cell';
-    td(r.orderNo?two(r.orderNo,r.supplier):r.manager?two(r.manager,r.status==='WaitingApproval'?'approver':'approved by'):'');td(noteCell(r));
+    td(r.orderNo?two(r.orderNo,r.supplier):r.manager?two(r.manager,r.status==='WaitingApproval'?'approver':'approved by'):'');td(docCell(r));
     const act=el('div',null,'x-row-actions');
     if(r.status==='Submitted'||r.status==='WaitingApproval')act.append(btn(r.status==='Submitted'?'Send for approval':'Change approver',()=>send(r),r.status==='Submitted'?'link x-strong':'link'),btn('Cancel',()=>cancel(r),'link'));
     if(r.status==='Approved'||r.status==='Ordered'){act.append(btn('Deliver',()=>deliver(r),'link'),btn('Cancel',()=>cancel(r),'link'));}
-    if(r.deliveryId&&!r.signed)act.append(btn('Upload signed copy',()=>signed(r),'link'));
-    if(r.deliveryId&&r.signed)act.append(btn('Signed copy',()=>open(`/api/ink-notes/${r.deliveryId}/signed`),'link'));
     if(act.children.length)stCell.append(act);tb.append(tr);
   }
   if(!list.length){const tr=el('tr');const c=el('td','Nothing here.','empty');c.colSpan=9;tr.append(c);tb.append(tr);}
@@ -108,12 +106,8 @@ function deliver(r){
       onchange:i=>{i.line.closest('label').hidden=i.source.value!=='Invoice';}},
     {key:'line',label:'Invoice line',type:'select',options:[['','Choose'],...lines.map(l=>[l.id,`${l.supplier} · invoice ${l.invoice} · ${l.description} (${l.remaining} left)`])],wide:true}],
     async x=>{const res=await api(`/ink/${r.id}/deliver`,{method:'POST',json:{deliveredOn:x.on,source:x.source,invoiceLineId:x.source==='Invoice'?Number(x.line)||null:null}});
-      open(`/api/ink-notes/${res.id}/note.pdf`);await load(`Delivered on ${res.deliveryNo}. Print it for the employee to sign, then upload the signed copy.`);},
-    {reason:false,button:'Deliver and print the note'});
-}
-function signed(r){
-  edit(`Upload the signed copy of ${r.deliveryNo}`,[{key:'file',label:'Signed ink delivery note (scan or photo)',type:'file',required:true,wide:true,hint:'Signed by the employee himself. Kept unchanged once uploaded.'}],
-    async x=>{if(!x.file)throw Error('Choose the scan.');await api(`/ink-notes/${r.deliveryId}/signed`,{method:'POST',body:form({},x.file)});await load('Signed copy uploaded.');},{reason:false,button:'Upload'});
+      await load(`${res.requestNo} delivered.`);},
+    {reason:false,button:'Deliver'});
 }
 
 try{m=await shell('ink');$('new-request').onclick=()=>ask().catch(fail);await load();}catch(e){fail(e);}

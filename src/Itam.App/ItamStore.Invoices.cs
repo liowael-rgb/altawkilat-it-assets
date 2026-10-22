@@ -14,7 +14,7 @@ public sealed record ItamPackInput(int? SupplierId, string? Category, int[]? Inv
 public sealed record ItamPackDates(DateOnly? SentOn, DateOnly? PaidOn, string? PaidNote);
 
 /// <summary>Build step 3a: supplier invoices (toners, devices, parts and maintenance), ink delivery notes, and the payment pack
-/// for Accounting (the owner's Inter-Office Memo package: cover, then each invoice with its order and signed notes).</summary>
+/// for Accounting (the owner's Inter-Office Memo package: cover, then each invoice with the ink request documents and their approvals).</summary>
 public sealed partial class ItamStore
 {
     public static readonly (string Code, string Label)[] InvoiceCategories = [("Toners", "Toners"), ("Devices", "Devices"), ("PartsMaintenance", "Parts and maintenance")];
@@ -124,9 +124,10 @@ public sealed partial class ItamStore
         return await LoadFile(c, null, f, token) ?? throw new ArgumentException("The file was not found.");
     }
 
-    // Ink delivery notes -------------------------------------------------------------------------------------------------------------
+    // Ink delivery and the ink request document ------------------------------------------------------------------------------------
     /// <summary>Deliver the ink of an approved (or ordered) request: from the IT shelf, or from a line of a toner invoice (never
-    /// more than the line's quantity). Ink delivery note = printer Asset No. + ink sequence (after 601).</summary>
+    /// more than the line's quantity). No delivery note and no signed copy (owner, 22 October 2026): the ink request document
+    /// with its approval goes in the payment pack with the invoice.</summary>
     public async Task<object> DeliverInk(ItamUser user, int requestId, ItamInkDeliverInput x, CancellationToken token)
     {
         await using var c = await Open(token);
@@ -137,6 +138,7 @@ public sealed partial class ItamStore
         if (r.status is not ("Approved" or "Ordered")) throw new ArgumentException($"{r.no} is {r.statusLabel}: only approved requests are delivered.");
         var today = DateOnly.FromDateTime(UtcNow.AddHours(3)); var on = x.DeliveredOn ?? today;
         if (on > today) throw new ArgumentException("The delivery date cannot be in the future.");
+        if (r.decidedAt is DateTime da && on < DateOnly.FromDateTime(da.AddHours(3))) throw new ArgumentException($"The delivery date cannot be before the approval ({da.AddHours(3):dd/MM/yyyy}).");
         var source = x.Source is "Shelf" or "Invoice" ? x.Source : throw new ArgumentException("Choose where the toner comes from: the IT shelf or a supplier invoice.");
         decimal? unit = null; string sourceText = "IT shelf";
         if (source == "Invoice")
@@ -146,81 +148,60 @@ public sealed partial class ItamStore
                 q => (Qty: q.GetInt32(0), Cost: q.GetDecimal(1), Cat: q.GetString(2), No: q.GetString(3), Used: q.GetInt32(4)), token, ("@l", x.InvoiceLineId ?? 0))).SingleOrDefault();
             if (l.No is null || l.Cat != "Toners") throw new ArgumentException("Choose the toner invoice line the cartridges come from.");
             if (l.Used + r.quantity > l.Qty) throw new ArgumentException($"Invoice {l.No}: only {l.Qty - l.Used} left on that line.");
-            unit = l.Cost; sourceText = $"Supplier invoice {l.No}";
+            unit = l.Cost; sourceText = $"supplier invoice {l.No}";
         }
-        var emp = await EmployeeRows(c, tx, r.employeeId, token);
-        var printer = new List<NoteRow> { new("Printer Asset No.", "رقم الطابعة", r.printer), new("Printer", "الطابعة", r.printerModel), new("Printer Location", "موقع الطابعة", r.printerLocation),
-            new("Toner", "الحبر", r.toner), new("Quantity", "الكمية", r.quantity.ToString(CultureInfo.InvariantCulture)), new("Ink Request No.", "رقم طلب الحبر", r.no), new("Source", "المصدر", sourceText) };
-        if (unit is decimal u) printer.Add(new("Cost incl. VAT", "التكلفة شاملة الضريبة", Money(decimal.Round(u * r.quantity * (1 + Vat), 2))));
-        var snapshot = new NoteSnapshot(emp.Rows, printer.Where(p => !string.IsNullOrWhiteSpace(p.Value)).ToList(), emp.Name, s.Name);
-        var no = $"{r.printer}-{await Next(c, tx, "InkDelivery", token)}";
-        var id = Convert.ToInt32(await Scalar(c, tx, "INSERT itam_data.ink_delivery(delivery_no,request_id,delivered_on,source,invoice_line_id,unit_cost,snapshot_json,issued_by) OUTPUT inserted.ink_delivery_id VALUES(@n,@r,@d,@s,@l,@u,@j,@b)", token,
-            ("@n", no), ("@r", requestId), ("@d", DateParam(on)), ("@s", source), ("@l", source == "Invoice" ? x.InvoiceLineId : null), ("@u", unit), ("@j", JsonSerializer.Serialize(snapshot, Json)), ("@b", s.Id)));
+        var id = Convert.ToInt32(await Scalar(c, tx, "INSERT itam_data.ink_delivery(request_id,delivered_on,source,invoice_line_id,unit_cost,issued_by) OUTPUT inserted.ink_delivery_id VALUES(@r,@d,@s,@l,@u,@b)", token,
+            ("@r", requestId), ("@d", DateParam(on)), ("@s", source), ("@l", source == "Invoice" ? x.InvoiceLineId : null), ("@u", unit), ("@b", s.Id)));
         await Exec(c, tx, "UPDATE itam_data.ink_request SET status=N'Delivered' WHERE request_id=@i", token, ("@i", requestId));
-        await Event(c, tx, r.printerId, s.Id, "Ink delivered", $"Ink delivery note {no}: {r.quantity} × {r.toner} to {r.employee} ({r.no}, {sourceText})", token);
-        await Audit(c, tx, s.Id, "ink", r.no, "Deliver", null, new { no, source, x.InvoiceLineId }, null, token);
+        await Event(c, tx, r.printerId, s.Id, "Ink delivered", $"{r.quantity} × {r.toner} to {r.employee} ({r.no}, from the {sourceText})", token);
+        await Audit(c, tx, s.Id, "ink", r.no, "Deliver", null, new { on, source, x.InvoiceLineId }, null, token);
         await tx.CommitAsync(token);
-        return new { id, deliveryNo = no };
+        return new { id, requestNo = r.no };
     }
 
     async Task<(string Name, List<NoteRow> Rows)> EmployeeRows(DbConnection c, DbTransaction? tx, Guid employee, CancellationToken token)
     {
-        var e = (await Rows(c, tx, "SELECT e.display_name,e.email,e.mobile,e.job_title,e.department,e.branch,e.company,e.hr_code,m.display_name FROM itam_access.employee e LEFT JOIN itam_access.employee m ON m.employee_id=e.manager_id WHERE e.employee_id=@e",
-            r => (Name: r.GetString(0), Email: S(r, 1), Mobile: S(r, 2), Title: S(r, 3), Dept: S(r, 4), Branch: S(r, 5), Company: S(r, 6), Hr: S(r, 7), Manager: S(r, 8)), token, ("@e", employee))).Single();
-        var rows = new List<NoteRow> { new("HR Code", "الكود الوظيفي", e.Hr), new("Employee Name", "اسم الموظف", e.Name), new("Employee Email", "البريد الالكتروني", e.Email), new("Mobile", "رقم الجوال", e.Mobile),
-            new("Job Title", "المسمى الوظيفي", e.Title), new("Branch Name", "اسم الفرع", e.Branch), new("Department", "اسم القسم", e.Dept), new("Company Name", "اسم الشركة", e.Company), new("Direct Manager", "المدير المباشر", e.Manager) };
+        var e = (await Rows(c, tx, "SELECT e.display_name,e.job_title,e.department,e.branch,e.company,e.hr_code FROM itam_access.employee e WHERE e.employee_id=@e",
+            r => (Name: r.GetString(0), Title: S(r, 1), Dept: S(r, 2), Branch: S(r, 3), Company: S(r, 4), Hr: S(r, 5)), token, ("@e", employee))).Single();
+        var rows = new List<NoteRow> { new("HR Code", "الكود الوظيفي", e.Hr), new("Employee Name", "اسم الموظف", e.Name), new("Job Title", "المسمى الوظيفي", e.Title),
+            new("Branch Name", "اسم الفرع", e.Branch), new("Department", "اسم القسم", e.Dept), new("Company Name", "اسم الشركة", e.Company) };
         return (e.Name, rows.Where(r => !string.IsNullOrWhiteSpace(r.Value)).ToList());
     }
 
-    sealed record InkNoteRow(int Id, string No, int RequestId, string Region, DateOnly On, string Snapshot, long? SignedFile, DateTime? SignedAt, int? InvoiceLine);
-    static async Task<InkNoteRow> LoadInkNote(DbConnection c, DbTransaction? tx, int id, CancellationToken token)
-        => (await Rows(c, tx, "SELECT d.ink_delivery_id,d.delivery_no,d.request_id,r.region_code,d.delivered_on,d.snapshot_json,d.signed_file_id,d.signed_at_utc,d.invoice_line_id FROM itam_data.ink_delivery d JOIN itam_data.ink_request r ON r.request_id=d.request_id WHERE d.ink_delivery_id=@i",
-            r => new InkNoteRow(r.GetInt32(0), r.GetString(1), r.GetInt32(2), r.GetString(3), Day(r, 4)!.Value, r.GetString(5), r.IsDBNull(6) ? null : r.GetInt64(6), r.IsDBNull(7) ? null : Utc(r, 7), I(r, 8)), token, ("@i", id))).SingleOrDefault()
-            ?? throw new ArgumentException("The ink delivery note was not found.");
-
-    async Task<(DbConnection C, ItamScope S, InkNoteRow N)> InkAccess(ItamUser user, int id, CancellationToken token)
+    /// <summary>The ink request document: the request, who sent it for approval, the approving manager's decision, the order
+    /// and the delivery. Seen by the employee, the requester, the approver, IT of the region, and viewers of all.</summary>
+    public async Task<ItamUpload> InkRequestPdf(ItamUser user, int requestId, CancellationToken token)
     {
-        var c = await Open(token); var s = await Scope(c, null, user, token); var n = await LoadInkNote(c, null, id, token);
-        var mine = await Scalar(c, null, "SELECT 1 FROM itam_data.ink_request WHERE request_id=@r AND (employee_id=@me OR requested_by=@me)", token, ("@r", n.RequestId), ("@me", s.Id)) is not null;
-        if (!(mine || s.CanHandover(n.Region) || s.ViewsAll || s.PoView)) { await c.DisposeAsync(); throw new ItamAccessDenied("You cannot see this ink delivery note."); }
-        return (c, s, n);
-    }
-
-    public async Task<ItamUpload> InkNote(ItamUser user, int id, CancellationToken token)
-    {
-        var (c, _, n) = await InkAccess(user, id, token); await using var _c = c;
-        return new($"Ink delivery note {n.No}.pdf", "application/pdf", InkNotePdf(n, null));
-    }
-
-    public async Task<ItamUpload> InkSignedFile(ItamUser user, int id, CancellationToken token)
-    {
-        var (c, _, n) = await InkAccess(user, id, token); await using var _c = c;
-        return n.SignedFile is long f ? await LoadFile(c, null, f, token) ?? throw new ArgumentException("The file was not found.") : throw new ArgumentException("No signed copy is uploaded.");
-    }
-
-    public async Task UploadInkSigned(ItamUser user, int id, ItamUpload? file, CancellationToken token)
-    {
-        if (file is null) throw new ArgumentException("Attach the scan of the signed ink delivery note (PDF, JPEG or PNG).");
-        var type = CheckFile(file, pdfOnly: false);
         await using var c = await Open(token);
-        await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
-        var s = await Scope(c, tx, user, token);
-        var n = await LoadInkNote(c, tx, id, token);
-        Require(s.CanHandover(n.Region), "You cannot upload signed ink delivery notes in this region.");
-        if (n.SignedFile is not null) throw new ArgumentException($"The signed copy of {n.No} is already uploaded; it is kept unchanged.");
-        var f = await SaveFile(c, tx, file, type, s.Id, token);
-        await Exec(c, tx, "UPDATE itam_data.ink_delivery SET signed_file_id=@f,signed_by=@b,signed_at_utc=SYSUTCDATETIME() WHERE ink_delivery_id=@i", token, ("@f", f), ("@b", s.Id), ("@i", id));
-        await Audit(c, tx, s.Id, "ink", n.No, "Signed copy", null, new { file = file.FileName }, null, token);
-        await tx.CommitAsync(token);
+        var s = await Scope(c, null, user, token);
+        var r = (await Rows(c, null, InkSelect + "WHERE r.request_id=@i", MapInk, token, ("@i", requestId))).SingleOrDefault() ?? throw new ArgumentException("The ink request was not found.");
+        var requester = await Scalar(c, null, "SELECT 1 FROM itam_data.ink_request WHERE request_id=@i AND (employee_id=@me OR requested_by=@me OR manager_id=@me OR decided_by=@me)", token, ("@i", requestId), ("@me", s.Id)) is not null;
+        Require(requester || s.CanHandover(r.region) || s.ViewsAll || s.PoView, "You cannot see this ink request.");
+        return new($"Ink request {r.no}.pdf", "application/pdf", await InkRequestDoc(c, r, token));
     }
 
-    byte[] InkNotePdf(InkNoteRow n, string? stamp)
+    async Task<byte[]> InkRequestDoc(DbConnection c, InkRow r, CancellationToken token)
     {
-        var snap = JsonSerializer.Deserialize<NoteSnapshot>(n.Snapshot, Json)!;
-        var printer = snap.Product.FirstOrDefault(p => p.En == "Printer Asset No.")?.Value ?? "";
-        return BuildNote("Ink Delivery Note", "سند تسليم حبر", [("Date", "التاريخ", n.On.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)), ("Document No.", "رقم المستند", n.No), ("Printer Asset No.", "رقم الطابعة", printer)],
-            [("Employee Information", "بيانات الموظف", snap.Employee), ("Printer and Ink", "الطابعة والحبر", snap.Product)],
-            ("I received the ink above.", "أقر باستلام الحبر الموضح أعلاه."), [("Employee Signature", "توقيع الموظف", snap.EmployeeName), ("IT Representative Signature", "توقيع ممثل تقنية المعلومات", snap.IssuedByName)], stamp);
+        static string On(DateTime? utc) => utc is DateTime t ? t.AddHours(3).ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture) : "";
+        var emp = await EmployeeRows(c, null, r.employeeId, token);
+        var approved = r.decidedAt is not null && r.status is "Approved" or "Ordered" or "Delivered";
+        var printer = new List<NoteRow> { new("Printer Asset No.", "رقم الطابعة", r.printer), new("Printer", "الطابعة", r.printerModel), new("Printer Location", "موقع الطابعة", r.printerLocation),
+            new("Toner", "الحبر", r.toner), new("Quantity", "الكمية", r.quantity.ToString(CultureInfo.InvariantCulture)), new("Note", "ملاحظة", r.note) };
+        var approval = new List<NoteRow> { new("Sent for approval by", "أرسل للموافقة بواسطة", r.sentBy), new("Sent on", "تاريخ الإرسال", On(r.sentAt)), new("Approving Manager", "المدير المعتمد", r.manager),
+            new("Decision", "القرار", r.decidedAt is null ? "Waiting" : r.status == "Rejected" ? "Rejected" : r.status == "Cancelled" ? "Cancelled" : "Approved"),
+            new("Decided by", "بواسطة", r.decidedBy), new("Decided on", "تاريخ القرار", On(r.decidedAt)), new("Reason", "السبب", r.rejectReason) };
+        var delivery = new List<NoteRow> { new("Supplier Order", "أمر الشراء", r.orderNo), new("Supplier", "المورد", r.supplier),
+            new("Delivered on", "تاريخ التسليم", r.deliveredOn?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)),
+            new("Source", "المصدر", r.source is null ? null : r.source == "Invoice" ? $"Supplier invoice {r.invoiceNo}" : "IT shelf"),
+            new("Cost incl. VAT", "التكلفة شاملة الضريبة", r.unitCost is decimal u ? Money(decimal.Round(u * r.quantity * (1 + Vat), 2)) : null) };
+        List<NoteRow> Keep(List<NoteRow> rows) => rows.Where(x => !string.IsNullOrWhiteSpace(x.Value)).ToList();
+        var sections = new List<(string En, string Ar, List<NoteRow> Rows)> { ("Employee Information", "بيانات الموظف", emp.Rows), ("Printer and Ink", "الطابعة والحبر", Keep(printer)), ("Approval", "الموافقة", Keep(approval)) };
+        if (Keep(delivery).Count > 0) sections.Add(("Order and Delivery", "الطلب والتسليم", Keep(delivery)));
+        var statement = approved ? ($"Approved in IT Assets by {r.decidedBy} on {On(r.decidedAt)}.", "تمت الموافقة على الطلب في نظام أصول تقنية المعلومات.")
+            : r.status == "Rejected" ? ("The manager rejected this request.", "رفض المدير هذا الطلب.") : r.status == "Cancelled" ? ("This request was cancelled.", "تم إلغاء هذا الطلب.")
+            : ("Waiting for the manager's approval.", "بانتظار موافقة المدير.");
+        return BuildNote("Ink Request", "طلب حبر", [("Request Date", "تاريخ الطلب", r.requestedAt.AddHours(3).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)), ("Request No.", "رقم الطلب", r.no), ("Status", "الحالة", r.statusLabel)],
+            sections, statement, [], null);
     }
 
     /// <summary>A bilingual note in the layout of the delivery note: values in the middle between the English and Arabic labels.</summary>
@@ -282,8 +263,7 @@ public sealed partial class ItamStore
     }
 
     /// <summary>The payment pack PDF: the Inter-Office Memo cover (Date | Invoice No. | Amount | Total; checked by IT, approved by
-    /// the Head of Department, signed by the Accountant), then for each invoice: the invoice, its order, and its ink delivery
-    /// notes (signed copy, or the issued note marked "Not yet signed").</summary>
+    /// the Head of Department, signed by the Accountant), then each invoice followed by the ink request documents it pays for.</summary>
     public async Task<ItamUpload> PackPdf(ItamUser user, int packId, CancellationToken token)
     {
         await using var c = await Open(token);
@@ -300,25 +280,11 @@ public sealed partial class ItamStore
         foreach (var inv in invoices)
         {
             if (await LoadFile(c, null, inv.File, token) is { } f) { try { Append(f.Content); } catch (Exception ex) when (ex is PdfReaderException or InvalidOperationException or NotSupportedException) { } }
-            if (inv.Order is int o)
-            {
-                var o2 = (await Rows(c, null, "SELECT o.order_no,su.name_en,o.created_at_utc,e.display_name,o.note FROM itam_data.supplier_order o JOIN itam_ref.supplier su ON su.supplier_id=o.supplier_id LEFT JOIN itam_access.employee e ON e.employee_id=o.created_by WHERE o.order_id=@o",
-                    r => (No: r.GetString(0), Sup: r.GetString(1), At: Utc(r, 2), By: S(r, 3), Note: S(r, 4)), token, ("@o", o))).Single();
-                Append(OrderSheet(o2.No, o2.Sup, o2.At, o2.By, o2.Note, await Rows(c, null, InkSelect + "WHERE r.order_id=@o ORDER BY r.request_id", MapInk, token, ("@o", o))));
-            }
-            foreach (var nid in await Rows(c, null, "SELECT d.ink_delivery_id FROM itam_data.ink_delivery d JOIN itam_data.invoice_line l ON l.line_id=d.invoice_line_id WHERE l.invoice_id=@i ORDER BY d.ink_delivery_id", r => r.GetInt32(0), token, ("@i", inv.Id)))
-            {
-                var n = await LoadInkNote(c, null, nid, token);
-                var signed = n.SignedFile is long sf ? await LoadFile(c, null, sf, token) : null;
-                if (signed is { MediaType: "application/pdf" }) { try { Append(signed.Content); continue; } catch (Exception ex) when (ex is PdfReaderException or InvalidOperationException or NotSupportedException) { } }
-                else if (signed is not null)
-                {
-                    var page = pack.AddPage(); page.Size = PdfSharp.PageSize.A4;
-                    using var gfx = PdfSharp.Drawing.XGraphics.FromPdfPage(page); using var img = PdfSharp.Drawing.XImage.FromStream(new MemoryStream(signed.Content));
-                    var scale = Math.Min((page.Width.Point - 56) / img.PointWidth, (page.Height.Point - 56) / img.PointHeight); gfx.DrawImage(img, 28, 28, img.PointWidth * scale, img.PointHeight * scale); continue;
-                }
-                Append(InkNotePdf(n, "NOT YET SIGNED: the employee has not signed this ink delivery note yet"));
-            }
+            // The ink requests the invoice pays for: those of its supplier order and those delivered from its lines, each
+            // with its approval. No order sheet and no signed note (owner, 22 October 2026).
+            foreach (var r in await Rows(c, null, InkSelect + "WHERE (@o IS NOT NULL AND r.order_id=@o) OR EXISTS(SELECT 1 FROM itam_data.ink_delivery d2 JOIN itam_data.invoice_line l2 ON l2.line_id=d2.invoice_line_id " +
+                "WHERE d2.request_id=r.request_id AND l2.invoice_id=@i) ORDER BY r.request_id", MapInk, token, ("@o", inv.Order), ("@i", inv.Id)))
+                Append(await InkRequestDoc(c, r, token));
         }
         using var output = new MemoryStream(); pack.Save(output, false);
         return new($"Payment pack {p.No}.pdf", "application/pdf", output.ToArray());

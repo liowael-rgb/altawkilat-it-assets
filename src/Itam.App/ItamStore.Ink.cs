@@ -79,7 +79,7 @@ public sealed partial class ItamStore
         if (a.Name is null) throw new ArgumentException("Choose the manager who approves.");
         if (!a.Enabled) throw new ArgumentException($"{a.Name} is disabled in Active Directory.");
         if (x.ApproverId == r.Employee) throw new ArgumentException("The employee cannot approve their own request.");
-        await Exec(c, tx, "UPDATE itam_data.ink_request SET status=N'WaitingApproval',manager_id=@m WHERE request_id=@i", token, ("@m", x.ApproverId), ("@i", requestId));
+        await Exec(c, tx, "UPDATE itam_data.ink_request SET status=N'WaitingApproval',manager_id=@m,sent_by=@b,sent_at_utc=SYSUTCDATETIME() WHERE request_id=@i", token, ("@m", x.ApproverId), ("@b", s.Id), ("@i", requestId));
         await Audit(c, tx, s.Id, "ink", r.No, "Send for approval", null, new { approver = a.Name }, null, token);
         await tx.CommitAsync(token);
     }
@@ -158,18 +158,19 @@ public sealed partial class ItamStore
 
     sealed record InkRow(int id, string no, int printerId, string printer, string? printerModel, string? printerLocation, string toner, int quantity, string? note, string region,
         string status, string statusLabel, Guid employeeId, string employee, string? department, string? branch, Guid? managerId, string? manager, DateTime requestedAt, string? requestedBy,
-        DateTime? decidedAt, string? decidedBy, string? rejectReason, int? orderId, string? orderNo, string? supplier, int? deliveryId, string? deliveryNo, bool signed, decimal? unitCost);
+        DateTime? decidedAt, string? decidedBy, string? rejectReason, int? orderId, string? orderNo, string? supplier, int? deliveryId, DateOnly? deliveredOn, string? source, decimal? unitCost, DateTime? sentAt, string? sentBy, string? invoiceNo);
 
     const string InkSelect = "SELECT r.request_id,r.request_no,a.asset_id,a.asset_no,CONCAT(m.name_en,' ',mo.name_en),pl.value,r.toner,r.quantity,r.note,r.region_code,r.status," +
         "r.employee_id,e.display_name,e.department,e.branch,r.manager_id,mg.display_name,r.requested_at_utc,rb.display_name,r.decided_at_utc,db.display_name,r.reject_reason," +
-        "r.order_id,o.order_no,su.name_en,d.ink_delivery_id,d.delivery_no,CASE WHEN d.signed_file_id IS NULL THEN 0 ELSE 1 END,d.unit_cost " +
+        "r.order_id,o.order_no,su.name_en,d.ink_delivery_id,d.delivered_on,d.source,d.unit_cost,r.sent_at_utc,sb.display_name,iv.invoice_no " +
         "FROM itam_data.ink_request r JOIN itam_data.asset a ON a.asset_id=r.printer_asset_id LEFT JOIN itam_ref.manufacturer m ON m.manufacturer_id=a.manufacturer_id LEFT JOIN itam_ref.model mo ON mo.model_id=a.model_id " +
         "LEFT JOIN itam_data.asset_attribute pl ON pl.asset_id=a.asset_id AND pl.attr_code=N'PrinterLocation' JOIN itam_access.employee e ON e.employee_id=r.employee_id " +
         "LEFT JOIN itam_access.employee mg ON mg.employee_id=r.manager_id LEFT JOIN itam_access.employee rb ON rb.employee_id=r.requested_by LEFT JOIN itam_access.employee db ON db.employee_id=r.decided_by " +
-        "LEFT JOIN itam_data.supplier_order o ON o.order_id=r.order_id LEFT JOIN itam_ref.supplier su ON su.supplier_id=o.supplier_id LEFT JOIN itam_data.ink_delivery d ON d.request_id=r.request_id ";
+        "LEFT JOIN itam_data.supplier_order o ON o.order_id=r.order_id LEFT JOIN itam_ref.supplier su ON su.supplier_id=o.supplier_id LEFT JOIN itam_data.ink_delivery d ON d.request_id=r.request_id " +
+        "LEFT JOIN itam_access.employee sb ON sb.employee_id=r.sent_by LEFT JOIN itam_data.invoice_line il ON il.line_id=d.invoice_line_id LEFT JOIN itam_data.invoice iv ON iv.invoice_id=il.invoice_id ";
     static InkRow MapInk(DbDataReader r) => new(r.GetInt32(0), r.GetString(1), r.GetInt32(2), r.GetString(3), S(r, 4)?.Trim(), S(r, 5), r.GetString(6), r.GetInt32(7), S(r, 8), r.GetString(9),
         r.GetString(10), InkStatusLabel(r.GetString(10)), r.GetGuid(11), r.GetString(12), S(r, 13), S(r, 14), r.IsDBNull(15) ? null : r.GetGuid(15), S(r, 16), Utc(r, 17), S(r, 18),
-        r.IsDBNull(19) ? null : Utc(r, 19), S(r, 20), S(r, 21), I(r, 22), S(r, 23), S(r, 24), I(r, 25), S(r, 26), r.GetInt32(27) == 1, D(r, 28));
+        r.IsDBNull(19) ? null : Utc(r, 19), S(r, 20), S(r, 21), I(r, 22), S(r, 23), S(r, 24), I(r, 25), Day(r, 26), S(r, 27), D(r, 28), r.IsDBNull(29) ? null : Utc(r, 29), S(r, 30), S(r, 31));
 
     /// <summary>The Ink page: my requests, the requests waiting for my approval (as manager or backup), and, for IT, the
     /// requests of my regions to order and deliver, with the open supplier orders.</summary>
@@ -201,10 +202,10 @@ public sealed partial class ItamStore
         var lastApprover = s.CanHandoverAny ? (await Rows(c, null, "SELECT e.department,r.manager_id,m.display_name,m.account FROM itam_data.ink_request r JOIN itam_access.employee e ON e.employee_id=r.employee_id JOIN itam_access.employee m ON m.employee_id=r.manager_id " +
             "WHERE r.manager_id IS NOT NULL AND e.department IS NOT NULL ORDER BY r.request_id DESC", q => (Dept: q.GetString(0), Id: q.GetGuid(1), Label: $"{q.GetString(2)} ({q.GetString(3)})"), token))
             .GroupBy(x => x.Dept).ToDictionary(g => g.Key, g => new { id = g.First().Id, label = g.First().Label }) : [];
-        return new { me = s.Id, lastApprover, mine, approvals, handle, orders, inkLines = inkLines.Where(l => l.remaining > 0), canHandle = s.CanHandoverAny, signedCopyDays = SignedCopyDays };
+        return new { me = s.Id, lastApprover, mine, approvals, handle, orders, inkLines = inkLines.Where(l => l.remaining > 0), canHandle = s.CanHandoverAny };
     }
 
-    /// <summary>The order sheet sent to the supplier (and printed in the payment pack): one line per request, no prices.</summary>
+    /// <summary>The order sheet sent to the supplier: one line per request, no prices.</summary>
     public async Task<ItamUpload> OrderPdf(ItamUser user, int orderId, CancellationToken token)
     {
         await using var c = await Open(token);

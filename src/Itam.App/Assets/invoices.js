@@ -1,5 +1,5 @@
 // Invoices page (build step 3a): record supplier invoices (toners, devices, parts and maintenance) with their lines, see what
-// each covers, and prepare the monthly payment pack (cover memo + invoices + orders + signed ink notes) for Accounting.
+// each covers, and prepare the monthly payment pack (cover memo, then each invoice with its ink request documents and approvals) for Accounting.
 import {$,el,api,shell,fail,message,date,when,money,card,table,edit,form,option,svg} from '/itam.js';
 let m,d,cat='all';
 const open=href=>window.open(href,'_blank');
@@ -21,7 +21,7 @@ async function load(note){
     card('Invoices',null,bar,table(['Invoice','Date','Supplier','Category','Total incl. VAT','Order / PO','Payment pack'],list,
       i=>[el('span',i.no,'mono'),date(i.date),i.supplier,i.categoryLabel,money(i.total),i.order||i.po||'',i.pack?`${i.pack}${i.paidOn?' · paid '+date(i.paidOn):i.sentOn?' · sent '+date(i.sentOn):''}`:el('span','Not in a pack','tag warn')],
       null,{empty:'No invoices yet.',onRow:i=>show(i.id)})),
-    card('Payment packs','One pack per supplier and category: the Inter-Office Memo cover, then each invoice with its order and the signed ink delivery notes. Record when it went to Accounting and when the supplier was paid.',
+    card('Payment packs','One pack per supplier and category: the Inter-Office Memo cover, then each invoice followed by the ink request documents it pays for, with their approvals. Record when it went to Accounting and when the supplier was paid.',
       table(['Pack','Supplier','Category','Invoices','Total','Prepared','Sent to Accounting','Paid'],d.packs,
         p=>[el('span',p.no,'mono'),p.supplier,p.category,String(p.invoices),money(p.total),`${when(p.at)} by ${p.by||''}`,p.sentOn?date(p.sentOn):'',p.paidOn?`${date(p.paidOn)}${p.paidNote?' · '+p.paidNote:''}`:''],
         p=>[['Print',()=>open(`/api/packs/${p.id}/pack.pdf`)],...(d.canPack?[['Record dates',()=>dates(p)]]:[])],{empty:'No payment packs yet.'})));
@@ -34,7 +34,7 @@ async function show(id){
   box.append(table(['Line','Description','Quantity','Unit cost','Line total',...(i.category==='Toners'?['Delivered','Left']:[])],x.lines,
     l=>[String(l.no),l.description,String(l.quantity),money(l.unitCost),money(l.lineTotal),...(i.category==='Toners'?[String(l.delivered),String(l.remaining)]:[])]));
   box.append(el('p',`Subtotal ${money(i.net)} · VAT 15% ${money(i.vat)} · Total ${money(i.total)}`,'hint x-gap'));
-  if(x.requests.length)box.append(el('h3',`Order ${i.orderNo}`),table(['Request','Employee','Printer','Toner','Qty','State','Ink delivery note'],x.requests,r=>[r.no,r.employee,r.printer,r.toner,String(r.quantity),r.statusLabel,r.deliveryNo||'']));
+  if(x.requests.length)box.append(el('h3',`Order ${i.orderNo}`),table(['Request','Employee','Printer','Toner','Qty','State','Approved by','Delivered',''],x.requests,r=>[r.no,r.employee,r.printer,r.toner,String(r.quantity),r.statusLabel,r.decidedBy||'',r.deliveredOn?date(r.deliveredOn):'',(()=>{const a=el('a','Request PDF');a.href=`/api/ink/${r.id}/request.pdf`;a.target='_blank';return a;})()]));
   if(x.receipts.length)box.append(el('h3',`PO ${i.poNumber}: receipts`),table(['Receipt','Received','At','Devices','On this invoice'],x.receipts,r=>[String(r.id),when(r.at),r.location,String(r.devices),r.onThis?'Yes':r.onOther?'Another invoice':'No']));
   const acts=el('div',null,'actions');acts.append(btn('Open the invoice PDF',()=>open(`/api/invoices/${id}/file`),'primary','doc'),btn('Close',()=>load()));
   if(i.poId){const a=el('a');a.href='/po.html?id='+i.poId;a.append(el('button',`Open PO ${i.poNumber}`));acts.append(a);}

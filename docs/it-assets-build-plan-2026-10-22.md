@@ -40,7 +40,9 @@ Replaces the electronic acceptance in plan v1.9 (Accept / Report a problem, stam
 6. Where the plan says "accepted delivery note" (procurement documents for Accounting, branch transfers that change
    custody), it now means the delivery note with the signed copy uploaded.
 
-Ink delivery notes follow the same rule: printed, signed on paper by the employee himself, signed copy uploaded by the ink handler (confirmed by the owner, 22 October 2026).
+Ink has **no delivery note and no signed copy** (owner, 22 October 2026, replacing the earlier paper-note rule): IT records the
+delivery (date, IT shelf or invoice line); the payment pack carries each invoice and the ink request documents it pays for,
+each showing who sent it for approval, the approving manager and the decision. The ink notes described below are replaced.
 
 ## Purchase orders (PO) — added on the owner's request, 22 October 2026
 
@@ -182,9 +184,9 @@ Built as a local demo with checks: ink request INK-n for an In Use printer (tone
 direct manager or the manager's backup on leave (no self-approval, rejection needs a reason), supplier order ORD-n (PDF and
 an email draft; nothing sent automatically), supplier invoices (Toners, Devices, Parts and maintenance; number unique per
 supplier; VAT 15%; toners linked to their order, devices to the PO receipts they cover, shown on the PO page and in the PO
-pack), ink delivery note (printer Asset No.-n after 601, from the IT shelf or an invoice line, never more than the line;
-signed on paper, scan uploaded), and the payment pack PAY-n (Inter-Office Memo cover with Date | Invoice No. | Amount | Total
-and the three signatures, then each invoice, its order and its signed ink notes; sent-to-Accounting and paid dates).
+pack), ink delivery (from the IT shelf or an invoice line, never more than the line, never before the approval date;
+no note to sign), the ink request document PDF (request, sent for approval by, approver, decision, order, delivery), and the payment pack PAY-n (Inter-Office Memo cover with Date | Invoice No. | Amount | Total
+and the three signatures, then each invoice followed by its ink request documents; sent-to-Accounting and paid dates).
 
 To confirm: reading the uploaded invoice automatically (ZATCA XML / text PDF / OCR) comes next; names on the memo cover
 (today: "Checked by (IT)", "Approved by (Head of Department)", "Accountant"); email of approvals with the email service.

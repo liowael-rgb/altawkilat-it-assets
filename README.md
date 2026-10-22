@@ -24,8 +24,8 @@ a return, asset labels (PDF at 63.5 x 38.1 mm with QR code, and Zebra ZPL), the 
 delivery note (signed copy, or the issued note marked "Not yet signed"). Email reminders come with the email service.
 
 Step 3a (ink and invoices) built as a local demo: ink requests sent by the ink officer to the approving manager, supplier orders, supplier
-invoices (toners, devices linked to PO receipts, parts and maintenance), ink delivery notes signed on paper, and the monthly
-payment pack (Inter-Office Memo cover + invoices + orders + signed notes). See the build plan for the details.
+invoices (toners, devices linked to PO receipts, parts and maintenance), ink deliveries (no note to sign), the ink request document with its approval, and the monthly
+payment pack (Inter-Office Memo cover, then each invoice with its ink request documents). See the build plan for the details.
 
 ## Run
 

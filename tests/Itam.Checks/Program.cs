@@ -286,18 +286,18 @@ try
         && await Throws<ArgumentException>(() => store.CreateInvoice(U(1), new(poSupplier, "INV-D2", handDay, "Devices", null, po, [receipt], null, [new("Devices", 1, 100m)]), invPdf, default)),
         "A device invoice covers PO receipts; a receipt is on one invoice only");
     var line = (int)(await Scalar($"SELECT line_id FROM itam_data.invoice_line WHERE invoice_id={inv}"))!;
-    var inkNote = JsonSerializer.SerializeToElement(await store.DeliverInk(U(9), ink1, new(null, "Invoice", line), default));
-    Check(inkNote.GetProperty("deliveryNo").GetString()!.EndsWith("-602", StringComparison.Ordinal)
-        && await Throws<ArgumentException>(() => store.DeliverInk(U(9), ink2, new(null, "Invoice", line), default)), "Ink delivery note printer-602 from the invoice line; never more than the line holds");
+    var inkDone = JsonSerializer.SerializeToElement(await store.DeliverInk(U(9), ink1, new(null, "Invoice", line), default));
+    Check(inkDone.GetProperty("requestNo").GetString() == "INK-1" && await Scalar($"SELECT COUNT(*) FROM itam_data.ink_delivery WHERE request_id={ink1} AND invoice_line_id={line}") is 1
+        && await Throws<ArgumentException>(() => store.DeliverInk(U(9), ink2, new(null, "Invoice", line), default)), "Ink delivered from the invoice line (no delivery note); never more than the line holds");
+    Check(await Throws<ArgumentException>(() => store.DeliverInk(U(9), ink2, new(DateOnly.FromDateTime(DateTime.UtcNow.AddHours(3)).AddDays(-1), "Shelf", null), default)), "Ink is not delivered before its approval date");
     await store.DeliverInk(U(9), ink2, new(null, "Shelf", null), default);
-    var inkNoteId = inkNote.GetProperty("id").GetInt32();
-    Check(System.Text.Encoding.ASCII.GetString((await store.InkNote(U(10), inkNoteId, default)).Content, 0, 5) == "%PDF-" && await Throws<ItamAccessDenied>(() => store.UploadInkSigned(U(10), inkNoteId, scan, default)),
-        "The employee reads the ink note; IT uploads the signed copy");
-    await store.UploadInkSigned(U(9), inkNoteId, scan, default);
+    Check(System.Text.Encoding.ASCII.GetString((await store.InkRequestPdf(U(10), ink1, default)).Content, 0, 5) == "%PDF-" && (await store.InkRequestPdf(U(12), ink1, default)).Content.Length > 0
+        && await Throws<ItamAccessDenied>(() => store.InkRequestPdf(U(4), ink1, default)), "The employee and the approver read the ink request document; other regions cannot");
+    Check(await Scalar($"SELECT CASE WHEN sent_by='{G(9)}' AND sent_at_utc IS NOT NULL THEN 1 ELSE 0 END FROM itam_data.ink_request WHERE request_id={ink1}") is 1, "Who sent the request for approval is recorded");
     var payPack = JsonSerializer.SerializeToElement(await store.CreatePack(U(9), new(1, "Toners", [inv]), default)).GetProperty("id").GetInt32();
     var packFile = await store.PackPdf(U(9), payPack, default);
     using (var ms = new MemoryStream(packFile.Content)) using (var read = PdfReader.Open(ms, PdfDocumentOpenMode.Import))
-        Check(read.PageCount == 4, "Payment pack: cover memo, invoice, order and the signed ink delivery note");
+        Check(read.PageCount == 3, "Payment pack: cover memo, invoice and the ink request document with its approval");
     Check(await Throws<ArgumentException>(() => store.CreatePack(U(9), new(1, "Toners", [inv]), default)) && await Throws<ArgumentException>(() => store.PackDates(U(9), payPack, new(null, handDay, null), default)),
         "An invoice is in one pack; paid only after it went to Accounting");
     await store.PackDates(U(9), payPack, new(handDay, null, null), default); await store.PackDates(U(9), payPack, new(null, handDay, "Ref 123"), default);

@@ -157,7 +157,7 @@ INSERT itam_ref.value_item(list_code,item_code,name_en,sort_order) VALUES
  (N'OperatingSystem',N'Win11',N'Windows 11',1),(N'OperatingSystem',N'Win10',N'Windows 10',2),(N'OperatingSystem',N'Win81',N'Windows 8.1',3),(N'OperatingSystem',N'Win7',N'Windows 7',4),
  (N'PrinterType',N'Network',N'Network Printer',1),(N'PrinterType',N'Local',N'Local Printer',2),
  (N'TonerType',N'Black',N'Black',1),(N'TonerType',N'Color',N'Color',2);
-INSERT itam_data.counter(counter_code,next_value) VALUES(N'Asset',4809),(N'Delivery',4133),(N'InkDelivery',602),(N'Request',1),(N'GatePass',1),(N'Transfer',1);
+INSERT itam_data.counter(counter_code,next_value) VALUES(N'Asset',4809),(N'Delivery',4133),(N'Request',1),(N'GatePass',1),(N'Transfer',1);
 
 IF DATABASE_PRINCIPAL_ID(N'itam_runtime') IS NULL CREATE ROLE itam_runtime AUTHORIZATION dbo;
 GRANT SELECT,INSERT,UPDATE ON SCHEMA::itam_access TO itam_runtime;

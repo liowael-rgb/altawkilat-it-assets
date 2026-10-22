@@ -113,9 +113,7 @@ public static class ItamApi
         api.MapPost("/ink/{id:int}/deliver", (HttpContext ctx, ItamStore store, int id, ItamInkDeliverInput input) => Guard(ctx, async u => Results.Ok(await store.DeliverInk(u, id, input, ctx.RequestAborted))));
         api.MapPost("/orders", (HttpContext ctx, ItamStore store, ItamOrderInput input) => Guard(ctx, async u => Results.Ok(await store.CreateOrder(u, input, ctx.RequestAborted))));
         api.MapGet("/orders/{id:int}/order.pdf", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Pdf(await store.OrderPdf(u, id, ctx.RequestAborted))));
-        api.MapGet("/ink-notes/{id:int}/note.pdf", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Pdf(await store.InkNote(u, id, ctx.RequestAborted))));
-        api.MapGet("/ink-notes/{id:int}/signed", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => { var f = await store.InkSignedFile(u, id, ctx.RequestAborted); return Results.File(f.Content, f.MediaType, f.MediaType == "application/pdf" ? null : f.FileName); }));
-        api.MapPost("/ink-notes/{id:int}/signed", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => { var (_, f) = await Form<object>(ctx.Request); await store.UploadInkSigned(u, id, f, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+        api.MapGet("/ink/{id:int}/request.pdf", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Pdf(await store.InkRequestPdf(u, id, ctx.RequestAborted))));
         api.MapGet("/invoices", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Invoices(u, ctx.RequestAborted))));
         api.MapGet("/invoices/{id:int}", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Results.Ok(await store.Invoice(u, id, ctx.RequestAborted))));
         api.MapGet("/invoices/{id:int}/file", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Pdf(await store.InvoiceFile(u, id, ctx.RequestAborted))));

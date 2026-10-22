@@ -1,5 +1,6 @@
--- IT Assets build step 3a: ink requests approved by the direct manager, supplier orders, supplier invoices (toners, devices,
--- parts and maintenance), ink delivery notes signed on paper by the employee, and the monthly payment pack for Accounting.
+-- IT Assets build step 3a: ink requests approved by the manager the ink officer chooses, supplier orders, supplier invoices (toners, devices,
+-- parts and maintenance), ink deliveries (no paper note: the request document with its approval goes in the payment pack),
+-- and the monthly payment pack for Accounting.
 -- No toner stock list (owner, 22 October 2026).
 
 INSERT itam_data.counter(counter_code,next_value) VALUES(N'InkRequest',1),(N'SupplierOrder',1),(N'PaymentPack',1);
@@ -15,12 +16,12 @@ CREATE TABLE itam_data.ink_request(
  toner nvarchar(100) NOT NULL, quantity int NOT NULL CHECK(quantity BETWEEN 1 AND 50), note nvarchar(500) NULL,
  region_code nvarchar(20) NOT NULL REFERENCES itam_ref.region(region_code),
  status nvarchar(20) NOT NULL CHECK(status IN(N'Submitted',N'WaitingApproval',N'Approved',N'Rejected',N'Ordered',N'Delivered',N'Cancelled')),
- manager_id uniqueidentifier NULL, decided_by uniqueidentifier NULL, decided_at_utc datetime2 NULL, reject_reason nvarchar(500) NULL,
+ manager_id uniqueidentifier NULL, sent_by uniqueidentifier NULL, sent_at_utc datetime2 NULL, decided_by uniqueidentifier NULL, decided_at_utc datetime2 NULL, reject_reason nvarchar(500) NULL,
  order_id int NULL, cancelled_reason nvarchar(500) NULL, version rowversion NOT NULL);
 CREATE INDEX IX_itam_ink_request_status ON itam_data.ink_request(status,region_code);
 CREATE INDEX IX_itam_ink_request_manager ON itam_data.ink_request(manager_id,status);
 
--- Supplier order ORD-n: several approved requests in one order (today's order email); printed for the payment pack.
+-- Supplier order ORD-n: several approved requests in one order (today's order email); printed or emailed to the supplier.
 CREATE TABLE itam_data.supplier_order(
  order_id int IDENTITY(1,1) NOT NULL PRIMARY KEY,
  order_no nvarchar(20) NOT NULL CONSTRAINT UX_itam_supplier_order_no UNIQUE,
@@ -57,13 +58,11 @@ CREATE TABLE itam_data.invoice_line(
  unit_cost decimal(18,2) NOT NULL CHECK(unit_cost>=0), CONSTRAINT UX_itam_invoice_line UNIQUE(invoice_id,line_no));
 ALTER TABLE itam_data.po_receipt ADD invoice_id int NULL CONSTRAINT FK_itam_receipt_invoice REFERENCES itam_data.invoice(invoice_id);
 
--- Ink delivery note (printer Asset No. + ink sequence, after 601): from the IT shelf or from an invoice line; signed on
--- paper by the employee himself, scan uploaded by IT.
+-- Ink delivery: from the IT shelf or from an invoice line. No delivery note and no signed copy (owner, 22 October 2026):
+-- the payment pack carries the invoice and the ink request document with its approval.
 CREATE TABLE itam_data.ink_delivery(
  ink_delivery_id int IDENTITY(1,1) NOT NULL PRIMARY KEY,
- delivery_no nvarchar(40) NOT NULL CONSTRAINT UX_itam_ink_delivery_no UNIQUE,
  request_id int NOT NULL CONSTRAINT UX_itam_ink_delivery_request UNIQUE REFERENCES itam_data.ink_request(request_id),
  delivered_on date NOT NULL, source nvarchar(20) NOT NULL CHECK(source IN(N'Shelf',N'Invoice')),
  invoice_line_id int NULL REFERENCES itam_data.invoice_line(line_id), unit_cost decimal(18,2) NULL,
- snapshot_json nvarchar(max) NOT NULL, issued_by uniqueidentifier NOT NULL, issued_at_utc datetime2 NOT NULL DEFAULT SYSUTCDATETIME(),
- signed_file_id bigint NULL REFERENCES itam_data.stored_file(file_id), signed_by uniqueidentifier NULL, signed_at_utc datetime2 NULL);
+ issued_by uniqueidentifier NOT NULL, issued_at_utc datetime2 NOT NULL DEFAULT SYSUTCDATETIME());

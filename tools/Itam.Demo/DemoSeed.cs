@@ -105,9 +105,8 @@ static class DemoSeed
         invDoc.Text("HP 59A CF259A Black x 4 @ 290.00 SAR", ItamPdf.Doc.M, invDoc.Y, 11);
         var inv = DeliveryId(await store.CreateInvoice(officer, new(supplierA, "T-5001", today.AddDays(-3), "Toners", ord, null, null, null, [new("HP 59A CF259A Black", 4, 290m)]), new ItamUpload("T-5001.pdf", "application/pdf", invDoc.Build()), default));
         var line = await One($"SELECT line_id FROM itam_data.invoice_line WHERE invoice_id={inv}");
-        var n1 = DeliveryId(await store.DeliverInk(officer, k1, new(today.AddDays(-2), "Invoice", line), default));
-        await store.UploadInkSigned(officer, n1, new ItamUpload("signed.pdf", "application/pdf", scanPdf), default);
-        await store.DeliverInk(officer, k3, new(today.AddDays(-1), "Shelf", null), default);
+        await store.DeliverInk(officer, k1, new(today, "Invoice", line), default);
+        await store.DeliverInk(officer, k3, new(today, "Shelf", null), default);
         await store.CreateInkRequest(Who(10), new(printer, null, 1, null, "Second cartridge for the week"), default);
         var k5 = DeliveryId(await store.CreateInkRequest(Who(11), new(printer, null, 3, null, null), default));
         await store.SendInkForApproval(officer, k5, new(G(2)), default); await store.DecideInk(Who(2), k5, new(false, "Three is too many; ask for one at a time."), default);
