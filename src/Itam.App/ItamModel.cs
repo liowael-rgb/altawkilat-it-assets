@@ -148,8 +148,8 @@ public sealed record ItamScope(Guid Id, string Name, string[] Roles, string[] Re
     public bool MaintenanceView => Wide || Specialist;
     public bool ItRepair(string region) => CanHandover(region);
 
-    // End of life (step 5). Decisions not yet in the owner's matrix are given to the IT Manager (or a backup on leave) and
-    // listed in the build plan to confirm: the loss decision, the write-off approval and the disposal approval.
+    // End of life (step 5). The IT Manager (or a backup on leave) is the only person who decides losses, approves write-offs
+    // and approves disposals (owner, 22 October 2026).
     /// <summary>Report a loss: IT of the asset's region (the holder reports their own assets too).</summary>
     public bool LossReport(string region) => CanHandover(region);
     public bool LossView(string region) => Wide || Mine(region);

@@ -386,6 +386,7 @@ Report loss, Ask for disposal and Record sale.
   (OUs, name patterns, inactive days) come with the AD connection and the settings page.
 - **Licenses**: software licenses (type Software, new optional Seats field) and Windows keys of computers, with holders;
   keys never appear in the list (each opens from its asset page, logged).
-- To confirm with the owner (not in the matrix yet): the IT Manager as the only loss decision maker, write-off approver
-  and disposal approver; the System Administrator or IT Manager completing clearances. Emails (IT-EM-10/11/24/41-50/63/64)
+- Confirmed by the owner (22 October 2026): the IT Manager, or a backup on leave, is the only person who decides losses,
+  approves write-offs and approves disposals. Still to confirm: the System Administrator or IT Manager completing
+  clearances. Emails (IT-EM-10/11/24/41-50/63/64)
   come with the email step.
