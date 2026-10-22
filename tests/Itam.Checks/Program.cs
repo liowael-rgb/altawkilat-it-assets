@@ -633,6 +633,15 @@ try
     Check(lic.GetProperty("summary").EnumerateArray().First(x => x.GetProperty("software").GetString() == "Office").GetProperty("seats").GetInt32() == 3 && !lic.ToString().Contains("SECRET-KEY-1") && await Throws<ItamAccessDenied>(() => store.Licenses(U(10), default)),
         "Licenses list: seats and key recorded, never the key itself; IT only");
     Console.WriteLine("PASS end of life");
+    // Alerts: everything waiting for the person, on one page; the menu shows the same total.
+    var alMon = NewId(await store.Register(U(1), A("MON", 1, 2, "ALERT-MON-1"), default));
+    var alDs = NewId(await store.RequestDisposal(U(1), new((string)(await Scalar($"SELECT asset_no FROM itam_data.asset WHERE asset_id={alMon}"))!, "Old", "Worn"), default));
+    bool HasAlert(JsonElement a, string key) => a.GetProperty("groups").EnumerateArray().Any(g => g.GetProperty("items").EnumerateArray().Any(i => i.GetProperty("key").GetString() == key));
+    var mgrAlerts = JsonSerializer.SerializeToElement(await store.Alerts(U(2), default));
+    Check(HasAlert(mgrAlerts, "disposals") && !HasAlert(JsonSerializer.SerializeToElement(await store.Alerts(U(1), default)), "disposals")
+        && JsonSerializer.SerializeToElement(await store.Me(U(2), default)).GetProperty("alerts").GetInt32() == mgrAlerts.GetProperty("total").GetInt32()
+        && JsonSerializer.SerializeToElement(await store.Alerts(U(10), default)).GetProperty("total").GetInt32() >= 0, "Alerts: the IT Manager sees the disposal to decide, not the person who asked; the menu shows the same total");
+    await store.CancelDisposal(U(1), alDs, new("Alert check"), default);
 
     // ---- My Backup ----------------------------------------------------------------------------------------------------------------
     var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(3));

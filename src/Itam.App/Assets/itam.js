@@ -59,6 +59,7 @@ export const ICONS={
   movements:'<path d="M4 8h13l-3-3M20 16H7l3 3"/>',
   plus:'<path d="M12 5v14M5 12h14"/>',
   phone:'<path d="M5 4h3l2 5-2.5 1.5a11 11 0 0 0 6 6L15 14l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>',
+  alerts:'<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
   leavers:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 11h6"/>',
   loss:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4M11 8v3.5M11 14h.01"/>',
   disposals:'<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>',
@@ -86,6 +87,7 @@ export async function shell(current){
     q.placeholder='Search assets: Asset No., serial, service tag, model or PO';q.value=current==='assets'?new URLSearchParams(location.search).get('q')||'':'';q.setAttribute('aria-label','Search assets');
     f.append(svg('search'),q,el('span','Enter','x-kbd'));f.onsubmit=e=>{e.preventDefault();location.assign('/?q='+encodeURIComponent(q.value.trim()));};top.append(f);}
   const link=(n,key,text,href)=>{const a=el('a',null,'x-nav'+(key===current?' on':''));a.href=href;a.append(svg(key),el('span',text));if(key===current)a.setAttribute('aria-current','page');n.append(a);return a;};
+  {const k=link(nav,'alerts','Alerts','/alerts.html');if(m.alerts)k.append(el('span',String(m.alerts),'x-count x-count-hot'));}
   {const k=link(nav,'my','My IT Assets','/my.html');if(m.requestApprovals)k.append(el('span',String(m.requestApprovals),'x-count x-count-hot'));}
   if(m.can.viewAssets)link(nav,'assets','Assets','/');
   if(m.can.handover)link(nav,'handover','Handover','/handover.html');

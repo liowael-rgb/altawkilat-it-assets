@@ -473,3 +473,14 @@
 .x .x-group-head{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:18px 0 8px}.x .x-group-head>span:first-child{flex:1 1 320px}
 .x button.x-stat{height:auto;min-height:66px;justify-content:center;white-space:normal}
 .x .x-group-head>span{display:flex;flex-direction:column;gap:2px}.x .x-group-head .x-sub{display:block}
+/* Alerts: one row per kind of pending work, the count first, then what and where. */
+.x .x-alerts{display:flex;flex-direction:column;gap:8px}
+.x a.x-alert{display:flex;align-items:center;gap:16px;padding:12px 16px;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);text-decoration:none}
+.x a.x-alert:hover{border-color:var(--acc);background:var(--accbg)}
+.x a.x-alert.urgent{border-left:4px solid var(--bad)}
+.x .x-alert-count{flex:0 0 auto;min-width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:var(--accbg);color:var(--acc2);font-size:18px;font-weight:800}
+.x a.x-alert.urgent .x-alert-count{background:var(--badbg);color:var(--bad)}
+.x .x-alert-text{flex:1 1 auto;display:flex;flex-direction:column;gap:3px;min-width:0}
+.x .x-alert-text .x-sub{display:block}
+.x .x-alert-refs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:4px}
+.x a.x-alert>.x-i{flex:0 0 auto;width:18px;height:18px;color:var(--faint)}

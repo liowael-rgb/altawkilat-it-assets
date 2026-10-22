@@ -391,3 +391,19 @@ Report loss, Ask for disposal and Record sale.
   approves write-offs and approves disposals. Still to confirm: the System Administrator or IT Manager completing
   clearances. Emails (IT-EM-10/11/24/41-50/63/64)
   come with the email step.
+
+## Alerts (owner, 22 October 2026)
+
+Every role has **Alerts** at the top of the menu, with the total of what waits for the signed-in person. The page groups
+the pending work by module, each with a count, the first references (PR-, GP-, delivery note numbers...) and a link to
+the page where the work is done; items with a deadline or overdue are marked urgent:
+- Decisions: device requests (direct manager or IT Manager), ink, maintenance, gate passes, disposals, loss cases.
+- Movements: gate passes to dispatch, warehouse transfers to dispatch, assets to receive (named receiver), discrepancies
+  to resolve, exit passes overdue for return. Employees see their own passes (linked to My IT Assets).
+- Handover: delivery notes waiting for the signed copy (regions), AD / Endpoint Central / CUCM removals.
+- Requests (IT): to review, accessories to price or buy, approved to order, to deliver.
+- Ink (handlers): printers to link or register, requests to send for approval, approved ink to order or deliver.
+- Maintenance: approved orders to send, assets overdue at the supplier.
+- End of life: assets to collect, clearances ready to complete, users to disable in AD, disposals to complete, loss
+  settlements and recovered assets to review, AD comparison differences.
+Emails and the weekly summary (IT-EM-12, IT-EM-61) will use the same list when the email step is built.
