@@ -349,3 +349,43 @@ enabled or disabled, job description, department, company, branch (office), regi
 are visible. Device requests (PR-n) and gate passes and transfers (GP-n, WT-n: the employee responsible, or the requester)
 show it beside the page; on the Ink page the employee's name opens the same panel in a side drawer. The IP phone
 (AD ipPhone, as VTMS) is now kept on the employee copy. The national ID is never read.
+
+## Step 5 (end of life and AD) — built 22 October 2026
+
+New menu section **End of life**: Leavers, Loss cases, Disposals, Sales, AD comparison, Licenses. The asset page has
+Report loss, Ask for disposal and Record sale.
+
+- **Loss cases LC-n** (forms 22 to 25): the holder or IT of the region reports; the asset is Lost and the custody stays
+  open (no receipt, no stock). The IT Manager assigns an investigator (never the holder); the System Administrator, the
+  Team Leader or the IT Manager records security actions; the investigator records findings and a recommendation; the IT
+  Manager (or a backup on leave) records the decision with the signed decision, never the reporter, the holder or the
+  investigator: Not liable (responsibility cleared, custody closed by the loss decision, no receipt note) or Settlement
+  (cleared only when the IT Assets Officer or IT Manager records the settlement evidence). The write-off is separate:
+  asked by the IT Assets Officer or IT Manager, approved by the IT Manager; it never clears the employee. Recovery: IT
+  receives the asset into their region, then the IT Assets Officer or IT Manager reviews it back to stock. A transfer line
+  confirmed lost opens a loss case. A Lost asset cannot be received through the normal receipt.
+- **Disposals DS-n** (forms 26 to 28): IT of the region asks for an asset In Store (or the technical assessment decides
+  Dispose, which now opens the request itself); the asset is Pending disposal approval and blocked; the IT Manager (or a
+  backup) approves or rejects, never their own request; approval alone never disposes; the IT Assets Officer or IT Manager
+  records the completion (date, method, person, recipient, evidence file; for computers data wiped and licenses removed);
+  only then is the asset Disposed. Rejection or cancel returns it In Store.
+- **Sales SL-n** (form 21): any IT role, with the proof of payment, no approval; when the asset is in someone's custody
+  only the holder buys it and the custody closes with the sale (no receipt note); computers get the AD/Endpoint removal
+  task and IP phones the CUCM task (also when sold from stock). Sales list with buyers, prices and proofs.
+- **Leavers CL-n** (form 29, form 30, Assets to collect): only the System Administrator marks an employee Resigned; every
+  open delivery note becomes Owner Type Resigned (the old owner type is kept and restored if the clearance is cancelled)
+  and appears on Assets to collect, grouped by employee with counts per region (specialists see their regions); a leaver
+  gets no new deliveries; lost assets are listed apart. The clearance is completed by the System Administrator or the IT
+  Manager only when no custody and no uncleared loss remain; then the System Administrator confirms the user is disabled
+  in AD and kept.
+- **AD computer comparison** (form 34): Compare now (System Administrator, IT Assets Officer, IT Manager) reads the
+  computer accounts (read-only) and compares them with the computer names on active delivery notes (Owner Type Other left
+  out), without case and spaces: Matched; In AD, no delivery note; Removal waiting; On a delivery note, not in AD (with
+  the OU when elsewhere); Matched, needs a check (disabled or no sign-in for 90 days). Every run is kept; a line marked
+  reviewed stays hidden until the computer changes. The demo uses an invented directory; the daily run and the settings
+  (OUs, name patterns, inactive days) come with the AD connection and the settings page.
+- **Licenses**: software licenses (type Software, new optional Seats field) and Windows keys of computers, with holders;
+  keys never appear in the list (each opens from its asset page, logged).
+- To confirm with the owner (not in the matrix yet): the IT Manager as the only loss decision maker, write-off approver
+  and disposal approver; the System Administrator or IT Manager completing clearances. Emails (IT-EM-10/11/24/41-50/63/64)
+  come with the email step.

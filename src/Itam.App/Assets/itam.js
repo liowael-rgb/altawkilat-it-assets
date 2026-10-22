@@ -59,6 +59,12 @@ export const ICONS={
   movements:'<path d="M4 8h13l-3-3M20 16H7l3 3"/>',
   plus:'<path d="M12 5v14M5 12h14"/>',
   phone:'<path d="M5 4h3l2 5-2.5 1.5a11 11 0 0 0 6 6L15 14l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>',
+  leavers:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 11h6"/>',
+  loss:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4M11 8v3.5M11 14h.01"/>',
+  disposals:'<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>',
+  sales:'<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.5"/>',
+  adcompare:'<rect x="3" y="4" width="8" height="7" rx="1"/><rect x="13" y="13" width="8" height="7" rx="1"/><path d="M15 7h4v3M9 17H5v-3"/>',
+  licenses:'<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3M14 9l2 2"/>',
   tasks:'<path d="M9 6h11M9 12h11M9 18h11"/><path d="M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17"/>'
 };
 const initials=n=>(n||'').split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase();
@@ -72,7 +78,8 @@ export async function shell(current){
   const app=el('div',null,'x-app');const mark=el('span',null,'x-app-mark');mark.append(svg('laptop'));const appText=el('div');appText.append(el('b','IT Assets'),el('small','Asset management'));app.append(mark,appText);logo.append(img,app);
   const navh=el('div','Workspace','x-navh');const nav=el('nav');nav.setAttribute('aria-label','Pages');
   const adminH=el('div','Administration','x-navh');adminH.hidden=true;const adminNav=el('nav');adminNav.setAttribute('aria-label','Administration');
-  const meBox=el('div',null,'x-me');const menu=el('div',null,'x-rail-menu');menu.append(navh,nav,adminH,adminNav);rail.append(logo,menu,meBox);
+  const meBox=el('div',null,'x-me');const eolH=el('div','End of life','x-navh');eolH.hidden=true;const eolNav=el('nav');eolNav.setAttribute('aria-label','End of life');
+  const menu=el('div',null,'x-rail-menu');menu.append(navh,nav,eolH,eolNav,adminH,adminNav);rail.append(logo,menu,meBox);
   const right=el('div');const top=el('header',null,'x-top');right.append(top);if(main)right.append(main);sh.append(rail,right);document.body.prepend(sh);
   let m;try{m=await me();}catch(e){top.append(el('span',e.message,'hint'));throw e;}
   if(m.can.viewAssets){const f=el('form',null,'x-search');f.setAttribute('role','search');const q=document.createElement('input');q.name='q';q.type='search';q.maxLength=100;
@@ -91,6 +98,14 @@ export async function shell(current){
   if(m.can.invoices)link(nav,'invoices','Invoices','/invoices.html');
   if(m.can.suppliers)link(nav,'suppliers','Suppliers','/suppliers.html');
   if(m.can.ownBackup||m.can.backupsView)link(nav,'backups','My Backup','/backups.html');
+  {const c=m.can,hot=(a,n)=>{if(n)a.append(el('span',String(n),'x-count x-count-hot'));};
+    if(c.leavers||c.loss||c.disposals||c.sales||c.adCompare||c.licenses||m.lossActions||m.disposalApprovals)eolH.hidden=false;
+    if(c.leavers)hot(link(eolNav,'leavers','Leavers','/leavers.html'),m.toCollect);
+    if(c.loss||m.lossActions)hot(link(eolNav,'loss','Loss cases','/loss.html'),m.lossActions);
+    if(c.disposals||m.disposalApprovals)hot(link(eolNav,'disposals','Disposals','/disposals.html'),m.disposalApprovals);
+    if(c.sales)link(eolNav,'sales','Sales','/sales.html');
+    if(c.adCompare)link(eolNav,'adcompare','AD comparison','/adcompare.html');
+    if(c.licenses)link(eolNav,'licenses','Licenses','/licenses.html');}
   if(m.can.admin){adminH.hidden=false;link(adminNav,'admin','Administration Center','/admin.html');const areas=$('side');if(areas&&current==='admin'){areas.className='it-subnav';adminNav.append(areas);}}
   const roles=[...new Set(m.roles.map(r=>r.label))].join(', ')||'Employee';
   const who=el('div');const regs=[...new Set([...(m.regions||[]),...(m.inkRegions||[])])];who.append(el('b',m.name),el('small',roles+(m.viewsAll?' · All regions':regs.length?' · '+regs.join(', '):'')));meBox.append(el('span',initials(m.name),'x-avatar'),who);

@@ -55,7 +55,7 @@ public static class ItamTypeFields
         ["PNT"] = [new("PrinterType", "Printer type", "list", false, "PrinterType"), new("PrinterLocation", "Printer location", "text", false),
             new("TonerType", "Toner type", "list", false, "TonerType"), new("TonerCode", "Toner code", "text", false)],
         ["IP"] = [new("Extension", "Extension number", "text", false)],
-        ["SOF"] = [new("Software", "Software name", "text", true)],
+        ["SOF"] = [new("Software", "Software name", "text", true), new("Seats", "Seats (users)", "number", false)],
         ["TON"] = [new("TonerCode", "Toner code", "text", true)],
         ["DEV"] = [new("DeviceName", "Device name", "text", true), new("DeviceDescription", "Device description", "text", false)]
     };
@@ -147,6 +147,34 @@ public sealed record ItamScope(Guid Id, string Name, string[] Roles, string[] Re
     public bool MovementApproverRole => TeamLeader || SysAdmin || Manager;
     public bool MaintenanceView => Wide || Specialist;
     public bool ItRepair(string region) => CanHandover(region);
+
+    // End of life (step 5). Decisions not yet in the owner's matrix are given to the IT Manager (or a backup on leave) and
+    // listed in the build plan to confirm: the loss decision, the write-off approval and the disposal approval.
+    /// <summary>Report a loss: IT of the asset's region (the holder reports their own assets too).</summary>
+    public bool LossReport(string region) => CanHandover(region);
+    public bool LossView(string region) => Wide || Mine(region);
+    public bool LossViewAny => Wide || Specialist;
+    public bool LossAssign => Manager;
+    public bool LossDecideRole => Manager;
+    public bool LossSecurity => SysAdmin || TeamLeader || Manager;
+    public bool WriteOffRequest => Officer || Manager;
+    public bool DisposalRequest(string region) => CanHandover(region);
+    public bool DisposalApproverRole => Manager;
+    public bool DisposalComplete => Officer || Manager;
+    public bool DisposalView => Wide || Specialist;
+    /// <summary>Any IT role records a sale (decided 20 October 2026).</summary>
+    public bool SaleRecord => HasItRole;
+    public bool SalesView => HasItRole;
+    /// <summary>Only the System Administrator marks an employee Resigned; the System Administrator or the IT Manager completes the clearance.</summary>
+    public bool MarkResigned => SysAdmin;
+    public bool ClearanceComplete => SysAdmin || Manager;
+    public bool UserDisableTask => SysAdmin;
+    public bool CollectView => Wide || Specialist;
+    public bool CollectRegion(string region) => Wide || Mine(region);
+    public bool AdCompareRun => SysAdmin || Officer || Manager;
+    public bool AdCompareView => Wide || Specialist;
+    public bool AdCompareReview => SysAdmin || Officer || Manager;
+    public bool LicensesView => SysAdmin || Officer || Manager || Specialist;
 
     // Administration and backups
     public bool RolesManage => Manager;

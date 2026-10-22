@@ -22,6 +22,7 @@ builder.Services.AddAntiforgery(o => { o.HeaderName = "X-CSRF-TOKEN"; o.Cookie.H
 builder.Services.AddItam(_ => new SqlConnection(cs), font, BaseUrl + "/a/", calibri, calibriBold);
 builder.Services.AddSingleton<IItamSecrets>(sp => new DemoSecrets(sp.GetRequiredService<IDataProtectionProvider>().CreateProtector("Itam.Keys.v1")));
 builder.Services.AddScoped<IItamSession, DemoSession>();
+builder.Services.AddSingleton<IItamComputerDirectory, DemoComputers>();
 var app = builder.Build();
 
 if (await Scalar(cs, "SELECT COUNT(*) FROM itam_access.employee") is 0)
@@ -108,4 +109,24 @@ sealed class DemoSecrets(IDataProtector protector) : IItamSecrets
 {
     public string Protect(string value) => protector.Protect(value);
     public string Unprotect(string value) => protector.Unprotect(value);
+}
+
+/// <summary>Invented computer accounts for the AD comparison demo (no real Active Directory is read).</summary>
+sealed class DemoComputers : IItamComputerDirectory
+{
+    public string ComparedOus => "CN=Computers; OU=ALTAWKILAT Computers (with sub-OUs); OU=Test (demo)";
+    public Task<IReadOnlyList<ItamAdComputer>> Computers(CancellationToken token)
+    {
+        var now = DateTime.UtcNow; const string ou = "OU=Computers,OU=ALTAWKILAT Computers";
+        IReadOnlyList<ItamAdComputer> list =
+        [
+            new("ATWK-DEMO-001", ou, true, now.AddDays(-1), now.AddYears(-2), "Windows 11 Enterprise", true),
+            new("ATWK-DEMO-033", ou, false, now.AddDays(-140), now.AddYears(-3), "Windows 10 Enterprise", true),
+            new("ATWK-DEMO-009", ou, true, now.AddDays(-3), now.AddYears(-4), "Windows 10 Enterprise", true),
+            new("ATWK-DEMO-050", ou, true, now.AddDays(-2), now.AddMonths(-8), "Windows 11 Enterprise", true),
+            new("ATWK-TRAIN-01", "OU=Test", true, now.AddDays(-10), now.AddYears(-1), "Windows 11 Enterprise", true),
+            new("ATWK-DEMO-002", "OU=Old Computers", true, now.AddDays(-4), now.AddYears(-3), "Windows 10 Enterprise", false)
+        ];
+        return Task.FromResult(list);
+    }
 }

@@ -510,6 +510,130 @@ try
         "Return confirmed closes the pass; an approved pass not dispatched within its validity expires and cannot be used");
     Console.WriteLine("PASS ink and invoices");
 
+    // ---- End of life (step 5): loss, disposal, sale, leavers, AD comparison, licenses ----------------------------------------------
+    var eDay = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(3));
+    int NewId(object o) => JsonSerializer.SerializeToElement(o).GetProperty("id").GetInt32();
+    async Task<string> NoOf(int assetId) => (string)(await Scalar($"SELECT asset_no FROM itam_data.asset WHERE asset_id={assetId}"))!;
+    // Loss: reported by the holder; never a receipt; the decision (here a settlement) clears the employee, the write-off does not.
+    var lpc = NewId(await store.Register(U(1), A("PC", 1, 1, null, "TAG-LOSS", null, pcAttrs), default));
+    var lDl = NewId(await store.Deliver(U(1), lpc, Dl(G(10), "ATWK-L01"), default));
+    var lpcNo = await NoOf(lpc);
+    Check(await Throws<ItamAccessDenied>(() => store.ReportLoss(U(12), new(lpcNo, eDay, "Office", "Gone"), null, default)), "Only the holder or IT of the region reports a loss");
+    var lc = NewId(await store.ReportLoss(U(10), new(lpcNo, eDay, "Abha office", "Not found after the weekend"), null, default));
+    Check(await Scalar($"SELECT status FROM itam_data.asset WHERE asset_id={lpc}") as string == "Lost" && await Scalar($"SELECT received_at_utc FROM itam_data.delivery WHERE delivery_id={lDl}") is null
+        && await Throws<ArgumentException>(() => store.ReturnAsset(U(1), lDl, new(null, "Working", 1, null), default)) && await Throws<ArgumentException>(() => store.ReportLoss(U(1), new(lpcNo, eDay, "x", "y"), null, default)),
+        "Loss LC-n: the asset is Lost, the custody stays open, no receipt; one open case per asset");
+    Check(await Throws<ItamAccessDenied>(() => store.AssignLoss(U(3), lc, new(G(3)), default)) && await Throws<ArgumentException>(() => store.AssignLoss(U(2), lc, new(G(10)), default))
+        && await Throws<ArgumentException>(() => store.DecideLoss(U(2), lc, new("NotLiable", "x", null), scan, default)), "Only the IT Manager assigns; never the holder; no decision before the findings");
+    await store.AssignLoss(U(2), lc, new(G(3)), default);
+    Check(await Throws<ItamAccessDenied>(() => store.LossFindings(U(4), lc, new("f", "r"), null, default)), "Only the investigator records the findings");
+    await store.LossFindings(U(3), lc, new("Left in a taxi.", "Settlement of the depreciated value"), null, default);
+    Check(await Throws<ItamAccessDenied>(() => store.DecideLoss(U(3), lc, new("NotLiable", "x", null), scan, default)) && await Throws<ArgumentException>(() => store.DecideLoss(U(2), lc, new("Settlement", "x", null), null, default)),
+        "The IT Manager decides with the signed decision; the investigator does not");
+    await store.DecideLoss(U(2), lc, new("Settlement", "Pays the depreciated value", 500m), scan, default);
+    await store.RequestWriteOff(U(1), lc, new("Remaining book value"), default);
+    Check(await Throws<ItamAccessDenied>(() => store.DecideWriteOff(U(1), lc, new(true, null), default)), "The person who asked does not approve the write-off");
+    await store.DecideWriteOff(U(2), lc, new(true, null), default);
+    Check(await Scalar($"SELECT responsibility+N'|'+writeoff+N'|'+status FROM itam_data.loss_case WHERE case_id={lc}") as string == "PendingRequiredAction|Approved|AwaitingAction"
+        && await Scalar($"SELECT received_at_utc FROM itam_data.delivery WHERE delivery_id={lDl}") is null, "An approved write-off does not clear the employee; the custody stays open until the settlement");
+    await store.SettleLoss(U(1), lc, new("Paid 500 SAR to Accounting"), scan, default);
+    Check(await Scalar($"SELECT responsibility+N'|'+status FROM itam_data.loss_case WHERE case_id={lc}") as string == "Cleared|ClosedByDecision"
+        && await Scalar($"SELECT closure_reason FROM itam_data.delivery WHERE delivery_id={lDl}") as string == "LossDecision" && await Throws<ArgumentException>(() => store.ReceiptNote(U(1), lDl, default)),
+        "The settlement clears the employee and closes the custody by the loss decision, with no receipt note");
+    Check(await Throws<ItamAccessDenied>(() => store.RecoverLoss(U(4), lc, new(eDay, 1, "Working", "Found"), default)), "IT receives a recovered asset into their regions only");
+    await store.RecoverLoss(U(1), lc, new(eDay, 1, "Working", "Returned by the taxi company"), default);
+    Check(await Scalar($"SELECT status FROM itam_data.asset WHERE asset_id={lpc}") as string == "Lost", "Recovered: still Lost until the review");
+    await store.ReviewRecovery(U(1), lc, new("Working; the settlement stays"), default);
+    Check(await Scalar($"SELECT status FROM itam_data.asset WHERE asset_id={lpc}") as string == "InStore", "Reviewed: back In Store");
+
+    // Disposal: approval alone never disposes; completion needs evidence; computers need data wiping and license removal.
+    var dmon = NewId(await store.Register(U(1), A("MON", 1, 2, "DISP-MON-1"), default));
+    var dmonNo = await NoOf(dmon);
+    Check(await Throws<ItamAccessDenied>(() => store.RequestDisposal(U(4), new(dmonNo, "Broken", "Cracked"), default)), "Only IT of the asset's region asks for a disposal");
+    var ds = NewId(await store.RequestDisposal(U(1), new(dmonNo, "Broken", "Cracked"), default));
+    Check(await Scalar($"SELECT status FROM itam_data.asset WHERE asset_id={dmon}") as string == "PendingDisposal" && await Throws<ArgumentException>(() => store.Deliver(U(1), dmon, Dl(G(10), null), default))
+        && await Throws<ArgumentException>(() => store.CompleteDisposal(U(1), ds, new(eDay, "Recycling", "Ali", "E-waste Co.", null, null, null), scan, default)),
+        "Disposal DS-n: Pending disposal approval blocks delivery; no completion before approval");
+    Check(await Throws<ItamAccessDenied>(() => store.DecideDisposal(U(3), ds, new(true, null), default)), "Only the IT Manager approves a disposal");
+    await store.DecideDisposal(U(2), ds, new(true, null), default);
+    Check(await Scalar($"SELECT status FROM itam_data.asset WHERE asset_id={dmon}") as string == "PendingDisposal" && await Throws<ItamAccessDenied>(() => store.CompleteDisposal(U(4), ds, new(eDay, "Recycling", "Ali", "E-waste Co.", null, null, null), scan, default))
+        && await Throws<ArgumentException>(() => store.CompleteDisposal(U(1), ds, new(eDay, "Recycling", "Ali", "E-waste Co.", null, null, null), null, default)), "Approved: still Pending disposal approval; completion by the IT Assets Officer, with evidence");
+    await store.CompleteDisposal(U(1), ds, new(eDay, "Recycling", "Ali", "E-waste Co.", null, null, null), scan, default);
+    Check(await Scalar($"SELECT status FROM itam_data.asset WHERE asset_id={dmon}") as string == "Disposed", "Completed with evidence: Disposed");
+    var dpc = NewId(await store.Register(U(1), A("PC", 1, 1, null, "TAG-DISP", null, pcAttrs), default));
+    var ds2 = NewId(await store.RequestDisposal(U(1), new(await NoOf(dpc), "Old", "Slow"), default));
+    await store.DecideDisposal(U(7), ds2, new(true, null), default);
+    Check(await Throws<ArgumentException>(() => store.CompleteDisposal(U(1), ds2, new(eDay, "Destruction", "Ali", null, false, true, null), scan, default)), "A computer is disposed only with its data wiped and licenses removed");
+    await store.CompleteDisposal(U(1), ds2, new(eDay, "Destruction", "Ali", null, true, true, null), scan, default);
+    var dmon2 = NewId(await store.Register(U(1), A("MON", 1, 2, "DISP-MON-2"), default));
+    var ds3 = NewId(await store.RequestDisposal(U(1), new(await NoOf(dmon2), "Old", "Scratched"), default));
+    Check(await Throws<ArgumentException>(() => store.DecideDisposal(U(2), ds3, new(false, null), default)), "A rejection needs a reason");
+    await store.DecideDisposal(U(2), ds3, new(false, "Still usable"), default);
+    Check(await Scalar($"SELECT status FROM itam_data.asset WHERE asset_id={dmon2}") as string == "InStore" && await Scalar("SELECT COUNT(*) FROM itam_data.disposal WHERE assessment_id IS NOT NULL") is >= 1,
+        "Rejected: back In Store; a Dispose assessment opened its own disposal request");
+
+    // Sale: any IT role, proof of payment required, only the holder buys; the custody closes with the sale; AD or CUCM removal.
+    var sip = NewId(await store.Register(U(1), A("IP", 1, 3, null, null, "00:AA:BB:CC:DD:01", new() { ["Extension"] = "4999" }, mf: 2), default));
+    var sDl = NewId(await store.Deliver(U(1), sip, Dl(G(10), null), default));
+    var sipNo = await NoOf(sip);
+    Check(await Throws<ArgumentException>(() => store.RecordSale(U(6), new(sipNo, G(10), 50m, eDay, null), null, default))
+        && await Throws<ArgumentException>(() => store.RecordSale(U(6), new(sipNo, G(12), 50m, eDay, null), scan, default))
+        && await Throws<ItamAccessDenied>(() => store.RecordSale(U(10), new(sipNo, G(10), 50m, eDay, null), scan, default)), "A sale needs the proof of payment, the holder as buyer, and an IT role");
+    await store.RecordSale(U(6), new(sipNo, G(10), 50m, eDay, "Old phone"), scan, default);
+    Check(await Scalar($"SELECT status FROM itam_data.asset WHERE asset_id={sip}") as string == "Sold" && await Scalar($"SELECT closure_reason FROM itam_data.delivery WHERE delivery_id={sDl}") as string == "Sale"
+        && await Scalar($"SELECT COUNT(*) FROM itam_data.task WHERE asset_id={sip} AND kind=N'RemoveFromCucm' AND done_at_utc IS NULL") is 1, "Sold to the holder: custody closed by the sale (no receipt note), CUCM removal task");
+    var spc = NewId(await store.Register(U(1), A("PC", 1, 1, null, "TAG-SALE", null, pcAttrs), default));
+    await store.RecordSale(U(1), new(await NoOf(spc), G(12), 700m, eDay, null), scan, default);
+    Check(await Scalar($"SELECT COUNT(*) FROM itam_data.task WHERE asset_id={spc} AND kind=N'RemoveFromAd' AND delivery_id IS NULL") is 1
+        && JsonSerializer.SerializeToElement(await store.Sales(U(4), default)).GetProperty("sales").GetArrayLength() == 2, "Sold from stock: AD removal task; both sales in the sales list");
+
+    // Leavers: Resigned by the System Administrator; collect; clearance only when nothing is left; then disable the AD user.
+    var lmon = NewId(await store.Register(U(1), A("MON", 1, 2, "LEAVE-MON-1"), default));
+    var lvDl = NewId(await store.Deliver(U(1), lmon, Dl(G(12), null), default));
+    Check(await Throws<ItamAccessDenied>(() => store.MarkResigned(U(1), new(G(12), eDay.AddDays(3), null), default)), "Only the System Administrator marks an employee Resigned");
+    var cl = NewId(await store.MarkResigned(U(5), new(G(12), eDay.AddDays(3), null), default));
+    var lv = JsonSerializer.SerializeToElement(await store.Leavers(U(1), default));
+    var lvOther = NewId(await store.Register(U(1), A("MON", 1, 2, "LEAVE-MON-2"), default));
+    Check(await Scalar($"SELECT owner_type FROM itam_data.delivery WHERE delivery_id={lvDl}") as string == "Resigned" && lv.GetProperty("collect").EnumerateArray().Any(x => x.GetProperty("deliveryId").GetInt32() == lvDl)
+        && !JsonSerializer.SerializeToElement(await store.Leavers(U(4), default)).GetProperty("collect").EnumerateArray().Any(x => x.GetProperty("deliveryId").GetInt32() == lvDl)
+        && await Throws<ArgumentException>(() => store.Deliver(U(1), lvOther, Dl(G(12), null), default)), "Resigned: on Assets to collect (in the region's list only); no new deliveries to a leaver");
+    Check(await Throws<ArgumentException>(() => store.CompleteClearance(U(5), cl, new("HR form"), default)) && await Throws<ArgumentException>(() => store.UserDisabled(U(5), cl, new(null), default)),
+        "No clearance while assets are held; the AD user stays active until the clearance is completed");
+    while (await Scalar($"SELECT TOP 1 delivery_id FROM itam_data.delivery WHERE employee_id='{G(12)}' AND received_at_utc IS NULL") is int openDl)
+        await store.ReturnAsset(U(1), openDl, new(null, "Working", 1, null), default);
+    Check(await Throws<ItamAccessDenied>(() => store.CompleteClearance(U(1), cl, new("HR form"), default)), "Only the System Administrator or the IT Manager completes a clearance");
+    await store.CompleteClearance(U(2), cl, new("HR clearance form signed"), default);
+    Check(await Scalar($"SELECT disable_status FROM itam_data.clearance WHERE clearance_id={cl}") as string == "Waiting" && await Throws<ItamAccessDenied>(() => store.UserDisabled(U(1), cl, new(null), default)),
+        "Completed: one task for the System Administrator to disable the AD user");
+    await store.UserDisabled(U(5), cl, new("Disabled and kept"), default);
+    var cl2 = NewId(await store.MarkResigned(U(5), new(G(10), null, null), default));
+    await store.CancelClearance(U(5), cl2, new("Resignation withdrawn"), default);
+    Check(await Scalar($"SELECT disable_status FROM itam_data.clearance WHERE clearance_id={cl}") as string == "Done"
+        && await Scalar($"SELECT COUNT(*) FROM itam_data.delivery WHERE employee_id='{G(10)}' AND owner_type=N'Resigned'") is 0, "AD user disabled (kept); a cancelled clearance restores the owner types");
+
+    // AD computer comparison (a test directory; nothing is read from or written to AD).
+    var openName = (string)(await Scalar("SELECT TOP 1 computer_name FROM itam_data.delivery WHERE received_at_utc IS NULL AND computer_name IS NOT NULL AND owner_type<>N'Other' ORDER BY delivery_id"))!;
+    var waitName = await Scalar("SELECT TOP 1 d.computer_name FROM itam_data.task k JOIN itam_data.delivery d ON d.delivery_id=k.delivery_id WHERE k.kind=N'RemoveFromAd' AND k.done_at_utc IS NULL AND d.computer_name IS NOT NULL") as string;
+    var dir = new TestComputers([new(openName.ToLowerInvariant(), "OU=Computers", true, DateTime.UtcNow.AddDays(-1), null, "Win11", true), new("ATWK-EXTRA", "OU=Computers", true, DateTime.UtcNow, null, "Win11", true),
+        .. waitName is null ? Array.Empty<ItamAdComputer>() : [new ItamAdComputer(waitName, "OU=Computers", true, DateTime.UtcNow, null, "Win11", true)]]);
+    Check(await Throws<ItamAccessDenied>(() => store.RunAdComparison(U(4), dir, default)), "Specialists do not run the comparison");
+    await store.RunAdComparison(U(5), dir, default);
+    var adLines = JsonSerializer.SerializeToElement(await store.AdComparison(U(5), null, default)).GetProperty("lines").EnumerateArray().ToList();
+    string ResultOf(string n) => adLines.First(l => l.GetProperty("computerName").GetString()!.Equals(n, StringComparison.OrdinalIgnoreCase)).GetProperty("result").GetString()!;
+    Check(ResultOf(openName) == "Matched" && ResultOf("ATWK-EXTRA") == "NoDelivery" && (waitName is null || ResultOf(waitName) == "RemovalWaiting"),
+        "Names compare without case: matched, in AD with no delivery note, removal waiting");
+    await store.ReviewAdLine(U(5), new(adLines.First(l => l.GetProperty("result").GetString() == "NoDelivery").GetProperty("id").GetInt32(), "Training computer"), default);
+    await store.RunAdComparison(U(5), dir, default);
+    Check(JsonSerializer.SerializeToElement(await store.AdComparison(U(1), null, default)).GetProperty("lines").EnumerateArray().Any(l => l.GetProperty("computerName").GetString() == "ATWK-EXTRA" && l.GetProperty("reviewed").GetBoolean()),
+        "A reviewed difference stays reviewed in the next run while the computer is unchanged");
+
+    // Licenses: software licenses with seats and holders; the key itself is never in the list.
+    await store.Register(U(1), new ItamAssetInput("SOF", 1, null, null, null, null, null, null, null, "New", eDay, null, null, null, null, null, new() { ["Software"] = "Office", ["Seats"] = "3" }, null, "SECRET-KEY-1"), default);
+    var lic = JsonSerializer.SerializeToElement(await store.Licenses(U(1), default));
+    Check(lic.GetProperty("summary").EnumerateArray().First(x => x.GetProperty("software").GetString() == "Office").GetProperty("seats").GetInt32() == 3 && !lic.ToString().Contains("SECRET-KEY-1") && await Throws<ItamAccessDenied>(() => store.Licenses(U(10), default)),
+        "Licenses list: seats and key recorded, never the key itself; IT only");
+    Console.WriteLine("PASS end of life");
+
     // ---- My Backup ----------------------------------------------------------------------------------------------------------------
     var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(3));
     await store.SetBackup(U(1), new(null, G(3), today.AddDays(1), today.AddDays(5), "Annual leave"), default);
@@ -536,4 +660,10 @@ sealed class FakeSecrets : IItamSecrets
 {
     public string Protect(string value) => "enc:" + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(new string(value.Reverse().ToArray())));
     public string Unprotect(string value) => new(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(value[4..])).Reverse().ToArray());
+}
+
+sealed class TestComputers(ItamAdComputer[] list) : IItamComputerDirectory
+{
+    public string ComparedOus => "OU=Computers (test)";
+    public Task<IReadOnlyList<ItamAdComputer>> Computers(CancellationToken token) => Task.FromResult<IReadOnlyList<ItamAdComputer>>(list);
 }

@@ -466,3 +466,10 @@
 .x .x-check input{width:17px;height:17px;margin:1px 0 0;flex:0 0 auto}
 .x .x-pick-bar{justify-content:flex-start;margin:4px 0 10px}
 .x .x-pick-count{margin:4px 0 8px;font-weight:700;color:var(--acc2)}
+/* End of life pages: count tiles (clickable on Leavers) and the employee heading above each group of assets to collect. */
+.x .x-stat{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:12px 16px;border:1px solid var(--line);border-radius:12px;background:#fff;font:inherit;text-align:left;color:var(--ink)}
+.x button.x-stat{cursor:pointer}.x button.x-stat:hover{border-color:var(--line2)}.x .x-stat.on{border-color:var(--acc);background:var(--accbg)}
+.x .x-stat b{font-size:22px;letter-spacing:-.3px}.x .x-stat span{color:var(--sub);font-size:12.5px;font-weight:600}
+.x .x-group-head{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:18px 0 8px}.x .x-group-head>span:first-child{flex:1 1 320px}
+.x button.x-stat{height:auto;min-height:66px;justify-content:center;white-space:normal}
+.x .x-group-head>span{display:flex;flex-direction:column;gap:2px}.x .x-group-head .x-sub{display:block}

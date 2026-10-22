@@ -173,6 +173,19 @@ static class DemoSeed
             new() { ["ComputerType"] = "Notebook", ["Processor"] = "Intel Core i7", ["MemoryGb"] = "16", ["CapacityGb"] = "512", ["OperatingSystem"] = "Win11" }, $"DEMOSTP{i:00}");
         for (var i = 1; i <= 3; i++) await Reg("IP", "Cisco", "IP Phone 8841", "Riyadh IT Warehouse (demo)", null, new() { ["Extension"] = $"45{i:00}" }, mac: $"00:11:22:33:45:{i:00}");
         for (var i = 1; i <= 3; i++) await Reg("MON", "Dell", "P2422H", "Jeddah IT Warehouse (demo)", $"DEMOSTJ{i:00}");
+        // End of life (step 5, invented): a leaver, a loss case under investigation, a sale, disposals, software licenses and one AD comparison run.
+        var proof = new ItamUpload("proof.pdf", "application/pdf", scanPdf);
+        await store.MarkResigned(Who(6), new(G(12), today.AddDays(5), "Resignation accepted (demo)"), default);
+        var lossId = DeliveryId(await store.ReportLoss(officer, new("PC-4816", today.AddDays(-1), "Abha branch meeting room", "Left in the meeting room after a visit; not found the next morning."), null, default));
+        await store.AssignLoss(Who(2), lossId, new(G(3)), default);
+        await store.RecordSale(officer, new("PC-4834", G(9), 900m, today.AddDays(-2), "Old notebook sold to the employee (demo)"), proof, default);
+        var ds2 = DeliveryId(await store.RequestDisposal(officer, new("MON-4830", "Screen cracked after a fall; not worth repairing.", "Cracked panel"), default));
+        await store.DecideDisposal(Who(2), ds2, new(true, null), default);
+        await store.Deliver(officer, await AssetBy("service_tag", "DEMOSTP03"), new(G(9), today.AddDays(-30), "Personal", "ATWK-DEMO-033", null), default);
+        foreach (var (sw, key, seats) in new[] { ("Microsoft Office LTSC 2021", "DEMO-OFFICE-KEY-0001", "1"), ("Adobe Acrobat Pro", "DEMO-ACROBAT-KEY-0002", "5") })
+            await store.Register(officer, new ItamAssetInput("SOF", await Loc("Riyadh IT Warehouse (demo)"), null, null, null, null, null, null, null, "New", new DateOnly(2026, 3, 15),
+                null, null, null, null, null, new() { ["Software"] = sw, ["Seats"] = seats }, null, key), default);
+        await store.RunAdComparison(Who(6), new DemoComputers(), default);
         Console.WriteLine("IT Assets demo data seeded.");
     }
 }

@@ -92,6 +92,8 @@ public sealed partial class ItamStore
             token, ("@e", employee))).SingleOrDefault();
         if (emp.Name is null) throw new ArgumentException("Choose the employee.");
         if (!emp.Enabled) throw new ArgumentException($"{emp.Name} is disabled in Active Directory: new deliveries go to active employees only.");
+        if (await Scalar(c, tx, "SELECT clearance_no FROM itam_data.clearance WHERE employee_id=@e AND status=N'InProgress'", token, ("@e", employee)) is string leaving)
+            throw new ArgumentException($"{emp.Name} is leaving (clearance {leaving}): no new deliveries.");
         string? computer = null;
         if (a.Type == "PC")
         {
@@ -161,6 +163,8 @@ public sealed partial class ItamStore
         var d = await LoadDelivery(c, tx, deliveryId, true, token);
         Require(s.CanHandover(d.Region), "You cannot receive this asset back.");
         if (d.ReceivedAt is not null) throw new ArgumentException($"{d.AssetNo} was already received back on {d.No}-R.");
+        if (await Scalar(c, tx, $"SELECT case_no FROM itam_data.loss_case WHERE asset_id=@a AND status IN({OpenLossStatuses})", token, ("@a", d.AssetId)) is string lossNo)
+            throw new ArgumentException($"{d.AssetNo} is on loss case {lossNo}: record the recovery on the case (IT receives it there, then reviews it).");
         var at = x.ReceivedAt?.ToUniversalTime() ?? UtcNow;
         if (at > UtcNow.AddMinutes(5)) throw new ArgumentException("The receipt date cannot be in the future.");
         if (DateOnly.FromDateTime(at.AddHours(3)) < d.On) throw new ArgumentException("The receipt date cannot be before the delivery date.");
@@ -205,12 +209,12 @@ public sealed partial class ItamStore
         var rec = Recommendations.Any(r => r.Code == x.Recommendation) ? x.Recommendation! : throw new ArgumentException("Choose the recommendation.");
         long? file = evidence is null ? null : await SaveFile(c, tx, evidence, CheckFile(evidence, pdfOnly: false), s.Id, token);
         var no = "TA-" + d.No;
-        await Exec(c, tx, "INSERT itam_data.assessment(assessment_no,delivery_id,review,recommendation,evidence_file_id,assessed_by) VALUES(@n,@d,@r,@c,@f,@b)", token,
-            ("@n", no), ("@d", d.Id), ("@r", review), ("@c", rec), ("@f", file), ("@b", s.Id));
+        var assessmentId = Convert.ToInt32(await Scalar(c, tx, "INSERT itam_data.assessment(assessment_no,delivery_id,review,recommendation,evidence_file_id,assessed_by) OUTPUT inserted.assessment_id VALUES(@n,@d,@r,@c,@f,@b)", token,
+            ("@n", no), ("@d", d.Id), ("@r", review), ("@c", rec), ("@f", file), ("@b", s.Id)));
         var status = await Scalar(c, tx, "SELECT status FROM itam_data.asset WHERE asset_id=@a", token, ("@a", d.AssetId)) as string;
-        if (rec == "Dispose" && status == "InStore")
-            await Exec(c, tx, "UPDATE itam_data.asset SET status=N'PendingDisposal' WHERE asset_id=@a", token, ("@a", d.AssetId));
-        await Event(c, tx, d.AssetId, s.Id, "Technical assessment", $"{no}: {RecommendationLabel(rec)}{(rec == "Dispose" && status == "InStore" ? " (Pending disposal approval)" : "")}", token);
+        await Event(c, tx, d.AssetId, s.Id, "Technical assessment", $"{no}: {RecommendationLabel(rec)}", token);
+        // Dispose opens the disposal request (Pending disposal approval); the IT Manager decides it, and only its completion disposes.
+        if (rec == "Dispose" && status == "InStore") await DisposalFromAssessment(c, tx, d.AssetId, assessmentId, no, s.Id, token);
         await Audit(c, tx, s.Id, "assessment", no, "Add", null, new { rec, evidence = file is not null }, null, token);
         await tx.CommitAsync(token);
         return new { assessmentNo = no };
@@ -347,7 +351,7 @@ public sealed partial class ItamStore
     {
         var (c, _, d) = await DocAccess(user, deliveryId, token); await using var _c = c;
         if (d.ReceivedAt is null) throw new ArgumentException("The asset is not received back yet.");
-        if (await Scalar(c, null, "SELECT closed_by_movement_id FROM itam_data.delivery WHERE delivery_id=@d", token, ("@d", d.Id)) is int) throw new ArgumentException("No receipt note: the custody passed to another employee on a branch transfer.");
+        if (await Scalar(c, null, "SELECT closure_reason FROM itam_data.delivery WHERE delivery_id=@d", token, ("@d", d.Id)) is string closed) throw new ArgumentException(closed switch { "Sale" => "No receipt note: the asset was sold to the holder.", "LossDecision" => "No receipt note: the custody was closed by a loss decision.", _ => "No receipt note: the custody passed to another employee on a branch transfer." });
         var names = await Names(c, null, token);
         return new($"Receipt note {d.No}-R.pdf", "application/pdf", NotePdf(NoteKind.Receipt, d, names.GetValueOrDefault(d.ReceivedBy ?? Guid.Empty), null));
     }

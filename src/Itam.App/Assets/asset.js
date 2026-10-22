@@ -1,6 +1,7 @@
 import {$,el,api,shell,fail,message,when,date,money,card,dl,table,statusTag,svg,edit} from '/itam.js';
 import {assetForm,labelCard} from '/assetform.js';
 import {custody} from '/custody.js';
+import {reportLoss,requestDisposal,recordSale,btn} from '/eol.js';
 const id=Number(new URLSearchParams(location.search).get('id'));
 let m,d,tab='delivery';
 async function load(note){
@@ -12,6 +13,10 @@ async function load(note){
   const acts=$('head-actions');acts.replaceChildren();
   if(d.canEdit||d.phoneOnly){const b=el('button',null,'primary');b.type='button';b.append(svg('edit'),'Edit details');b.onclick=editMode;acts.append(b);}
   const all=el('a');all.href='/';all.append(el('button','All assets'));acts.append(all);
+  // End of life (step 5): the server checks the region and the asset's state.
+  if(['InUse','InStore'].includes(a.status)&&m.can.loss)acts.append(btn('Report loss',()=>reportLoss(a.assetNo),'','loss'));
+  if(a.status==='InStore'&&m.can.disposals)acts.append(btn('Ask for disposal',()=>requestDisposal(a.assetNo),'','disposals'));
+  if(['InUse','InStore'].includes(a.status)&&m.can.sales)acts.append(btn('Record sale',()=>recordSale(a.assetNo,null),'','sales'));
   const details=dl([['Asset No.',el('strong',a.assetNo)],['Status',statusTag(a.statusLabel,a.status)],['Product type',a.typeName],['Manufacturer and model',a.manufacturer||a.model?[a.manufacturer,a.model].filter(Boolean).join(' '):null],
     ['Serial number',a.serial],['Service tag',a.serviceTag],['MAC address',a.mac?el('span',a.mac,'mono'):null],['IP address',a.ip],
     ...Object.entries(d.attributes).map(([k,v])=>[label(k),listName(d.fields.find(f=>f.code===k),v)]),['Device condition',a.condition]]);

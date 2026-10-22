@@ -257,7 +257,7 @@ public sealed partial class ItamStore
         {
             // Custody changes: the outgoing custody closes on this transfer (no receipt note: IT did not take it back), and the
             // receiver gets a new delivery note to sign on paper.
-            await Exec(c, tx, "UPDATE itam_data.delivery SET received_at_utc=SYSUTCDATETIME(),received_by=@b,receipt_location_id=@t,receipt_notes=@n,closed_by_movement_id=@m WHERE delivery_id=@d", token,
+            await Exec(c, tx, "UPDATE itam_data.delivery SET received_at_utc=SYSUTCDATETIME(),received_by=@b,receipt_location_id=@t,receipt_notes=@n,closed_by_movement_id=@m,closure_reason=N'Transfer' WHERE delivery_id=@d", token,
                 ("@b", s.Id), ("@t", m.To), ("@n", $"Custody passed on {m.No}"), ("@m", m.Id), ("@d", open.Id));
             await Exec(c, tx, "UPDATE itam_data.asset SET location_id=@t WHERE asset_id=@a", token, ("@t", m.To), ("@a", l.Asset));
             var asset = await LoadHandAsset(c, tx, l.Asset, true, token);
@@ -309,8 +309,9 @@ public sealed partial class ItamStore
                 await Exec(c, tx, "UPDATE itam_data.asset SET status=@p WHERE asset_id=@a", token, ("@p", l.Previous), ("@a", l.Asset));
                 await Exec(c, tx, "UPDATE itam_data.movement_line SET state=@s WHERE line_id=@l", token, ("@s", res == "NeverDispatched" ? "NeverDispatched" : "Returned"), ("@l", x.LineId)); break;
             case "ConfirmedLost":
-                await Exec(c, tx, "UPDATE itam_data.asset SET status=N'Lost' WHERE asset_id=@a", token, ("@a", l.Asset));
-                await Exec(c, tx, "UPDATE itam_data.movement_line SET state=N'Lost' WHERE line_id=@l", token, ("@l", x.LineId)); break;
+                // The asset is Lost and a loss case opens: the transfer can close while the case (responsibility, write-off) stays open.
+                await Exec(c, tx, "UPDATE itam_data.movement_line SET state=N'Lost' WHERE line_id=@l", token, ("@l", x.LineId));
+                await NewLossCase(c, tx, await LoadEolAsset(c, tx, null, l.Asset, token), s.Id, DateOnly.FromDateTime(UtcNow.AddHours(3)), $"In transit on {m.No}", $"Confirmed lost on {m.No}: {note}", file, m.Id, token); break;
         }
         await Event(c, tx, l.Asset, s.Id, "Transfer discrepancy", $"{m.No}: resolved ({res}): {note}", token);
         await Recompute(c, tx, id, token);

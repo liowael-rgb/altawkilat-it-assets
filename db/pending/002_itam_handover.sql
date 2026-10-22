@@ -16,7 +16,8 @@ CREATE TABLE itam_data.delivery(
  asset_id int NOT NULL REFERENCES itam_data.asset(asset_id),
  employee_id uniqueidentifier NOT NULL REFERENCES itam_access.employee(employee_id),
  delivered_on date NOT NULL,
- owner_type nvarchar(20) NOT NULL CHECK(owner_type IN(N'Personal',N'Department',N'Temporary',N'Other')),
+ owner_type nvarchar(20) NOT NULL CHECK(owner_type IN(N'Personal',N'Department',N'Temporary',N'Other',N'Resigned')),
+ owner_type_before nvarchar(20) NULL, -- the owner type before the employee was marked Resigned (restored if the clearance is cancelled)
  computer_name nvarchar(64) NULL, notes nvarchar(1000) NULL,
  from_location_id int NOT NULL REFERENCES itam_ref.location(location_id),
  snapshot_json nvarchar(max) NOT NULL,
@@ -27,6 +28,8 @@ CREATE TABLE itam_data.delivery(
  received_at_utc datetime2 NULL, received_by uniqueidentifier NULL,
  receipt_condition nvarchar(20) NULL CHECK(receipt_condition IN(N'Working',N'Damaged',N'Faulty')),
  receipt_location_id int NULL REFERENCES itam_ref.location(location_id), receipt_notes nvarchar(1000) NULL,
+ -- Custody closed without a physical receipt by IT: passed on a transfer, sold to the holder, or closed by a loss decision.
+ closure_reason nvarchar(20) NULL CHECK(closure_reason IN(N'Transfer',N'Sale',N'LossDecision')),
  version rowversion NOT NULL);
 CREATE UNIQUE INDEX UX_itam_delivery_open_asset ON itam_data.delivery(asset_id) WHERE received_at_utc IS NULL;
 CREATE UNIQUE INDEX UX_itam_delivery_open_computer ON itam_data.delivery(computer_name) WHERE received_at_utc IS NULL AND computer_name IS NOT NULL;
@@ -47,7 +50,8 @@ CREATE TABLE itam_data.assessment(
 CREATE TABLE itam_data.task(
  task_id int IDENTITY(1,1) NOT NULL PRIMARY KEY,
  kind nvarchar(30) NOT NULL CHECK(kind IN(N'RemoveFromAd',N'RemoveFromCucm')),
- asset_id int NOT NULL REFERENCES itam_data.asset(asset_id), delivery_id int NOT NULL REFERENCES itam_data.delivery(delivery_id),
+ asset_id int NOT NULL REFERENCES itam_data.asset(asset_id), delivery_id int NULL REFERENCES itam_data.delivery(delivery_id), -- NULL: sold from stock
  subject nvarchar(200) NOT NULL, created_at_utc datetime2 NOT NULL DEFAULT SYSUTCDATETIME(),
- done_by uniqueidentifier NULL, done_at_utc datetime2 NULL, done_note nvarchar(500) NULL,
- CONSTRAINT UX_itam_task UNIQUE(delivery_id,kind));
+ done_by uniqueidentifier NULL, done_at_utc datetime2 NULL, done_note nvarchar(500) NULL);
+CREATE UNIQUE INDEX UX_itam_task ON itam_data.task(delivery_id,kind) WHERE delivery_id IS NOT NULL;
+CREATE UNIQUE INDEX UX_itam_task_open_asset ON itam_data.task(asset_id,kind) WHERE done_at_utc IS NULL;
