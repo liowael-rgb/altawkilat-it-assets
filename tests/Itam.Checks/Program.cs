@@ -684,9 +684,9 @@ try
         && await Throws<ArgumentException>(() => store.QuickDecide(U(12), new("request", qpr, "WaitingRequestApproval", true, null), default)),
         "One click on Approve records the approval; the same email cannot act twice");
     var em01 = (await Scalar("SELECT TOP 1 reply_to+N'|'+body_html FROM itam_data.mail_outbox WHERE template=N'IT-EM-01' ORDER BY mail_id") as string)!;
-    Check(em01.StartsWith("u1@example.invalid|") && em01.Contains("Reply to this email to reach <b>Person 1</b>") && !em01.Contains("please don't reply"),
+    Check(em01.StartsWith("u1@example.invalid|") && !em01.Contains("Questions?") && !em01.Contains("please don't reply"),
         "The delivery note email replies to the IT person who issued it, not to the system address");
-    foreach (var t in new[] { "IT-EM-18", "IT-EM-26", "IT-EM-19", "IT-EM-20", "IT-EM-32", "IT-EM-09", "IT-EM-10", "IT-EM-41", "IT-EM-42", "IT-EM-44", "IT-EM-11", "IT-EM-64", "IT-EM-01", "IT-EM-02", "IT-EM-13" })
+    foreach (var t in new[] { "IT-EM-18", "IT-EM-26", "IT-EM-27", "IT-EM-19", "IT-EM-20", "IT-EM-32", "IT-EM-09", "IT-EM-10", "IT-EM-41", "IT-EM-42", "IT-EM-44", "IT-EM-11", "IT-EM-64", "IT-EM-01", "IT-EM-02", "IT-EM-13" })
         Check(Convert.ToInt32(await Scalar($"SELECT COUNT(*) FROM itam_data.mail_outbox WHERE template=N'{t}'")) > 0, $"{t} is written by its action");
     Check(Convert.ToInt32(await Scalar("SELECT COUNT(*) FROM (SELECT event_key FROM itam_data.mail_outbox GROUP BY event_key HAVING COUNT(*)>1) x")) == 0, "Each event writes its email once");
     var queuedBefore = Convert.ToInt32(await Scalar("SELECT COUNT(*) FROM itam_data.mail_outbox WHERE status=N'Queued'"));
@@ -728,6 +728,31 @@ try
     Check(J(await store.Backups(U(2), default)).Contains("Cancelled"), "Cancelled backup stays in the IT Manager's list");
     Check(Convert.ToInt32(await Scalar("SELECT COUNT(*) FROM itam_access.audit")) >= 8, "Changes are in the audit log");
     Console.WriteLine("PASS backups and audit");
+    // Review copies of the emails (only when ITAM_MAIL_SAMPLES names a folder): the latest email of each template, as sent,
+    // with the logo embedded so each file opens on its own. Invented check data only.
+    if (Environment.GetEnvironmentVariable("ITAM_MAIL_SAMPLES") is { Length: > 0 } sampleDir)
+    {
+        Directory.CreateDirectory(sampleDir);
+        // Extra examples for the review only: overdue reminders (dates moved back) and a transfer received in part.
+        await Exec("UPDATE TOP(1) itam_data.movement SET status=N'Out',pass_type=N'Returnable',expected_date=DATEADD(day,-2,CAST(SYSUTCDATETIME() AS date)) WHERE kind=N'Exit'");
+        await Exec("UPDATE TOP(1) itam_data.disposal SET status=N'Approved',decided_at_utc=DATEADD(day,-20,SYSUTCDATETIME()) WHERE status IN(N'Rejected',N'Cancelled',N'Completed')");
+        await Exec("UPDATE TOP(1) itam_data.maintenance_order SET status=N'WithSupplier',expected_return=DATEADD(day,-3,CAST(SYSUTCDATETIME() AS date)) WHERE status IN(N'Closed',N'Rejected',N'Cancelled')");
+        await Exec("UPDATE TOP(1) itam_data.loss_case SET status=N'AwaitingDecision',findings_at_utc=DATEADD(day,-10,SYSUTCDATETIME())");
+        var sp1 = JsonSerializer.SerializeToElement(await store.Register(U(1), A("MON", 1, 2, "SAMPLE-P1"), default)).GetProperty("id").GetInt32();
+        var sp2 = JsonSerializer.SerializeToElement(await store.Register(U(1), A("MON", 1, 2, "SAMPLE-P2"), default)).GetProperty("id").GetInt32();
+        var spw = JsonSerializer.SerializeToElement(await store.CreateMovement(U(9), Wt([sp1, sp2], G(4)), default)).GetProperty("id").GetInt32();
+        await store.DispatchMovement(U(9), spw, new(null), default);
+        var spl = (int)(await Scalar($"SELECT MIN(line_id) FROM itam_data.movement_line WHERE movement_id={spw}"))!;
+        await store.ReceiveMovement(U(4), spw, new([new(spl, "Received", null)]), default);
+        await Exec($"UPDATE itam_data.movement SET expected_date=DATEADD(day,-2,CAST(SYSUTCDATETIME() AS date)) WHERE movement_id={spw}");
+        await store.RunMailJobs(DateTime.UtcNow.Date.AddHours(6), default);
+        await using var lr = typeof(ItamStore).Assembly.GetManifestResourceStream("Itam.App.Assets.company-logo.png")!; using var lm = new MemoryStream(); await lr.CopyToAsync(lm);
+        var logo64 = "data:image/png;base64," + Convert.ToBase64String(lm.ToArray());
+        await using var sc = new SqlConnection(cs); await sc.OpenAsync();
+        using var sq = new SqlCommand("SELECT o.template,o.subject,o.body_html FROM itam_data.mail_outbox o WHERE o.mail_id=(SELECT MAX(mail_id) FROM itam_data.mail_outbox x WHERE x.template=o.template) ORDER BY o.template", sc);
+        await using var sr = await sq.ExecuteReaderAsync();
+        while (await sr.ReadAsync()) await File.WriteAllTextAsync(Path.Combine(sampleDir, sr.GetString(0) + ".html"), sr.GetString(2).Replace("cid:logo", logo64));
+    }
     Console.WriteLine($"IT Assets checks passed: {passed}");
 }
 finally

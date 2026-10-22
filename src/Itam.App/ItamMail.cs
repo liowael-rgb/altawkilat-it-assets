@@ -72,18 +72,11 @@ public static class ItamMailLayout
         return h.Append("</td></tr></table></body></html>").ToString();
     }
 
-    // The notice under the title: an email sent because a person acted replies to that person (owner, 22 October 2026), with
-    // their mobile and extension as tap-to-call links; an automatic email (reminder, weekly summary) asks not to reply.
-    static string Notice(ItamMailView v)
-    {
-        const string style = "color:#6b7280;font-size:12px;margin:8px 0 14px";
-        if (string.IsNullOrWhiteSpace(v.ContactName)) return "<div style=\"" + style + "\">This is an automatic notification, please don't reply to it.</div>";
-        string Tel(string number, string label) => "<a href=\"tel:" + WebUtility.HtmlEncode(new string(number.Where(ch => char.IsDigit(ch) || ch == '+').ToArray())) + "\" style=\"color:" + Navy + ";font-weight:bold;text-decoration:none\">" + E(label) + "</a>";
-        var phones = new List<string>();
-        if (!string.IsNullOrWhiteSpace(v.ContactMobile)) phones.Add(Tel(v.ContactMobile, v.ContactMobile));
-        if (!string.IsNullOrWhiteSpace(v.ContactExtension)) phones.Add("ext " + Tel(v.ContactExtension, v.ContactExtension));
-        return "<div style=\"" + style + ";color:#374151;font-size:13px\">Questions? Reply to this email to reach <b>" + E(v.ContactName) + "</b>" + (phones.Count == 0 ? "" : ", or call " + string.Join(" · ", phones)) + ".</div>";
-    }
+    // The notice under the title: an automatic email (reminder, weekly summary) asks not to reply; an email sent because a person
+    // acted has that person as Reply-To and no notice line (owner, 22 October 2026).
+    static string Notice(ItamMailView v) => string.IsNullOrWhiteSpace(v.ContactName)
+        ? "<div style=\"color:#6b7280;font-size:12px;margin:8px 0 14px\">This is an automatic notification, please don't reply to it.</div>"
+        : "<div style=\"margin:0 0 14px\"></div>";
 
     // Approve (green) and Reject (red) as in the owner's IT-EM-31 template; table-based so Outlook shows them as buttons.
     static string Buttons(ItamMailView v)

@@ -231,6 +231,7 @@ public sealed partial class ItamStore
         await Exec(c, tx, "UPDATE itam_data.request SET status=N'Fulfilled',shop=@sh,purchase_date=@d,paid_amount=@a,receipt_file_id=@f,fulfilled_at_utc=SYSUTCDATETIME(),fulfilled_by=@b WHERE request_id=@i", token,
             ("@sh", Text(x.Shop, "Shop", 200)), ("@d", DateParam(on)), ("@a", amount), ("@f", f), ("@b", s.Id), ("@i", id));
         await Audit(c, tx, s.Id, "request", r.No, "Cash purchase", null, new { amount, on }, null, token);
+        await MailRequest(c, tx, id, "fulfilled", s.Id);
         await tx.CommitAsync(token);
     }
 
