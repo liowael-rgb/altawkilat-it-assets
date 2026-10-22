@@ -283,7 +283,10 @@ public sealed partial class ItamStore
         var lastApprover = s.CanInkAny || s.TeamLeader ? (await Rows(c, null, "SELECT e.department,r.manager_id,m.display_name,m.account FROM itam_data.ink_request r JOIN itam_access.employee e ON e.employee_id=r.employee_id JOIN itam_access.employee m ON m.employee_id=r.manager_id " +
             "WHERE r.manager_id IS NOT NULL AND e.department IS NOT NULL ORDER BY r.request_id DESC", q => (Dept: q.GetString(0), Id: q.GetGuid(1), Label: $"{q.GetString(2)} ({q.GetString(3)})"), token))
             .GroupBy(x => x.Dept).ToDictionary(g => g.Key, g => new { id = g.First().Id, label = g.First().Label }) : [];
-        return new { me = s.Id, lastApprover, mine, approvals, handle, orders, inkLines = inkLines.Where(l => l.remaining > 0), canHandle = s.InkHandle, canSend = s.CanInkAny || s.TeamLeader, canOrder = s.CanInkAny, canPrinter = s.InkHandle };
+        // The requester panel: Active Directory details of the employees on the lists this person already sees.
+        var employees = new Dictionary<string, object?>();
+        foreach (var g in approvals.Concat(handle).Select(r => r.employeeId).Distinct()) employees[g.ToString()] = await EmployeeAd(c, null, g, token);
+        return new { me = s.Id, employees, lastApprover, mine, approvals, handle, orders, inkLines = inkLines.Where(l => l.remaining > 0), canHandle = s.InkHandle, canSend = s.CanInkAny || s.TeamLeader, canOrder = s.CanInkAny, canPrinter = s.InkHandle };
     }
 
     /// <summary>The order sheet sent to the supplier: one line per request, no prices.</summary>

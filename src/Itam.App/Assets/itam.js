@@ -151,3 +151,26 @@ export function timeLeft(since,days){if(!since)return '';const end=new Date(sinc
     s.textContent=(h>=24?`${Math.floor(h/24)} day${Math.floor(h/24)>1?'s':''} ${h%24} h`:h>0?`${h} h ${mi} min`:`${mi} min`)+' left';s.className='tag '+(h<6?'bad':h<24?'warn':'');s.title='Cancelled automatically on '+when(new Date(end).toISOString());};
   tick();const t=setInterval(()=>{if(!s.isConnected){clearInterval(t);return;}tick();},6e4);return s;}
 export function dl(pairs){const l=el('dl',null,'kv');for(const [k,v] of pairs){if(v===null||v===undefined||v==='')continue;l.append(el('dt',k));const dd=el('dd');dd.append(v instanceof Node?v:document.createTextNode(String(v)));l.append(dd);}return l;}
+// The requester panel (owner, 22 October 2026): on every request, all the information imported from Active Directory about
+// the employee, on the right of the page (or in a side drawer from a list). Empty attributes show a dash, so gaps in AD are seen.
+export function adCard(e){
+  if(!e)return null;const v=x=>x||'—';
+  const mail=e.email?(()=>{const a=el('a',e.email);a.href='mailto:'+e.email;return a;})():'—';
+  return card('Employee (Active Directory)',`Read from Active Directory, last updated ${when(e.syncedAt)}.`,dl([
+    ['Name',e.name],['Username',e.account],['Status',el('span',e.enabled?'Enabled':'Disabled in AD','tag'+(e.enabled?' ok':' off'))],
+    ['Job description',v(e.jobTitle)],['Department',v(e.department)],['Company',v(e.company)],['Branch (office)',v(e.branch)],['Region',v(e.region)],
+    ['HR code',v(e.hrCode)],['SAP ID',v(e.sapId)],['Mobile',e.mobile?call(e.mobile):'—'],['IP phone',e.ipPhone?call(e.ipPhone):'—'],['Email',mail],
+    ['Direct manager',e.manager?[e.manager,e.managerTitle].filter(Boolean).join(' · '):'—']]));
+}
+// The page body with the requester panel on the right.
+export function withSide(side,...main){
+  const m=el('div',null,'x-side-main');m.append(...main.filter(Boolean));if(!side)return m;
+  const g=el('div',null,'x-side-layout');const a=el('aside',null,'x-side x-ad');a.append(side);g.append(m,a);return g;
+}
+// From a list: the same panel in a drawer on the right.
+export function adDrawer(e){
+  if(!e)return;let d=document.getElementById('ad-drawer');
+  if(!d){d=el('dialog',null,'x-drawer x-ad');d.id='ad-drawer';d.addEventListener('click',x=>{if(x.target===d)d.close();});document.body.append(d);}
+  const close=el('button','Close','x-drawer-close');close.type='button';close.onclick=()=>d.close();
+  d.replaceChildren(close,adCard(e));d.showModal();
+}

@@ -2,7 +2,7 @@
 // actions the signed-in person may take now: the manager approves the request and the cost; the IT Assets Officer chooses the
 // source, prices a new device, records the order, the delivery and the date sent to Accounting; the assigned IT Support
 // Specialist prices an accessory, records the cash purchase or links the delivery.
-import {$,el,api,shell,fail,message,date,when,money,card,table,edit,form,option,svg,dl,timeLeft} from '/itam.js';
+import {$,el,api,shell,fail,message,date,when,money,card,table,edit,form,option,svg,dl,timeLeft,adCard,withSide} from '/itam.js';
 const q=new URLSearchParams(location.search);let id=Number(q.get('id'));let m,d;
 const open=href=>window.open(href,'_blank');
 const btn=(text,fn,cls,icon)=>{const b=el('button',null,cls||'');b.type='button';if(icon)b.append(svg(icon));b.append(text);b.onclick=fn;return b;};
@@ -45,7 +45,7 @@ async function load(note){
       table(['Item','Specification','Qty','Unit cost (SAR, before VAT)','Line total'],d.lines,l=>[l.item,l.specification||'',String(l.quantity),money(l.unitCost),money(l.total)],null,{empty:'No cost table yet.'}),
       ...(d.lines.length?[dl([['Subtotal',money(r.net)],['VAT 15%',money(r.vat)],['Grand total including VAT',el('strong',money(r.grand))]])]:[]),files));
   }
-  $('view').replaceChildren(...parts);
+  $('view').replaceChildren(withSide(adCard(d.employeeAd),...parts));
   if(note)message(note);
 }
 function decide(path,approve){

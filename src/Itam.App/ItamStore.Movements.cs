@@ -434,7 +434,7 @@ public sealed partial class ItamStore
         var inValidity = today >= m.ExitDate && today <= m.ValidUntil;
         return new
         {
-            movement = row, lines,
+            movement = row, lines, employeeAd = await EmployeeAd(c, null, m.Employee ?? m.RequestedBy, token),
             can = new
             {
                 decide = m.Kind != "Warehouse" && m.Status == "Submitted" && approver,

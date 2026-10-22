@@ -1,6 +1,8 @@
 // Ink page (build step 3a): ask for ink, the ink officer sends it to the approving manager, and IT orders from the supplier
 // and delivers. No delivery note to sign: the request document with its approval goes in the payment pack.
-import {$,el,api,shell,fail,message,date,when,card,table,edit,people,option,svg} from '/itam.js';
+import {$,el,api,shell,fail,message,date,when,card,table,edit,people,option,svg,adDrawer} from '/itam.js';
+// The employee's name opens the Active Directory details (requester panel) in a side drawer.
+const who=r=>{const e=d?.employees?.[r.employeeId];if(!e)return r.employee;const b=el('button',r.employee,'x-person-link');b.type='button';b.title='Active Directory details';b.onclick=x=>{x.stopPropagation();adDrawer(e);};return b;};
 let m,d,filter=new URLSearchParams(location.search).get('filter')||'Submitted';
 const FILTERS=[['Submitted','To send for approval'],['WaitingApproval','Waiting approval'],['Approved','To order or deliver'],['Ordered','Ordered'],['Delivered','Delivered'],['all','All']];
 const stTag=r=>el('span',r.statusLabel,'tag '+(r.status==='Delivered'?'ok':r.status==='Rejected'||r.status==='Cancelled'?'off':r.status==='WaitingApproval'?'warn':''));
@@ -15,7 +17,7 @@ async function load(note){
   const parts=[];
   const waiting=d.approvals.filter(r=>r.status==='WaitingApproval');
   if(d.approvals.length)parts.push(card('Waiting for your approval',"The ink officer sent these to you to approve (or to the manager you stand in for during leave). A rejection needs a reason.",
-    table(['Request','Employee','Printer','Toner','Qty','Note','Asked','State'],d.approvals,r=>[r.no,r.employee,r.printer,r.toner,String(r.quantity),r.note||'',when(r.requestedAt),stTag(r)],
+    table(['Request','Employee','Printer','Toner','Qty','Note','Asked','State'],d.approvals,r=>[r.no,who(r),r.printer,r.toner,String(r.quantity),r.note||'',when(r.requestedAt),stTag(r)],
       r=>r.status==='WaitingApproval'?[['Approve',()=>decide(r,true)],['Reject',()=>decide(r,false)]]:[],{empty:'Nothing waiting for you.'})));
   parts.push(card('My ink requests','Requests for you, or that you asked for someone.',
     table(['Request','Printer','Toner','Qty','Asked','State','Document'],d.mine,r=>[r.no,`${r.printer}${r.printerLocation?' · '+r.printerLocation:''}`,r.toner,String(r.quantity),when(r.requestedAt),stTag(r),docCell(r)],
@@ -37,11 +39,11 @@ function handleCard(){
   const wrap=el('div',null,'table-wrap x-ink-handle');const t=el('table');const hr=el('tr');
   for(const h of ['','Request','Employee','Printer','Toner','Qty','State','Approver / order','Document'])hr.append(el('th',h));
   const th=el('thead');th.append(hr);const tb=el('tbody');
-  const two=(a,b)=>{const s=el('span');s.append(el('span',a));if(b)s.append(el('small',b,'x-sub'));return s;};
+  const two=(a,b)=>{const s=el('span');s.append(a instanceof Node?a:el('span',a));if(b)s.append(el('small',b,'x-sub'));return s;};
   for(const r of list){
     const tr=el('tr');const cb=document.createElement('input');cb.type='checkbox';cb.disabled=r.status!=='Approved';cb.onchange=()=>{cb.checked?picked.add(r.id):picked.delete(r.id);orderBtn.disabled=!picked.size;};
     const td=x=>{const c=el('td');c.append(x??'');tr.append(c);return c;};
-    td(r.status==='Approved'&&d.canOrder?cb:'');td(r.no).className='nowrap';td(two(r.employee,r.branch));td(r.registered?two(r.printer,r.printerModel):(()=>{const s=el('span');s.append(el('span','Not registered','tag warn'),el('small',`${r.printerModel||''} · S/N ${r.newSerial}`,'x-sub'));return s;})()).className=r.registered?'nowrap':'';td(r.toner);td(String(r.quantity));const stCell=td(stTag(r));stCell.className='x-state-cell';
+    td(r.status==='Approved'&&d.canOrder?cb:'');td(r.no).className='nowrap';td(two(who(r),r.branch));td(r.registered?two(r.printer,r.printerModel):(()=>{const s=el('span');s.append(el('span','Not registered','tag warn'),el('small',`${r.printerModel||''} · S/N ${r.newSerial}`,'x-sub'));return s;})()).className=r.registered?'nowrap':'';td(r.toner);td(String(r.quantity));const stCell=td(stTag(r));stCell.className='x-state-cell';
     td(r.orderNo?two(r.orderNo,r.supplier):r.manager?two(r.manager,r.status==='WaitingApproval'?'approver':'approved by'):'');td(docCell(r));
     const act=el('div',null,'x-row-actions');
     // Actions by role (permission matrix): printers by IT handlers, sending for approval also by the Team Leader, ordering, delivering and cancelling by the ink handlers.

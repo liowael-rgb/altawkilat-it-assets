@@ -405,6 +405,9 @@ try
     await store.SubmitCost(U(1), pr2, new(1, null, [new("Monitor 24", "IPS", 1, 600m), new("Cable", null, 2, 25m)]), qFile, default);
     Check(await Throws<ItamAccessDenied>(() => store.DecideCost(U(1), pr2, new(true, null), default)), "The cost is approved by the direct manager or the IT Manager, not other IT");
     await store.DecideCost(U(12), pr2, new(true, null), default);
+    var prAd = E(await store.Request(U(12), pr2, default)).GetProperty("employeeAd");
+    Check(prAd.GetProperty("account").GetString() == E(await store.Request(U(10), pr2, default)).GetProperty("employeeAd").GetProperty("account").GetString() && prAd.GetProperty("department").GetString() == "Sales"
+        , "A device request shows the requester's Active Directory details");
     var prDoc = await store.RequestPdf(U(1), pr2, default);
     Check(System.Text.Encoding.ASCII.GetString(prDoc.Content, 0, 5) == "%PDF-" && await Scalar($"SELECT status FROM itam_data.request WHERE request_id={pr2}") as string == "Approved"
         && ItamStore.AmountInWords(747.50m) == "Seven hundred forty-seven riyals and fifty halalas only", "Approved cost; request document with the amount in words (650 + VAT = 747.50)");
@@ -444,6 +447,7 @@ try
         "A branch transfer goes to another branch");
     var gp = JsonSerializer.SerializeToElement(await store.CreateMovement(U(10), new("Branch", null, [rMon], "Move to another branch", null, null, 1, 2, null, mvDay, mvDay.AddDays(3), "Employee", null, null, null, G(12), null), default));
     var gpId = gp.GetProperty("id").GetInt32();
+    Check(E(await store.Movement(U(3), gpId, default)).GetProperty("employeeAd").GetProperty("enabled").GetBoolean(), "A gate pass shows the requester's Active Directory details");
     Check(gp.GetProperty("movementNo").GetString()!.StartsWith("GP-") && await Throws<ArgumentException>(() => store.GatePassPdf(U(10), gpId, default))
         && await Throws<ArgumentException>(() => store.CreateMovement(U(10), new("Exit", null, [rMon], "Work from home", null, "Returnable", 1, null, "Home", mvDay, mvDay.AddDays(2), "Employee", null, null, null, null, null), default)),
         "Gate pass GP-n for the employee's own asset; no pass before approval; an asset is on one movement at a time");

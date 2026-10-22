@@ -1,6 +1,6 @@
 // One movement (plan v1.9 step 4): a gate pass (branch transfer or other exit) or an IT warehouse transfer, with what the
 // signed-in person may do now; and the form for a new one (?new=gate or ?new=warehouse).
-import {$,el,api,shell,fail,message,date,when,card,table,edit,form,option,svg,dl,people} from '/itam.js';
+import {$,el,api,shell,fail,message,date,when,card,table,edit,form,option,svg,dl,people,adCard,withSide} from '/itam.js';
 const q=new URLSearchParams(location.search);let id=Number(q.get('id'));let m,d;
 const open=href=>window.open(href,'_blank');
 const btn=(text,fn,cls,icon)=>{const b=el('button',null,cls||'');b.type='button';if(icon)b.append(svg(icon));b.append(text);b.onclick=fn;return b;};
@@ -35,8 +35,8 @@ async function load(note){
       l.receivedAt?`${when(l.receivedAt)}${l.receivedBy?' by '+l.receivedBy:''}${l.newDeliveryNo?' · new delivery note '+l.newDeliveryNo:''}`:'',
       l.resolution?`${RES[l.resolution]||l.resolution} · ${l.resolutionNote||''} (${l.resolvedBy||''})`:''],
     l=>can.resolve&&['Missing','Damaged','Incorrect','Dispatched'].includes(l.state)?[['Resolve',()=>resolve(l)]]:l.hasEvidence?[['Evidence',()=>open(`/api/movements/${id}/evidence/${l.id}`)]]:[]);
-  $('view').replaceChildren(card('Movement',null,info),card('Assets',x.kind==='Branch'?'The named receiver confirms each asset; when the receiver is not the person who had it, the custody passes with a new delivery note to sign.':
-    x.kind==='Warehouse'?'Dispatch some or all assets; the destination IT receiver confirms each one. Missing, damaged or incorrect assets stay open until an approver (Team Leader, System Administrator or IT Manager) resolves them.':'Security checks the printed pass against the labels.',lines));
+  $('view').replaceChildren(withSide(adCard(d.employeeAd),card('Movement',null,info),card('Assets',x.kind==='Branch'?'The named receiver confirms each asset; when the receiver is not the person who had it, the custody passes with a new delivery note to sign.':
+    x.kind==='Warehouse'?'Dispatch some or all assets; the destination IT receiver confirms each one. Missing, damaged or incorrect assets stay open until an approver (Team Leader, System Administrator or IT Manager) resolves them.':'Security checks the printed pass against the labels.',lines)));
   if(note)message(note);
 }
 function decide(approve){

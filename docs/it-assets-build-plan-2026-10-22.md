@@ -338,3 +338,12 @@ and the applied matrix is regenerated as "IT Assets - Permission Matrix (applied
 - An asset is on one open movement at a time; the picker shows only assets that can move.
 - To confirm: Movements rights are not yet in the permission matrix.
   Emails (IT-EM-19/20/32-38/57) come with the email step.
+
+### Requester panel (owner, 22 October 2026)
+
+Every request shows, on the right, all the information imported from Active Directory about the employee: name, username,
+enabled or disabled, job description, department, company, branch (office), region, HR code, SAP ID, mobile and IP phone
+(click to call), email and direct manager, with when it was last read from AD. Empty attributes show a dash, so gaps in AD
+are visible. Device requests (PR-n) and gate passes and transfers (GP-n, WT-n: the employee responsible, or the requester)
+show it beside the page; on the Ink page the employee's name opens the same panel in a side drawer. The IP phone
+(AD ipPhone, as VTMS) is now kept on the employee copy. The national ID is never read.

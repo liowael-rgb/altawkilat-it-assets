@@ -10,7 +10,7 @@ static class DemoSeed
     {
         // Invented directory details (no real people): mobile, branch, company and HR code as printed on the delivery note.
         await store.SyncEmployees([.. DemoPeople.All.Select((p, i) => new ItamEmployee(p.Id, p.Account, p.Name, p.Account + "@example.invalid", p.Role, i is >= 9 and <= 11 ? "Sales (demo)" : "IT (demo)", p.Id == G(2) ? null : G(2), true,
-            $"050000{i + 1:0000}", i is >= 9 and <= 11 ? "Abha Branch (demo)" : "Head Office (demo)", "ALTAWKILAT (demo)", $"DEMO-{i + 1:000}", i is >= 9 and <= 11 ? "South" : null, $"{70000 + i + 1}"))], default);
+            $"050000{i + 1:0000}", i is >= 9 and <= 11 ? "Abha Branch (demo)" : "Head Office (demo)", "ALTAWKILAT (demo)", $"DEMO-{i + 1:000}", i is >= 9 and <= 11 ? "South" : null, $"{70000 + i + 1}", $"{4100 + i + 1}"))], default);
         await using (var c = new SqlConnection(cs))
         {
             await c.OpenAsync();

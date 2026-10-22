@@ -344,7 +344,7 @@ public sealed partial class ItamStore
         var st = r.Status;
         return new
         {
-            request = q, lines, stock, specialists, deliveries, pos, approvalDays = ApprovalDays,
+            request = q, lines, stock, specialists, deliveries, pos, approvalDays = ApprovalDays, employeeAd = await EmployeeAd(c, null, r.Employee, token),
             can = new
             {
                 decideRequest = manager && st == "WaitingRequestApproval", decideCost = manager && st == "WaitingCostApproval",
