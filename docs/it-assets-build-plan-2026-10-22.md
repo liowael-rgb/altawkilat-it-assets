@@ -257,6 +257,13 @@ The Assets search adds Model, Computer type, Processor and Memory (dropdowns of 
 Active Directory username and SAP ID (AD streetAddress, as VTMS); the list shows who has each asset now. Each asset page
 has a History section with tabs: Delivery (delivery notes, employee with username and SAP ID, signed copy, returned),
 Receipt (receipt notes, condition, received into, technical assessment), Maintenance and All events.
-Maintenance MT-n: kind (repair, preventive, upgrade, parts replaced), date, problem, done by IT or a supplier; "taken in"
-puts the device In Repair until it is closed (then back to its previous status); closing records the work done, parts,
-cost and the Parts & Maintenance invoice. One open maintenance per asset; IT of the region and the IT Administrator.
+Maintenance follows form 07 Maintenance Order and plan v1.9 (owner, 22 October 2026, replacing the first MT-n draft): a
+Maintenance page and orders MO-n for assets repaired by an outside supplier. The IT Assets Officer creates the order (Asset
+No. fills the product fields read-only; supplier, quotation no. and file, cost, maintenance details, expected supplier
+return; no ServiceDesk ticket). The IT Manager, or the backup on leave, approves or rejects (reason required; never the
+creator). Only then "Sent to the supplier" with the dispatch date: the asset is In Repair. "Back from the supplier" closes
+it with the end date, outcome (repaired / not repairable), repair details, final cost and invoice no. (required when
+repaired; linked to the recorded invoice of that supplier when it exists); the asset goes back to its holder (In Use) or In
+Store at the chosen location. Not repairable does not dispose: record a technical assessment. Overdue returns are shown.
+Repairs IT does itself are not orders: "Record an IT repair" on the asset history. Emails IT-EM-09/51/52/53 come with the
+email step.

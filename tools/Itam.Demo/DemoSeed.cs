@@ -123,11 +123,15 @@ static class DemoSeed
         var devDoc = pdf.Start(); devDoc.Text("Tax invoice D-7001 (demo, invented) - Demo Computers Co.", ItamPdf.Doc.M, devDoc.Y, 13);
         var rec = await One($"SELECT TOP 1 receipt_id FROM itam_data.po_receipt WHERE po_id={poId} ORDER BY receipt_id");
         await store.CreateInvoice(officer, new(1, "D-7001", today.AddDays(-5), "Devices", null, poId, [rec], null, [new("Dell Latitude 5440", 3, 4200m)]), new ItamUpload("D-7001.pdf", "application/pdf", devDoc.Build()), default);
-        // Maintenance (invented): a closed keyboard repair by a supplier, and open preventive maintenance on the printer.
-        var pc16 = await One("SELECT asset_id FROM itam_data.asset WHERE asset_no=N'PC-4816'");
-        var mt1 = DeliveryId(await store.OpenMaintenance(officer, pc16, new("Repair", today.AddDays(-6), "Some keyboard keys do not work", "Supplier", 1, true), default));
-        await store.CloseMaintenance(officer, mt1, new(today.AddDays(-4), "Keyboard replaced and tested", "Keyboard", 250m, null), default);
-        await store.OpenMaintenance(officer, printer, new("Preventive", today, "Paper jams: cleaning and roller check", "IT", null, false), default);
+        // Maintenance orders (invented): one repaired by the supplier and closed, one waiting for the IT Manager; an IT repair.
+        var quoteDoc = pdf.Start(); quoteDoc.Text("Quotation Q-1001 (demo, invented) - Demo Computers Co.: replace the keyboard, 250 SAR", ItamPdf.Doc.M, quoteDoc.Y, 12);
+        var quote = new ItamUpload("Q-1001.pdf", "application/pdf", quoteDoc.Build());
+        var mo1 = DeliveryId(await store.CreateMaintenanceOrder(officer, new("PC-4817", 1, "Q-1001", 250m, "Some keyboard keys do not work: replace the keyboard", today.AddDays(5)), quote, default));
+        await store.DecideMaintenance(Who(2), mo1, new(true, null), default);
+        await store.DispatchMaintenance(officer, mo1, new(today), default);
+        await store.ReturnMaintenance(officer, mo1, new(today, null, "Repaired", "Keyboard replaced and tested", 250m, "R-2201"), default);
+        await store.CreateMaintenanceOrder(officer, new("MON-4820", 1, "Q-1002", 380m, "No picture: replace the panel under warranty", today.AddDays(10)), quote, default);
+        await store.ItRepair(officer, await One("SELECT asset_id FROM itam_data.asset WHERE asset_no=N'PC-4816'"), new("Windows profile repaired and Office reinstalled"), default);
         Console.WriteLine("IT Assets demo data seeded.");
     }
 }

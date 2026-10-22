@@ -323,16 +323,29 @@ try
     var mixed = JsonSerializer.SerializeToElement(await store.CreatePack(U(1), new(1, null, [dInv, pInv]), default)).GetProperty("id").GetInt32();
     Check(await Scalar($"SELECT category FROM itam_data.payment_pack WHERE pack_id={mixed}") as string == "Mixed"
         && System.Text.Encoding.ASCII.GetString((await store.PackPdf(U(1), mixed, default)).Content, 0, 5) == "%PDF-", "Picked invoices of different categories make a Mixed pack");
-    // Maintenance and the asset history; search by computer details and by the employee who has the asset.
-    Check(await Throws<ItamAccessDenied>(() => store.OpenMaintenance(U(4), printer, new("Repair", null, "Jam", "IT", null, true), default))
-        && await Throws<ArgumentException>(() => store.OpenMaintenance(U(9), printer, new("Repair", null, "Jam", "Supplier", null, true), default)), "Maintenance by IT of the region; a supplier job names the supplier");
-    var mt = JsonSerializer.SerializeToElement(await store.OpenMaintenance(U(9), printer, new("Repair", null, "Paper jam", "IT", null, true), default)).GetProperty("id").GetInt32();
-    Check(await Scalar($"SELECT status FROM itam_data.asset WHERE asset_id={printer}") as string == "InRepair"
-        && await Throws<ArgumentException>(() => store.OpenMaintenance(U(9), printer, new("Preventive", null, "x", "IT", null, false), default)), "Taken in: In Repair; one open maintenance per asset");
-    await store.CloseMaintenance(U(9), mt, new(null, "Roller cleaned", null, 0m, pInv), default);
+    // Maintenance orders (form 07): the IT Assets Officer creates with the quotation; the IT Manager (never the creator)
+    // approves; dispatch puts the asset In Repair; the return closes it with the outcome and invoice. IT repairs on the history.
+    var pnt = (string)(await Scalar($"SELECT asset_no FROM itam_data.asset WHERE asset_id={printer}"))!;
+    var qDoc = pdf.Start(); qDoc.Text("quotation", 40, qDoc.Y, 12); var qFile = new ItamUpload("q.pdf", "application/pdf", qDoc.Build());
+    Check(await Throws<ItamAccessDenied>(() => store.CreateMaintenanceOrder(U(9), new(pnt, 1, "Q1", 100m, "Jam", DateOnly.FromDateTime(DateTime.Today).AddDays(3)), qFile, default))
+        && await Throws<ArgumentException>(() => store.CreateMaintenanceOrder(U(1), new(pnt, 1, "Q1", 100m, "Jam", DateOnly.FromDateTime(DateTime.Today).AddDays(3)), null, default)), "Only the IT Assets Officer creates orders; the quotation file is required");
+    var mo = JsonSerializer.SerializeToElement(await store.CreateMaintenanceOrder(U(1), new(pnt, 1, "Q1", 100m, "Paper jam: replace the fuser", DateOnly.FromDateTime(DateTime.Today).AddDays(3)), qFile, default)).GetProperty("id").GetInt32();
+    Check(await Throws<ArgumentException>(() => store.DispatchMaintenance(U(1), mo, new(null), default)) && await Throws<ItamAccessDenied>(() => store.DecideMaintenance(U(9), mo, new(true, null), default))
+        && await Throws<ArgumentException>(() => store.DecideMaintenance(U(2), mo, new(false, null), default))
+        && await Throws<ArgumentException>(() => store.CreateMaintenanceOrder(U(1), new(pnt, 1, "Q2", 1m, "x", DateOnly.FromDateTime(DateTime.Today).AddDays(3)), qFile, default)),
+        "Not sent before approval; only the IT Manager decides; a rejection needs a reason; one open order per asset");
+    await store.DecideMaintenance(U(2), mo, new(true, null), default);
+    await store.DispatchMaintenance(U(1), mo, new(null), default);
+    Check(await Scalar($"SELECT status FROM itam_data.asset WHERE asset_id={printer}") as string == "InRepair", "Dispatched: the asset is In Repair");
+    Check(await Throws<ArgumentException>(() => store.ReturnMaintenance(U(1), mo, new(null, null, "Repaired", "Fuser replaced", 100m, null), default)), "A repaired order needs the invoice number");
+    await store.ReturnMaintenance(U(1), mo, new(null, null, "Repaired", "Fuser replaced", 120m, "INV-P1"), default);
     var hist = JsonSerializer.SerializeToElement(await store.Asset(U(1), printer, default)).GetProperty("record");
-    Check(await Scalar($"SELECT status FROM itam_data.asset WHERE asset_id={printer}") as string == "InUse" && hist.GetProperty("maintenance").GetArrayLength() == 1
-        && hist.GetProperty("maintenance")[0].GetProperty("invoice").GetString() == "INV-P1", "Closing returns the asset to its status; the history lists the maintenance with its invoice");
+    Check(await Scalar($"SELECT status FROM itam_data.asset WHERE asset_id={printer}") as string == "InUse"
+        && await Scalar($"SELECT CASE WHEN invoice_id IS NOT NULL AND final_cost=120 THEN 1 ELSE 0 END FROM itam_data.maintenance_order WHERE order_id={mo}") is 1
+        && hist.GetProperty("orders").GetArrayLength() == 1, "Back with its holder (In Use); the invoice number links the recorded invoice; the history lists the order");
+    await store.ItRepair(U(9), printer, new("Cleaned the rollers"), default);
+    Check(JsonSerializer.SerializeToElement(await store.Asset(U(1), printer, default)).GetProperty("record").GetProperty("itRepairs").GetArrayLength() == 1
+        && await Throws<ItamAccessDenied>(() => store.ItRepair(U(10), printer, new("x"), default)), "Repairs by IT are recorded on the history by IT");
     var ctype = await Scalar("SELECT TOP 1 value FROM itam_data.asset_attribute WHERE attr_code=N'ComputerType'") as string;
     var holder = await Scalar("SELECT TOP 1 e.account FROM itam_data.delivery d JOIN itam_access.employee e ON e.employee_id=d.employee_id WHERE d.received_at_utc IS NULL") as string;
     await Exec($"UPDATE itam_access.employee SET sap_id=N'50001' WHERE account=N'{holder}'");

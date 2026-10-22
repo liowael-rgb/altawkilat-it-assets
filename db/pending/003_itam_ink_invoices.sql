@@ -72,19 +72,26 @@ CREATE TABLE itam_data.ink_delivery(
  invoice_line_id int NULL REFERENCES itam_data.invoice_line(line_id), unit_cost decimal(18,2) NULL,
  issued_by uniqueidentifier NOT NULL, issued_at_utc datetime2 NOT NULL DEFAULT SYSUTCDATETIME());
 
--- Maintenance MT-n (owner, 22 October 2026): repairs, preventive maintenance, upgrades and parts replaced, by IT or by a
--- supplier, with the cost and the Parts & Maintenance invoice when there is one. A device taken in for repair is In Repair
--- until the maintenance is closed (then back to its previous status). One open maintenance per asset.
-INSERT itam_data.counter(counter_code,next_value) VALUES(N'Maintenance',1);
-CREATE TABLE itam_data.maintenance(
- maintenance_id int IDENTITY(1,1) NOT NULL PRIMARY KEY,
- maintenance_no nvarchar(20) NOT NULL CONSTRAINT UX_itam_maintenance_no UNIQUE,
+-- Maintenance order MO-n (form 07, plan v1.9): an asset repaired by an outside supplier. The IT Assets Officer creates it
+-- with the supplier, quotation (number and file), cost, maintenance details and expected return; the IT Manager (or the
+-- backup on leave; never the creator) approves or rejects with a reason; only then is the asset sent (actual dispatch date,
+-- asset In Repair); on return the order is closed with the outcome, repair details, final cost, invoice and end date, and the
+-- asset goes back to its holder or In Store. No ServiceDesk ticket (owner, 22 October 2026). Repairs by IT are not orders:
+-- they are recorded on the asset history. One open order per asset.
+INSERT itam_data.counter(counter_code,next_value) VALUES(N'MaintenanceOrder',1);
+CREATE TABLE itam_data.maintenance_order(
+ order_id int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+ order_no nvarchar(20) NOT NULL CONSTRAINT UX_itam_maintenance_order_no UNIQUE,
  asset_id int NOT NULL REFERENCES itam_data.asset(asset_id),
- kind nvarchar(20) NOT NULL CHECK(kind IN(N'Repair',N'Preventive',N'Upgrade',N'Parts')),
- opened_on date NOT NULL, problem nvarchar(1000) NOT NULL,
- done_by nvarchar(10) NOT NULL CHECK(done_by IN(N'IT',N'Supplier')), supplier_id int NULL REFERENCES itam_ref.supplier(supplier_id),
- status nvarchar(10) NOT NULL CHECK(status IN(N'Open',N'Closed')), previous_status nvarchar(20) NULL,
- closed_on date NULL, work_done nvarchar(1000) NULL, parts nvarchar(500) NULL, cost decimal(18,2) NULL CHECK(cost>=0),
- invoice_id int NULL REFERENCES itam_data.invoice(invoice_id),
- created_by uniqueidentifier NOT NULL, created_at_utc datetime2 NOT NULL DEFAULT SYSUTCDATETIME(), closed_by uniqueidentifier NULL);
-CREATE UNIQUE INDEX UX_itam_maintenance_open ON itam_data.maintenance(asset_id) WHERE status=N'Open';
+ supplier_id int NOT NULL REFERENCES itam_ref.supplier(supplier_id),
+ quotation_no nvarchar(60) NOT NULL, quotation_file_id bigint NOT NULL REFERENCES itam_data.stored_file(file_id),
+ cost decimal(18,2) NOT NULL CHECK(cost>=0), details nvarchar(1000) NOT NULL, expected_return date NOT NULL,
+ status nvarchar(20) NOT NULL CHECK(status IN(N'WaitingApproval',N'Approved',N'Rejected',N'WithSupplier',N'Closed',N'Cancelled')),
+ decided_by uniqueidentifier NULL, decided_at_utc datetime2 NULL, rejection_reason nvarchar(500) NULL,
+ dispatched_on date NULL, dispatched_by uniqueidentifier NULL, previous_status nvarchar(20) NULL,
+ returned_on date NULL, return_location_id int NULL REFERENCES itam_ref.location(location_id),
+ outcome nvarchar(20) NULL CHECK(outcome IN(N'Repaired',N'NotRepairable')), repair_details nvarchar(1000) NULL,
+ final_cost decimal(18,2) NULL CHECK(final_cost>=0), invoice_no nvarchar(60) NULL, invoice_id int NULL REFERENCES itam_data.invoice(invoice_id),
+ closed_by uniqueidentifier NULL, cancelled_reason nvarchar(500) NULL,
+ created_by uniqueidentifier NOT NULL, created_at_utc datetime2 NOT NULL DEFAULT SYSUTCDATETIME(), version rowversion NOT NULL);
+CREATE UNIQUE INDEX UX_itam_maintenance_order_open ON itam_data.maintenance_order(asset_id) WHERE status IN(N'WaitingApproval',N'Approved',N'WithSupplier');

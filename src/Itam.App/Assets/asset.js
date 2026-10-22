@@ -51,10 +51,10 @@ try{m=await shell('assets');const fresh=new URLSearchParams(location.search).get
 // History (owner, 22 October 2026): deliveries, receipts and maintenance of this asset, and every event.
 function historyCard(){
   const h=d.record;const box=el('div');const seg=el('div',null,'x-seg');
-  const receipts=h.deliveries.filter(x=>x.receivedAt);const open=h.maintenance.find(x=>x.status==='Open');
-  const TABS=[['delivery','Delivery',h.deliveries.length],['receipt','Receipt',receipts.length],['maintenance','Maintenance',h.maintenance.length],['all','All events',d.history.length]];
+  const receipts=h.deliveries.filter(x=>x.receivedAt);const open=h.orders.find(x=>['WaitingApproval','Approved','WithSupplier'].includes(x.status));
+  const TABS=[['delivery','Delivery',h.deliveries.length],['receipt','Receipt',receipts.length],['maintenance','Maintenance',h.orders.length+h.itRepairs.length],['all','All events',d.history.length]];
   const doc=(text,href)=>{const a=el('a',text,'mono');a.href=href;a.target='_blank';return a;};
-  const two=(x,y)=>{const s=el('span');s.append(el('span',x));if(y)s.append(el('small',y,'x-sub'));return s;};
+  const two=(x,y)=>{const s=el('span');s.append(typeof x==='string'?el('span',x):x);if(y)s.append(el('small',y,'x-sub'));return s;};
   const draw=()=>{
     for(const b of seg.children)b.setAttribute('aria-pressed',String(b.dataset.k===tab));
     if(tab==='delivery')box.replaceChildren(table(['Delivery note','Employee','Delivered','Owner type','Issued by','Signed copy','Returned'],h.deliveries,
@@ -64,36 +64,23 @@ function historyCard(){
       x=>[doc(x.receiptNo,`/api/deliveries/${x.id}/receipt.pdf`),x.employee,when(x.receivedAt),x.receivedBy||'',x.condition||'',x.receivedInto||'',
         x.assessmentNo?two(doc(x.assessmentNo,`/api/deliveries/${x.id}/assessment.pdf`),x.recommendation):''],null,{empty:'Never received back from an employee.'}));
     else if(tab==='maintenance'){
-      const acts=el('div',null,'actions');if(h.canMaintain&&!open){const b=el('button',null,'primary');b.type='button';b.append(svg('plus'),'Record maintenance');b.onclick=openMaintenance;acts.append(b);}
-      box.replaceChildren(...(acts.children.length?[acts]:[]),table(['Maintenance','Kind','Opened','Problem','Done by','Status','Work done','Cost'],h.maintenance,
-        x=>[el('span',x.no,'mono'),x.kind,date(x.openedOn),x.problem,x.doneBy,x.status==='Open'?el('span',x.takenIn?'Open · In Repair':'Open','tag warn'):el('span','Closed '+date(x.closedOn),'tag ok'),
-          two(x.workDone||'',[x.parts?'Parts: '+x.parts:'',x.invoice?'Invoice '+x.invoice:''].filter(Boolean).join(' · ')),x.cost===null?'':money(x.cost)],
-        x=>x.status==='Open'&&h.canMaintain?[['Close',()=>closeMaintenance(x)]]:[],{empty:'No maintenance recorded.'}));}
+      const acts=el('div',null,'actions');
+      if(h.canOrder&&!open){const b=el('button',null,'primary');b.type='button';b.append(svg('wrench'),'New maintenance order');b.onclick=()=>location.assign('/maintenance.html?asset='+encodeURIComponent(d.asset.assetNo));acts.append(b);}
+      if(h.canItRepair){const b=el('button');b.type='button';b.append(svg('plus'),'Record an IT repair');b.onclick=itRepair;acts.append(b);}
+      box.replaceChildren(...(acts.children.length?[acts]:[]),
+        el('h3','Maintenance orders (outside supplier)'),table(['Order','Supplier','Maintenance details','Cost','Status','Sent / back','Outcome'],h.orders,
+          x=>[(()=>{const a=el('a',x.no,'mono');a.href='/maintenance.html?filter=all';return a;})(),two(x.supplier,'Quotation '+x.quotationNo),x.details,money(x.finalCost??x.cost),
+            el('span',x.statusLabel+(x.overdue?' · overdue':''),'tag '+(x.status==='Closed'?'ok':x.status==='Rejected'||x.status==='Cancelled'?'off':'warn')),
+            two(x.dispatchedOn?'Sent '+date(x.dispatchedOn):'Not sent',x.returnedOn?'Back '+date(x.returnedOn):'Expected '+date(x.expectedReturn)),
+            x.outcome?two(x.outcome,[x.repairDetails,x.invoiceNo?'Invoice '+x.invoiceNo:''].filter(Boolean).join(' · ')):''],null,{empty:'No maintenance orders.'}),
+        el('h3','Repairs by IT'),table(['When','By','Repair done'],h.itRepairs,x=>[when(x.at),x.by||'',x.details||''],null,{empty:'No repairs by IT recorded.'}));}
     else{const t=table(['When','Who','What','Details'],d.history,x=>[when(x.at),x.who,x.kind,x.detail||'']);t.classList.add('x-history');box.replaceChildren(t);}
   };
   for(const [k,t,n] of TABS){const b=el('button',t);b.dataset.k=k;b.type='button';b.append(el('span',String(n),'x-segc'+(k==='maintenance'&&open?' hot':'')));b.onclick=()=>{tab=k;draw();};seg.append(b);}
   const bar=el('div',null,'x-filterbar');bar.append(seg);draw();
   return card('History','Delivery notes, receipts back from employees and maintenance of this asset; All events shows every change.',bar,box);
 }
-function openMaintenance(){
-  const sup=m.lists.suppliers.filter(s=>s.active);
-  edit(`Record maintenance for ${d.asset.assetNo}`,[
-    {key:'kind',label:'Kind',type:'select',required:true,options:[['','Choose'],...d.record.kinds.map(k=>[k.code,k.label])]},
-    {key:'on',label:'Date',type:'date',value:new Date(Date.now()+3*3600e3).toISOString().slice(0,10),required:true},
-    {key:'problem',label:'Problem or work needed',type:'textarea',wide:true,required:true,max:1000},
-    {key:'by',label:'Done by',type:'select',required:true,options:[['IT','IT'],['Supplier','A supplier']],onchange:i=>{i.supplier.closest('label').hidden=i.by.value!=='Supplier';}},
-    {key:'supplier',label:'Supplier',type:'select',options:[['','Choose'],...sup.map(s=>[s.id,s.name])]},
-    {key:'takeIn',label:'Device taken in for repair (status In Repair until closed)',type:'checkbox',wide:true}],
-    x=>api(`/assets/${id}/maintenance`,{method:'POST',json:{kind:x.kind,openedOn:x.on,problem:x.problem,doneBy:x.by,supplierId:Number(x.supplier)||null,takeIn:!!x.takeIn}}),
-    {reason:false,button:'Record',done:()=>{tab='maintenance';load('Maintenance recorded.');}});
-}
-function closeMaintenance(x){
-  edit(`Close ${x.no}`,[
-    {key:'on',label:'Closed on',type:'date',value:new Date(Date.now()+3*3600e3).toISOString().slice(0,10),required:true},
-    {key:'work',label:'Work done',type:'textarea',wide:true,required:true,max:1000},
-    {key:'parts',label:'Parts replaced',wide:true,max:500,hint:'Optional.'},
-    {key:'cost',label:'Cost (SAR, incl. VAT)',type:'number',hint:'Optional.'},
-    {key:'invoice',label:'Parts and maintenance invoice',type:'select',wide:true,options:[['','None'],...d.record.maintenanceInvoices.map(i=>[i.id,`${i.no} · ${i.supplier}`])]}],
-    y=>api(`/maintenance/${x.id}/close`,{method:'POST',json:{closedOn:y.on,workDone:y.work,parts:y.parts,cost:y.cost===''||y.cost===null||y.cost===undefined?null:Number(y.cost),invoiceId:Number(y.invoice)||null}}),
-    {reason:false,button:'Close the maintenance',hint:x.problem,done:()=>{tab='maintenance';load(`${x.no} closed.`);}});
+function itRepair(){
+  edit(`Record an IT repair on ${d.asset.assetNo}`,[{key:'details',label:'Repair done by IT',type:'textarea',wide:true,required:true,max:1000,hint:'What was wrong and what IT did, for example "Replaced the keyboard from IT stock".'}],
+    x=>api(`/assets/${id}/it-repair`,{method:'POST',json:{details:x.details}}),{reason:false,button:'Record',done:()=>{tab='maintenance';load('IT repair recorded on the history.');}});
 }

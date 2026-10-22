@@ -19,8 +19,8 @@ public sealed partial class ItamStore
         {
             id = s.Id, name = s.Name, roles,
             can = new { viewAssets = s.CanViewAny, register = s.CanRegisterAny, poView = s.PoView, poManage = s.PoManage, rolesManage = s.RolesManage, masterData = s.MasterData,
-                auditView = s.AuditView, backupsView = s.BackupsView, ownBackup = s.OwnBackup, keys = s.CanSeeKeys, handover = s.CanHandoverAny || s.ViewsAll || s.AdTasks || s.CucmTasks, tasks = s.AdTasks || s.CucmTasks || s.ViewsAll, invoices = s.PoView || s.CanHandoverAny || s.CanInkAny, suppliers = s.PoView || s.CanHandoverAny || s.CanInkAny || s.SuppliersManage, admin = s.MasterData || s.RolesManage || s.AuditView },
-            lists = await Lists(c, token), regions = s.Regions, viewsAll = s.ViewsAll, openTasks = await OpenTaskCount(c, s, token), pendingApprovals = await PendingApprovals(c, s, token)
+                auditView = s.AuditView, backupsView = s.BackupsView, ownBackup = s.OwnBackup, keys = s.CanSeeKeys, handover = s.CanHandoverAny || s.ViewsAll || s.AdTasks || s.CucmTasks, tasks = s.AdTasks || s.CucmTasks || s.ViewsAll, invoices = s.PoView || s.CanHandoverAny || s.CanInkAny, suppliers = s.PoView || s.CanHandoverAny || s.CanInkAny || s.SuppliersManage, maintenance = s.ViewsAll || s.CanHandoverAny || s.Manager, admin = s.MasterData || s.RolesManage || s.AuditView },
+            lists = await Lists(c, token), regions = s.Regions, viewsAll = s.ViewsAll, openTasks = await OpenTaskCount(c, s, token), pendingApprovals = await PendingApprovals(c, s, token), maintenanceApprovals = await MaintenanceApprovalsCount(c, s, token)
         };
     }
 

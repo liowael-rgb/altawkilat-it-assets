@@ -52,6 +52,8 @@ export const ICONS={
   ink:'<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>',
   invoices:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/>',
   suppliers:'<path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><circle cx="7" cy="17.5" r="1.6"/><circle cx="17" cy="17.5" r="1.6"/>',
+  wrench:'<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/>',
+  maintenance:'<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/>',
   plus:'<path d="M12 5v14M5 12h14"/>',
   phone:'<path d="M5 4h3l2 5-2.5 1.5a11 11 0 0 0 6 6L15 14l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>',
   tasks:'<path d="M9 6h11M9 12h11M9 18h11"/><path d="M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17"/>'
@@ -78,6 +80,7 @@ export async function shell(current){
   if(m.can.handover)link(nav,'handover','Handover','/handover.html');
   if(m.can.tasks){const t=link(nav,'tasks','Tasks','/tasks.html');if(m.openTasks)t.append(el('span',String(m.openTasks),'x-count x-count-hot'));}
   {const k=link(nav,'ink','Ink','/ink.html');if(m.pendingApprovals)k.append(el('span',String(m.pendingApprovals),'x-count x-count-hot'));}
+  if(m.can.maintenance||m.maintenanceApprovals){const k=link(nav,'maintenance','Maintenance','/maintenance.html');if(m.maintenanceApprovals)k.append(el('span',String(m.maintenanceApprovals),'x-count x-count-hot'));}
   if(m.can.poView)link(nav,'pos','Purchase orders','/pos.html');
   if(m.can.invoices)link(nav,'invoices','Invoices','/invoices.html');
   if(m.can.suppliers)link(nav,'suppliers','Suppliers','/suppliers.html');
