@@ -2,8 +2,8 @@
 -- Replace <DOMAIN\ITAssetsPool$> with the IIS application pool identity (a group managed service account or the server's
 -- computer account DOMAIN\SERVER$). The site only reads and writes data through the itam_runtime role; it cannot change the
 -- schema. The database scripts are installed separately by an administrator (Itam.Host.exe --install-database).
--- Use ITAM_Test on the test site and ITAM_Production on the production site.
-USE [ITAM_Test];
+-- Production (owner decision, 22 October 2026: production directly). For a later test or training site use ITAM_Test.
+USE [ITAM_Production];
 IF SUSER_ID(N'<DOMAIN\ITAssetsPool$>') IS NULL CREATE LOGIN [<DOMAIN\ITAssetsPool$>] FROM WINDOWS;
 IF USER_ID(N'<DOMAIN\ITAssetsPool$>') IS NULL CREATE USER [<DOMAIN\ITAssetsPool$>] FOR LOGIN [<DOMAIN\ITAssetsPool$>];
 ALTER ROLE itam_runtime ADD MEMBER [<DOMAIN\ITAssetsPool$>];

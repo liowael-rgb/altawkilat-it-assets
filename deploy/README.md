@@ -1,8 +1,17 @@
-# IT Assets – installing the test site (and later production)
+# IT Assets – installing the production site
 
 IT Assets is its own site with its own database (owner decision, 22 October 2026). This guide is for IT infrastructure and
-the DBA. Do the **test site first** (database `ITAM_Test`); production (`ITAM_Production`) repeats the same steps only after
-the owner approves the release. Nothing here uses or stores a password: SQL Server, Active Directory and the mail relay
+the DBA. **Owner decision, 22 October 2026: go to production directly** (database `ITAM_Production`), with no separate
+test site. Every production change is approved by the owner first. Until the owner declares it live, production runs in a
+**test phase**:
+
+- **Email**: `Mail:Enabled` false, or `Mail:TestRecipient` set to one mailbox (every email goes there, naming the real
+  recipients), until the owner approves real sending.
+- **Access**: only the IT team at first: in IIS, *Authorization Rules* on the site allow an AD group (for example
+  `ALTAWKILATIT Assets Pilot`) and deny all other users; the owner widens it at go-live.
+- **Backups**: `ITAM_Production` and the keys folder before every update.
+
+`ITAM_Test` remains possible later for a test or training site; the steps are the same with that name. Nothing here uses or stores a password: SQL Server, Active Directory and the mail relay
 accept the site's own Windows identity (the IIS application pool identity).
 
 ## What IT prepares (once per site)
@@ -11,7 +20,7 @@ accept the site's own Windows identity (the IIS application pool identity).
    *Windows Authentication* on.
 2. **Application pool**: *No managed code*, integrated pipeline, identity a **group managed service account** (recommended,
    for example `ALTAWKILAT\svc-itassets$`) or *ApplicationPoolIdentity* (then SQL and AD see the server's computer account).
-3. **Site**: its own site (for example `itassets-test.altawkilat.com`), **HTTPS only** with the company certificate, physical
+3. **Site**: its own site (for example `itassets.altawkilat.com`), **HTTPS only** with the company certificate, physical
    path for example `D:\ITAssets\Site`. In *Authentication*: Windows Authentication **on**, Anonymous **off** (the
    package's web.config sets the same).
 4. **Folders** (outside the site folder), with *Modify* for the application pool identity:
@@ -19,7 +28,7 @@ accept the site's own Windows identity (the IIS application pool identity).
      database.** Without it, the stored keys cannot be read. A move to another server needs these keys moved by IT.
    - `D:\ITAssets\Backups` – the install script's backups of the site folder.
 5. **SQL Server** (DBA):
-   - Create the database `ITAM_Test` (compatibility level 120 or higher).
+   - Create the database `ITAM_Production` (compatibility level 120 or higher).
    - The person installing (step 7) needs *db_owner* on it for the install only.
    - After the install, run `deploy\sql\Grant-ItamRuntime.sql` with the pool identity: the site gets the `itam_runtime`
      role only (read and write data; it cannot change the schema).
@@ -38,7 +47,7 @@ accept the site's own Windows identity (the IIS application pool identity).
 3. On the server, as an administrator with db_owner on the database:
 
    ```powershell
-   .\Install-ItamSite.ps1 -Package "<the zip>" -SitePath D:\ITAssets\Site -BackupRoot D:\ITAssets\Backups -HealthUrl https://itassets-test.altawkilat.com/health -InstallDatabase
+   .\Install-ItamSite.ps1 -Package "<the zip>" -SitePath D:\ITAssets\Site -BackupRoot D:\ITAssets\Backups -HealthUrl https://itassets.altawkilat.com/health -InstallDatabase
    ```
 
    It puts the site offline, backs up the current files, copies the new ones (your appsettings.Production.json and logs

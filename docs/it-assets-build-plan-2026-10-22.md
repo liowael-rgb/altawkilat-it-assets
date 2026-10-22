@@ -505,3 +505,6 @@ Emails and the weekly summary (IT-EM-12, IT-EM-61) will use the same list when t
 - Tested locally against a throwaway ITAM_Test LocalDB database: refused before install, install 5/5 then 0/5, /health
   OK, the API refuses a request without Windows sign-in. AD and SMTP are tested with the checks (mapping, .eml output);
   the real AD, relay and IIS are tested on the test site.
+- **Owner decision, 22 October 2026: production directly** (ITAM_Production), no separate test site. Until the owner
+  declares it live it runs in a test phase: email off or to one test mailbox, access limited to an IT pilot AD group in
+  IIS, backups of the database and the keys folder before every update; every production change approved by the owner.
