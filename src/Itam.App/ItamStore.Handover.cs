@@ -351,6 +351,12 @@ public sealed partial class ItamStore
         var doc = pdf.Start(); const double M = ItamPdf.Doc.M, W = ItamPdf.Doc.W;
         const string muted = "0.38 0.47 0.55", ink = "0.07 0.09 0.15", soft = "0.93 0.95 0.99";
         var inv = CultureInfo.InvariantCulture;
+        // Values sit in the middle, between the English and Arabic labels (owner, 22 October 2026).
+        void Centre(string? text, double cx, double y, double size, double width, string color)
+        {
+            var t = text ?? ""; while (t.Length > 1 && pdf.Width(t, size) > width) t = t[..^2] + "…";
+            doc.Text(t, cx - pdf.Width(t, size) / 2, y, size, false, color);
+        }
         var (titleEn, titleAr, docNo, date) = kind switch
         {
             NoteKind.Delivery => ("Delivery Note", "سند تسليم عهدة", d.No, d.On.ToString("dd/MM/yyyy", inv)),
@@ -368,7 +374,7 @@ public sealed partial class ItamStore
         {
             var x = M + i * (cw + 8);
             doc.Box(x, doc.Y - 30, cw, 44, soft); doc.Text(head[i].En, x + 8, doc.Y, 8.5, false, muted); doc.Text(head[i].Ar, x + cw - 8, doc.Y, 8.5, true, muted);
-            doc.Fit(head[i].V, x + 8, doc.Y - 20, 12.5, cw - 16, ink);
+            Centre(head[i].V, x + cw / 2, doc.Y - 20, 12.5, cw - 16, ink);
         }
         doc.Y -= 52;
         void Section(string en, string ar, IEnumerable<NoteRow> rows)
@@ -376,7 +382,7 @@ public sealed partial class ItamStore
             doc.Box(M, doc.Y - 6, W - 2 * M, 20, "0.08 0.21 0.48"); doc.Text(en, M + 8, doc.Y, 10.5, false, "1 1 1"); doc.Text(ar, W - M - 8, doc.Y, 10.5, true, "1 1 1"); doc.Y -= 22;
             foreach (var r in rows)
             {
-                doc.Text(r.En, M + 8, doc.Y, 9.5, false, muted); doc.Fit(r.Value, M + 150, doc.Y, 10.5, 250, ink); doc.Text(r.Ar, W - M - 8, doc.Y, 9.5, true, muted);
+                doc.Text(r.En, M + 8, doc.Y, 9.5, false, muted); Centre(r.Value, W / 2, doc.Y, 10.5, 250, ink); doc.Text(r.Ar, W - M - 8, doc.Y, 9.5, true, muted);
                 doc.Y -= 6; doc.Line(M, doc.Y, W - M, doc.Y); doc.Y -= 12;
             }
             doc.Y -= 8;
