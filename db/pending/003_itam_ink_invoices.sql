@@ -5,19 +5,24 @@
 
 INSERT itam_data.counter(counter_code,next_value) VALUES(N'InkRequest',1),(N'SupplierOrder',1),(N'PaymentPack',1);
 
--- Ink request INK-n for an active printer: the ink officer (IT of the region) sends it to the approving manager chosen by IT
--- (a senior manager, not the Active Directory manager); that manager, or the manager's backup on leave, approves.
+-- Ink request INK-n: the Ink Officer of the region sends it to the approving manager chosen by IT (a senior manager, not the
+-- Active Directory manager); that manager, or the manager's backup on leave, approves. A printer not yet in IT Assets is
+-- requested with its serial number and model (owner, 22 October 2026); the region comes from the employee's region in Active
+-- Directory and the office is the printer location (unknown region: every Ink Officer sees it). The Ink Officer links or
+-- registers the printer before sending for approval.
 CREATE TABLE itam_data.ink_request(
  request_id int IDENTITY(1,1) NOT NULL PRIMARY KEY,
  request_no nvarchar(20) NOT NULL CONSTRAINT UX_itam_ink_request_no UNIQUE,
- printer_asset_id int NOT NULL REFERENCES itam_data.asset(asset_id),
+ printer_asset_id int NULL REFERENCES itam_data.asset(asset_id),
+ new_serial nvarchar(100) NULL, new_model_id int NULL REFERENCES itam_ref.model(model_id), new_model nvarchar(100) NULL, employee_location nvarchar(200) NULL,
  employee_id uniqueidentifier NOT NULL REFERENCES itam_access.employee(employee_id),
  requested_by uniqueidentifier NOT NULL, requested_at_utc datetime2 NOT NULL DEFAULT SYSUTCDATETIME(),
  toner nvarchar(100) NOT NULL, quantity int NOT NULL CHECK(quantity BETWEEN 1 AND 50), note nvarchar(500) NULL,
- region_code nvarchar(20) NOT NULL REFERENCES itam_ref.region(region_code),
+ region_code nvarchar(20) NULL REFERENCES itam_ref.region(region_code),
  status nvarchar(20) NOT NULL CHECK(status IN(N'Submitted',N'WaitingApproval',N'Approved',N'Rejected',N'Ordered',N'Delivered',N'Cancelled')),
  manager_id uniqueidentifier NULL, sent_by uniqueidentifier NULL, sent_at_utc datetime2 NULL, decided_by uniqueidentifier NULL, decided_at_utc datetime2 NULL, reject_reason nvarchar(500) NULL,
- order_id int NULL, cancelled_reason nvarchar(500) NULL, version rowversion NOT NULL);
+ order_id int NULL, cancelled_reason nvarchar(500) NULL, version rowversion NOT NULL,
+ CONSTRAINT CK_itam_ink_printer CHECK(printer_asset_id IS NOT NULL OR new_serial IS NOT NULL));
 CREATE INDEX IX_itam_ink_request_status ON itam_data.ink_request(status,region_code);
 CREATE INDEX IX_itam_ink_request_manager ON itam_data.ink_request(manager_id,status);
 

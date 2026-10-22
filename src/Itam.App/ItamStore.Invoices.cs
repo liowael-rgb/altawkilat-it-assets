@@ -153,7 +153,7 @@ public sealed partial class ItamStore
         var id = Convert.ToInt32(await Scalar(c, tx, "INSERT itam_data.ink_delivery(request_id,delivered_on,source,invoice_line_id,unit_cost,issued_by) OUTPUT inserted.ink_delivery_id VALUES(@r,@d,@s,@l,@u,@b)", token,
             ("@r", requestId), ("@d", DateParam(on)), ("@s", source), ("@l", source == "Invoice" ? x.InvoiceLineId : null), ("@u", unit), ("@b", s.Id)));
         await Exec(c, tx, "UPDATE itam_data.ink_request SET status=N'Delivered' WHERE request_id=@i", token, ("@i", requestId));
-        await Event(c, tx, r.printerId, s.Id, "Ink delivered", $"{r.quantity} × {r.toner} to {r.employee} ({r.no}, from the {sourceText})", token);
+        await Event(c, tx, r.printerId!.Value, s.Id, "Ink delivered", $"{r.quantity} × {r.toner} to {r.employee} ({r.no}, from the {sourceText})", token);
         await Audit(c, tx, s.Id, "ink", r.no, "Deliver", null, new { on, source, x.InvoiceLineId }, null, token);
         await tx.CommitAsync(token);
         return new { id, requestNo = r.no };
@@ -185,7 +185,7 @@ public sealed partial class ItamStore
         static string On(DateTime? utc) => utc is DateTime t ? t.AddHours(3).ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture) : "";
         var emp = await EmployeeRows(c, null, r.employeeId, token);
         var approved = r.decidedAt is not null && r.status is "Approved" or "Ordered" or "Delivered";
-        var printer = new List<NoteRow> { new("Printer Asset No.", "رقم الطابعة", r.printer), new("Printer", "الطابعة", r.printerModel), new("Printer Location", "موقع الطابعة", r.printerLocation),
+        var printer = new List<NoteRow> { new("Printer Asset No.", "رقم الطابعة", r.printer), new("Serial Number", "الرقم التسلسلي", r.newSerial), new("Printer", "الطابعة", r.printerModel), new("Printer Location", "موقع الطابعة", r.printerLocation),
             new("Toner", "الحبر", r.toner), new("Quantity", "الكمية", r.quantity.ToString(CultureInfo.InvariantCulture)), new("Note", "ملاحظة", r.note) };
         var approval = new List<NoteRow> { new("Sent for approval by", "أرسل للموافقة بواسطة", r.sentBy), new("Sent on", "تاريخ الإرسال", On(r.sentAt)), new("Approving Manager", "المدير المعتمد", r.manager),
             new("Decision", "القرار", r.decidedAt is null ? "Waiting" : r.status == "Rejected" ? "Rejected" : r.status == "Cancelled" ? "Cancelled" : "Approved"),

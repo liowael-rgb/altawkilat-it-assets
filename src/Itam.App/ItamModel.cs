@@ -6,9 +6,10 @@ namespace Itam.App;
 /// Active Directory objectGUID.</summary>
 public sealed record ItamUser(Guid Id, string Account);
 
-/// <summary>One employee as read from the Active Directory users OU (read-only).</summary>
+/// <summary>One employee as read from the Active Directory users OU (read-only), with the same attributes as VTMS: region postalCode, branch
+/// physicalDeliveryOfficeName, job title description, company, department, HR code postOfficeBox, mobile, manager.</summary>
 public sealed record ItamEmployee(Guid Id, string Account, string Name, string? Email, string? JobTitle, string? Department, Guid? ManagerId, bool Enabled,
-    string? Mobile = null, string? Branch = null, string? Company = null, string? HrCode = null);
+    string? Mobile = null, string? Branch = null, string? Company = null, string? HrCode = null, string? Region = null);
 
 public interface IItamSession { Task<ItamUser?> Current(HttpContext context, CancellationToken token); }
 
@@ -112,14 +113,15 @@ public sealed record ItamScope(Guid Id, string Name, string[] Roles, string[] Re
     public bool CanHandover(string region) => TeamLeader || Officer || (Specialist && Regions.Contains(region));
     public bool CanHandoverAny => TeamLeader || Officer || Specialist;
     /// <summary>Print labels (row 24): own regions (specialist), all regions (Team Leader), IT Assets Officer, IT Administrator.</summary>
-    public bool CanPrintLabel(string region) => TeamLeader || Officer || ItAdmin || (Specialist && Regions.Contains(region));
+    public bool CanPrintLabel(string region) => TeamLeader || Officer || ItAdmin || (Specialist && Regions.Contains(region)) || InkRegions.Contains(region);
     /// <summary>Confirm computer removal from AD and Endpoint Central (row 38): System Administrator. Confirm IP phone removal
     /// from CUCM (row 39): Voice Administrator.</summary>
     public bool AdTasks => SysAdmin;
     public bool CucmTasks => Voice;
     /// <summary>Ink (owner, 22 October 2026): the Ink Officer of the printer's region sends requests for approval, orders, delivers
-    /// and records toner invoices; the IT Assets Officer covers all regions.</summary>
-    public bool CanInk(string region) => Officer || InkRegions.Contains(region);
+    /// and records toner invoices; the IT Assets Officer covers all regions. A request of unknown region (printer not registered,
+    /// Active Directory location not matched) is seen by every Ink Officer.</summary>
+    public bool CanInk(string? region) => Officer || (region is null ? InkRegions.Length > 0 : InkRegions.Contains(region));
     public bool CanInkAny => Officer || InkRegions.Length > 0;
     public bool RolesManage => Manager || ItAdmin;
     public bool MasterData => ItAdmin;

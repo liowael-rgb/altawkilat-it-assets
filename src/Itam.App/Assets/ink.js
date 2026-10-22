@@ -41,10 +41,11 @@ function handleCard(){
   for(const r of list){
     const tr=el('tr');const cb=document.createElement('input');cb.type='checkbox';cb.disabled=r.status!=='Approved';cb.onchange=()=>{cb.checked?picked.add(r.id):picked.delete(r.id);orderBtn.disabled=!picked.size;};
     const td=x=>{const c=el('td');c.append(x??'');tr.append(c);return c;};
-    td(r.status==='Approved'?cb:'');td(r.no).className='nowrap';td(two(r.employee,r.branch));td(two(r.printer,r.printerModel)).className='nowrap';td(r.toner);td(String(r.quantity));const stCell=td(stTag(r));stCell.className='x-state-cell';
+    td(r.status==='Approved'?cb:'');td(r.no).className='nowrap';td(two(r.employee,r.branch));td(r.registered?two(r.printer,r.printerModel):(()=>{const s=el('span');s.append(el('span','Not registered','tag warn'),el('small',`${r.printerModel||''} · S/N ${r.newSerial}`,'x-sub'));return s;})()).className=r.registered?'nowrap':'';td(r.toner);td(String(r.quantity));const stCell=td(stTag(r));stCell.className='x-state-cell';
     td(r.orderNo?two(r.orderNo,r.supplier):r.manager?two(r.manager,r.status==='WaitingApproval'?'approver':'approved by'):'');td(docCell(r));
     const act=el('div',null,'x-row-actions');
-    if(r.status==='Submitted'||r.status==='WaitingApproval')act.append(btn(r.status==='Submitted'?'Send for approval':'Change approver',()=>send(r),r.status==='Submitted'?'link x-strong':'link'),btn('Cancel',()=>cancel(r),'link'));
+    if(r.status==='Submitted'&&!r.registered)act.append(btn('Link printer',()=>linkPrinter(r),'link x-strong'),btn('Register printer',()=>registerPrinter(r),'link'),btn('Cancel',()=>cancel(r),'link'));
+    else if(r.status==='Submitted'||r.status==='WaitingApproval')act.append(btn(r.status==='Submitted'?'Send for approval':'Change approver',()=>send(r),r.status==='Submitted'?'link x-strong':'link'),btn('Cancel',()=>cancel(r),'link'));
     if(r.status==='Approved'||r.status==='Ordered'){act.append(btn('Deliver',()=>deliver(r),'link'),btn('Cancel',()=>cancel(r),'link'));}
     if(act.children.length)stCell.append(act);tb.append(tr);
   }
@@ -52,6 +53,34 @@ function handleCard(){
   t.append(th,tb);wrap.append(t);box.append(bar,wrap);
   return card('Requests to handle (Ink Officer)','Ink requests of your regions. Deliver from the shelf, or tick several and put them in one supplier order (today\'s order email); when the toner arrives with the invoice, deliver from the invoice line.',box);
 }
+
+// Ink Officer: a request for a printer not in IT Assets is linked to the printer's Asset No., or the printer is registered
+// (old stock, no PO) and its label printed. Only then can it be sent for approval.
+function linkPrinter(r){
+  edit(`Link ${r.no} to its printer`,[{key:'assetNo',label:'Printer Asset No.',required:true,max:20,hint:`The employee typed serial number ${r.newSerial} (${r.printerModel||'model not given'}). Use Register printer if it has no IT label.`}],
+    async x=>{const list=await api('/printers?q='+encodeURIComponent(x.assetNo.trim()));const p=list.find(p=>p.assetNo.toUpperCase()===x.assetNo.trim().toUpperCase());
+      if(!p)throw Error(`${x.assetNo.trim()} is not an active printer in IT Assets.`);
+      await api(`/ink/${r.id}/printer`,{method:'POST',json:{printerId:p.id}});await load(`${r.no} linked to ${p.assetNo}. Send it for approval.`);},{reason:false,button:'Link'});
+}
+function registerPrinter(r){
+  const models=printerModels();const pick=models.find(([,n])=>n===r.printerModel);
+  const locs=m.lists.locations.filter(l=>l.active);const here=locs.find(l=>l.name===r.printerLocation);
+  edit(`Register the printer of ${r.no}`,[
+    {key:'location',label:'Kept at',type:'select',required:true,options:[['','Choose'],...locs.map(l=>[l.id,`${l.name} (${l.region})`])],value:here?.id,hint:r.printerLocation?`The employee's office in Active Directory: ${r.printerLocation}.`:'The employee has no office in Active Directory.'},
+    {key:'model',label:'Model',type:'select',required:true,options:[['','Choose'],...models,['other','New model']],value:pick?pick[0]:r.printerModel?'other':'',onchange:i=>{const o=i.model.value==='other';i.maker.closest('label').hidden=!o;i.modelText.closest('label').hidden=!o;}},
+    {key:'maker',label:'Manufacturer',type:'select',options:[['','Choose'],...m.lists.manufacturers.filter(f=>f.active).map(f=>[f.id,f.name])]},
+    {key:'modelText',label:'New model name',max:100,value:pick?'':(r.printerModel||'')},
+    {key:'serial',label:'Serial number',required:true,max:100,value:r.newSerial},
+    {key:'toner',label:'Toner code',max:100,value:r.toner},
+    {key:'where',label:'Printer location',max:200,hint:'For example Reception or 2nd floor.'},
+    {key:'condition',label:'Condition',type:'select',options:[['Used','Used'],['New','New']]}],
+    async x=>{const other=x.model==='other';const mo=other?null:models.find(([id])=>String(id)===x.model);
+      const res=await api(`/ink/${r.id}/register-printer`,{method:'POST',json:{locationId:Number(x.location)||null,manufacturerId:other?Number(x.maker)||null:m.lists.models.find(q=>String(q.id)===x.model)?.manufacturer??null,
+        modelId:other?null:mo?Number(mo[0]):null,newModel:other?x.modelText:null,serialNo:x.serial,tonerCode:x.toner,printerLocation:x.where,condition:x.condition}});
+      open(`/api/assets/${res.id}/label.pdf`);await load(`Printer ${res.assetNo} registered and linked to ${r.no}. Stick its label on the printer, then send the request for approval.`);},
+    {reason:false,button:'Register and print the label',hint:'Old stock, no PO. The printer is In Use where it is kept.'});
+}
+
 
 function ordersCard(){
   return card('Supplier orders','Print the order, or open it as an email to the supplier (nothing is sent automatically).',
@@ -67,21 +96,41 @@ function mail(o){
 
 async function ask(){
   const isIt=d.canHandle;
-  edit('Ask for ink: find your printer',[{key:'q',label:'Printer Asset No., serial number or toner code',required:true,wide:true,hint:'The Asset No. is on the label of the printer (for example PNT-4811).'}],
-    async x=>{const list=await api('/printers?q='+encodeURIComponent(x.q||''));if(!list.length)throw Error('No active printer found. Check the Asset No. on the label.');setTimeout(()=>details(list,isIt),0);},{reason:false,button:'Find'});
+  edit('Ask for ink: find your printer',[{key:'q',label:'Printer Asset No., serial number or toner code',required:true,wide:true,hint:'The Asset No. is on the IT label of the printer (for example PNT-4811). No label? Type the serial number (S/N) from the sticker on the printer.'}],
+    async x=>{const list=await api('/printers?q='+encodeURIComponent(x.q||''));setTimeout(()=>list.length?details(list,isIt):newPrinter(isIt,x.q),0);},{reason:false,button:'Find'});
 }
 async function details(list,isIt){
   if(isIt)await people('');
   edit('Ask for ink',[
-    {key:'printer',label:'Printer',type:'select',options:list.map(p=>[p.id,`${p.assetNo} · ${p.model}${p.printerLocation?' · '+p.printerLocation:''} · ${p.keptAt}`]),wide:true,
+    {key:'printer',label:'Printer',type:'select',options:[...list.map(p=>[p.id,`${p.assetNo} · ${p.model}${p.printerLocation?' · '+p.printerLocation:''} · ${p.keptAt}`]),['new','None of these: my printer is not in the list']],wide:true,
       onchange:i=>{const p=list.find(x=>String(x.id)===i.printer.value);if(p&&!i.toner.dataset.typed)i.toner.value=p.toner||'';}},
-    {key:'toner',label:'Toner',required:true,max:100,hint:'Filled from the printer; change it if needed (for example which colour).'},
+    {key:'toner',label:'Toner',max:100,hint:'Filled from the printer; change it if needed (for example which colour).'},
     {key:'qty',label:'Quantity',type:'number',value:1,required:true},
     ...(isIt?[{key:'employee',label:'For employee (IT only)',type:'person',hint:'Leave empty to ask for yourself.'}]:[]),
     {key:'note',label:'Note',type:'textarea',wide:true,max:500,hint:'For example which colour is empty.'}],
-    async x=>{const r=await api('/ink',{method:'POST',json:{printerId:Number(x.printer),toner:x.toner,quantity:Math.round(x.qty||0),employeeId:x.employee||null,note:x.note}});
-      await load(`${r.requestNo} sent to the ink officer, who sends it for approval.`);},{reason:false,button:'Send the request'});
+    async x=>{if(x.printer==='new'){setTimeout(()=>newPrinter(isIt,''),0);return;}
+      const r=await api('/ink',{method:'POST',json:{printerId:Number(x.printer),toner:x.toner,quantity:Math.round(x.qty||0),employeeId:x.employee||null,note:x.note}});
+      await load(`${r.requestNo} sent to the Ink Officer, who sends it for approval.`);},{reason:false,button:'Send the request'});
   const t=document.querySelector('#dialog-body input[maxlength="100"]');if(t)t.addEventListener('input',()=>{t.dataset.typed='1';});
+}
+// A printer not in IT Assets (owner, 22 October 2026): the serial number and model are required; the location comes from the
+// employee's Active Directory office. The Ink Officer links or registers the printer before sending for approval.
+const printerModels=()=>m.lists.models.filter(x=>x.type==='PNT'&&x.active).map(x=>[x.id,`${(m.lists.manufacturers.find(f=>f.id===x.manufacturer)||{}).name||''} ${x.name}`.trim()]);
+async function newPrinter(isIt,typed){
+  if(isIt)await people('');
+  edit('Ask for ink: printer not in IT Assets',[
+    {key:'serial',label:'Serial number of the printer',required:true,max:100,wide:true,value:typed||'',hint:'On the sticker at the back or bottom of the printer (S/N or Serial No.).'},
+    {key:'model',label:'Printer model',type:'select',required:true,options:[['','Choose'],...printerModels(),['other','Not in the list']],
+      onchange:i=>{i.modelText.closest('label').hidden=i.model.value!=='other';}},
+    {key:'modelText',label:'Printer model (as written on the printer)',max:100},
+    {key:'toner',label:'Toner',required:true,max:100,hint:'The code printed on the cartridge (for example W2210A).'},
+    {key:'qty',label:'Quantity',type:'number',value:1,required:true},
+    ...(isIt?[{key:'employee',label:'For employee (IT only)',type:'person',hint:'Leave empty to ask for yourself.'}]:[]),
+    {key:'note',label:'Note',type:'textarea',wide:true,max:500,hint:'For example which colour is empty.'}],
+    async x=>{const r=await api('/ink',{method:'POST',json:{printerId:null,newSerial:x.serial,newModelId:x.model&&x.model!=='other'?Number(x.model):null,newModel:x.model==='other'?x.modelText:null,
+        toner:x.toner,quantity:Math.round(x.qty||0),employeeId:x.employee||null,note:x.note}});
+      await load(`${r.requestNo} sent to the Ink Officer, who adds the printer to IT Assets and sends it for approval.`);},
+    {reason:false,button:'Send the request',hint:'Not found in IT Assets. Your region and office are taken from Active Directory.'});
 }
 
 function decide(r,approve){

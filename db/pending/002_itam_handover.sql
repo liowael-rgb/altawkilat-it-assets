@@ -3,7 +3,8 @@
 -- that follow a receipt (computer removal from AD and Endpoint Central; IP phone removal from CUCM).
 
 -- Active Directory details printed on the delivery note (read-only copy; no national ID).
-ALTER TABLE itam_access.employee ADD mobile nvarchar(50) NULL, branch nvarchar(200) NULL, company nvarchar(200) NULL, hr_code nvarchar(50) NULL;
+ALTER TABLE itam_access.employee ADD mobile nvarchar(50) NULL, branch nvarchar(200) NULL, company nvarchar(200) NULL, hr_code nvarchar(50) NULL,
+ region nvarchar(100) NULL; -- region as written in Active Directory (matched to a region code or name)
 
 -- One row per delivery note. Open custody = received_at_utc IS NULL. The employee and product details are kept as issued
 -- (snapshot_json) so a reprint never changes.

@@ -10,7 +10,7 @@ static class DemoSeed
     {
         // Invented directory details (no real people): mobile, branch, company and HR code as printed on the delivery note.
         await store.SyncEmployees([.. DemoPeople.All.Select((p, i) => new ItamEmployee(p.Id, p.Account, p.Name, p.Account + "@example.invalid", p.Role, i is >= 9 and <= 11 ? "Sales (demo)" : "IT (demo)", p.Id == G(2) ? null : G(2), true,
-            $"050000{i + 1:0000}", i is >= 9 and <= 11 ? "Riyadh Showroom (demo)" : "Head Office (demo)", "ALTAWKILAT (demo)", $"DEMO-{i + 1:000}"))], default);
+            $"050000{i + 1:0000}", i is >= 9 and <= 11 ? "Abha Branch (demo)" : "Head Office (demo)", "ALTAWKILAT (demo)", $"DEMO-{i + 1:000}", i is >= 9 and <= 11 ? "South" : null))], default);
         await using (var c = new SqlConnection(cs))
         {
             await c.OpenAsync();
@@ -114,6 +114,9 @@ static class DemoSeed
         var k6 = DeliveryId(await store.CreateInkRequest(Who(12), new(printer, null, 1, null, "Cyan for the colour printer"), default));
         await store.SendInkForApproval(Who(13), k6, new(G(2)), default);
         await store.CreatePack(Who(13), new(supplierA, "Toners", [inv]), default);
+        // A printer not in IT Assets: the employee types its serial number and model; the region comes from the AD office (Abha, South).
+        var canon = await One("SELECT model_id FROM itam_ref.model WHERE name_en=N'imageRUNNER 2425'");
+        await store.CreateInkRequest(Who(11), new(null, null, 1, "C-EXV33", "Printer in the accounts room has no IT label", "DEMO-CN-7781", canon), default);
         var devDoc = pdf.Start(); devDoc.Text("Tax invoice D-7001 (demo, invented) - Demo Computers Co.", ItamPdf.Doc.M, devDoc.Y, 13);
         var rec = await One($"SELECT TOP 1 receipt_id FROM itam_data.po_receipt WHERE po_id={poId} ORDER BY receipt_id");
         await store.CreateInvoice(officer, new(1, "D-7001", today.AddDays(-5), "Devices", null, poId, [rec], null, [new("Dell Latitude 5440", 3, 4200m)]), new ItamUpload("D-7001.pdf", "application/pdf", devDoc.Build()), default);

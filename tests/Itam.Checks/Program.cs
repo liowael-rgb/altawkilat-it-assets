@@ -305,6 +305,26 @@ try
         "An invoice is in one pack; paid only after it went to Accounting");
     await store.PackDates(U(9), payPack, new(handDay, null, null), default); await store.PackDates(U(9), payPack, new(null, handDay, "Ref 123"), default);
     Check(await Scalar($"SELECT CASE WHEN sent_on IS NOT NULL AND paid_on IS NOT NULL THEN 1 ELSE 0 END FROM itam_data.payment_pack WHERE pack_id={payPack}") is 1, "Sent to Accounting and paid dates recorded");
+    // A printer not in IT Assets: serial number and model typed by the employee, region and office from Active Directory, linked or
+    // registered by the Ink Officer before it goes for approval.
+    await Exec($"UPDATE itam_access.employee SET branch=N'Riyadh WH',region=N'Central' WHERE employee_id='{G(10)}'");
+    Check(await Throws<ArgumentException>(() => store.CreateInkRequest(U(10), new(null, null, 1, "T1", null), default))
+        && await Throws<ArgumentException>(() => store.CreateInkRequest(U(10), new(null, null, 1, "T1", null, "SN-NEW-1"), default)), "A printer not in IT Assets needs its serial number and model");
+    var newInk = JsonSerializer.SerializeToElement(await store.CreateInkRequest(U(10), new(null, null, 1, "T1", null, "SN-NEW-1", null, "Brother HL-L2350"), default)).GetProperty("id").GetInt32();
+    Check(await Scalar($"SELECT ISNULL(region_code,'-')+'|'+employee_location+'|'+CAST(CASE WHEN printer_asset_id IS NULL THEN 0 ELSE 1 END AS varchar(1)) FROM itam_data.ink_request WHERE request_id={newInk}") as string == "Central|Riyadh WH|0"
+        && await Throws<ArgumentException>(() => store.SendInkForApproval(U(9), newInk, new(G(12)), default)), "Region from Active Directory, office as the printer location; not sent for approval before the printer is linked");
+    Check(await Throws<ItamAccessDenied>(() => store.RegisterInkPrinter(U(4), newInk, new(1, 1, null, "Brother HL-L2350", "SN-NEW-1", "T1", null, "Used"), default)), "Only the region's Ink Officer registers the printer");
+    var reg = JsonSerializer.SerializeToElement(await store.RegisterInkPrinter(U(9), newInk, new(1, 1, null, "Brother HL-L2350", "SN-NEW-1", "T1", "Room 2", "Used"), default));
+    var regId = reg.GetProperty("id").GetInt32();
+    Check(await Scalar($"SELECT status FROM itam_data.asset WHERE asset_id={regId}") as string == "InUse" && await Scalar($"SELECT printer_asset_id FROM itam_data.ink_request WHERE request_id={newInk}") is int linked && linked == regId,
+        "The Ink Officer registers the printer (In Use, old stock) and the request is linked");
+    await store.SendInkForApproval(U(9), newInk, new(G(12)), default);
+    var again = JsonSerializer.SerializeToElement(await store.CreateInkRequest(U(10), new(null, null, 1, "T1", null, "sn-new-1", null, "x"), default)).GetProperty("id").GetInt32();
+    var other = JsonSerializer.SerializeToElement(await store.CreateInkRequest(U(10), new(null, null, 1, "T1", null, "SN-OTHER", null, "x"), default)).GetProperty("id").GetInt32();
+    await store.LinkInkPrinter(U(9), other, new(printer), default);
+    Check(await Scalar($"SELECT printer_asset_id FROM itam_data.ink_request WHERE request_id={again}") is int a2 && a2 == regId
+        && await Scalar($"SELECT printer_asset_id FROM itam_data.ink_request WHERE request_id={other}") is int a3 && a3 == printer
+        && await Throws<ArgumentException>(() => store.LinkInkPrinter(U(9), other, new(printer), default)), "A known serial number links itself; the Ink Officer links the others once");
     Console.WriteLine("PASS ink and invoices");
 
     // ---- My Backup ----------------------------------------------------------------------------------------------------------------

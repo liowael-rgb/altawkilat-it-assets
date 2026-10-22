@@ -197,3 +197,32 @@ Production note (owner, 22 October 2026): person search in production reads Acti
 email), for the approving manager of ink requests and the other person fields (deliver to, give a role, backups). A person
 chosen from Active Directory is added to the employee copy (stable AD identity), so approvals and history stay linked.
 The demo searches the invented employee copy instead.
+
+### Ink for a printer not in IT Assets (owner, 22 October 2026)
+
+When the employee's printer is not found, the employee still asks: serial number (required) and printer model (dropdown, or
+"Not in the list" with the name typed). The region comes from the employee's region in Active Directory and the office is
+the printer location. A serial number already registered links the printer by itself. Otherwise the request shows
+"Not registered" to the Ink Officer of that region (unknown region: every Ink Officer), who either links it to the printer's
+Asset No. or registers the printer (old stock, no PO, In Use where it is kept) and prints its label. Only then can it be
+sent for approval. The Ink Officer may print labels in their regions.
+
+### Active Directory attributes (same as VTMS; build at step 7)
+
+IT Assets reads the employee details the shared platform's VTMS directory import reads, with the same configurable keys
+(`Administration:LDAP.Region`, `.Branch`, `.JobTitle`, `.Company`):
+
+| IT Assets field | AD attribute |
+|---|---|
+| Region | `postalCode` (matched to an IT Assets region code or name) |
+| Branch / office (printer location, delivery note) | `physicalDeliveryOfficeName` |
+| Job title | `description` |
+| Company | `company` |
+| Department | `department` |
+| HR code | `postOfficeBox` |
+| Mobile | `mobile` |
+| Direct manager | `manager` |
+| Extension (click-to-call later) | `ipPhone` |
+| Account, name, email, enabled | `sAMAccountName`, `displayName`, `mail` / `userPrincipalName`, `userAccountControl` |
+
+The national ID (`extensionAttribute6`) is not read: IT Assets does not need it.
