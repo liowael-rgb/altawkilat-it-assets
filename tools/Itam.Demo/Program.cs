@@ -28,11 +28,16 @@ if (await Scalar(cs, "SELECT COUNT(*) FROM itam_access.employee") is 0)
     await DemoSeed.Run(cs, scope.ServiceProvider.GetRequiredService<ItamStore>(), new ItamPdf(font));
 }
 
-// Demo badge on every page: who is signed in, and a link back to the chooser.
-app.MapGet("/demo-badge.css", () => Results.Text(".demo-badge{position:fixed;right:16px;bottom:16px;z-index:9999;padding:9px 14px;border-radius:999px;background:#123453;color:#fff;font:600 12px 'Segoe UI',Arial;text-decoration:none;box-shadow:0 6px 18px #0004}.demo-badge b{background:#2e9e5b;border-radius:999px;padding:2px 8px;margin-right:6px}" +
-    ".demo-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}.demo-cards .card{display:flex;flex-direction:column;gap:4px;text-decoration:none;color:var(--ink);margin:0}" +
-    ".demo-cards .card:hover{border-color:#8fb6d9}.demo-cards .card span{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--blue);font-weight:700}" +
-    ".demo-cards .card strong{font-size:15px;color:var(--navy)}.demo-cards .card em{font-style:normal;color:var(--muted);font-size:12px}", "text/css"));
+// Demo badge on every page: who is signed in, and a link back to the chooser (in the approved design).
+app.MapGet("/demo-badge.css", () => Results.Text(
+    "a.demo-badge,.x a.demo-badge{position:fixed;right:16px;bottom:16px;z-index:9999;display:inline-flex;align-items:center;gap:8px;padding:9px 16px 9px 9px;border-radius:999px;background:#1d4ed8;color:#fff;font:600 13px 'Segoe UI',Arial;text-decoration:none;box-shadow:0 8px 22px #1d4ed855}" +
+    "a.demo-badge:hover{background:#2563eb;color:#fff}a.demo-badge b{background:#fff;color:#1d4ed8;border-radius:999px;padding:2px 9px;font-size:11px;letter-spacing:.06em}" +
+    ".demo-main{max-width:1200px;margin:0 auto;padding:40px 32px 80px}.demo-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-top:8px}" +
+    ".x a.demo-card{display:flex;flex-direction:column;gap:6px;padding:18px 20px;border:1px solid var(--line);border-radius:16px;background:#fff;box-shadow:var(--sh);text-decoration:none;color:var(--ink);transition:border-color .15s,box-shadow .15s,transform .1s}" +
+    ".x a.demo-card:hover{border-color:#93b4f5;box-shadow:0 0 0 4px #2563eb1f,var(--sh2);transform:translateY(-1px)}" +
+    ".x a.demo-card.on{border:2px solid var(--acc);background:var(--accbg)}" +
+    ".demo-card span{font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--acc2);font-weight:750}.demo-card strong{font-size:16px}" +
+    ".demo-card em{font-style:normal;color:var(--sub);font-size:13px;line-height:1.45}.demo-card i{margin-top:6px;font-style:normal;font-weight:700;color:var(--acc);font-size:13px}", "text/css"));
 app.Use(async (ctx, next) =>
 {
     var path = ctx.Request.Path.Value ?? "";
@@ -44,7 +49,7 @@ app.Use(async (ctx, next) =>
     var badge = $"<link rel=\"stylesheet\" href=\"/demo-badge.css\"><a class=\"demo-badge\" href=\"/demo\"><b>DEMO</b>{WebUtility.HtmlEncode(who?.Role ?? "Choose who you are")} · Switch</a>";
     ctx.Response.ContentLength = null; await ctx.Response.WriteAsync(html.Replace("</body>", badge + "</body>", StringComparison.Ordinal));
 });
-app.MapGet("/demo", () => Results.Content(DemoPage(), "text/html; charset=utf-8"));
+app.MapGet("/demo", (HttpContext ctx) => Results.Content(DemoPage(ctx.Request.Cookies["itam-demo-user"]), "text/html; charset=utf-8"));
 app.MapGet("/demo/as/{n:int}", (HttpContext ctx, int n, string? to) =>
 {
     var p = DemoPeople.All.ElementAtOrDefault(n); if (p is null) return Results.NotFound();
@@ -59,11 +64,13 @@ await app.RunAsync();
 static async Task Exec(string cs, string sql) { await using var c = new SqlConnection(cs); await c.OpenAsync(); using var q = new SqlCommand(sql, c) { CommandTimeout = 120 }; await q.ExecuteNonQueryAsync(); }
 static async Task<object?> Scalar(string cs, string sql) { await using var c = new SqlConnection(cs); await c.OpenAsync(); using var q = new SqlCommand(sql, c); return await q.ExecuteScalarAsync(); }
 
-static string DemoPage()
+static string DemoPage(string? current)
 {
-    var cards = string.Concat(DemoPeople.All.Select((p, i) => p.Card is null ? "" : $"<a class=\"card\" href=\"/demo/as/{i}\"><span>{WebUtility.HtmlEncode(p.Role)}</span><strong>{WebUtility.HtmlEncode(p.Name)}</strong><em>{WebUtility.HtmlEncode(p.Card)}</em></a>"));
-    return "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>IT Assets · Demo</title><link rel=\"stylesheet\" href=\"/itam.css\"><link rel=\"stylesheet\" href=\"/demo-badge.css\"></head><body><main>" +
-        "<div class=\"page-head\"><div><p class=\"eyebrow\">Local demo · invented data</p><h1>IT Assets demo: choose who you are</h1><p>Step 1 of the build plan: asset register, purchase orders with receiving and the PO pack, roles, master data and My Backup. Each card signs you in as one invented person.</p></div></div>" +
+    var me = DemoPeople.Find(current);
+    var cards = string.Concat(DemoPeople.All.Select((p, i) => p.Card is null ? "" :
+        $"<a class=\"demo-card{(p == me ? " on" : "")}\" href=\"/demo/as/{i}\"><span>{WebUtility.HtmlEncode(p.Role)}</span><strong>{WebUtility.HtmlEncode(p.Name)}</strong><em>{WebUtility.HtmlEncode(p.Card)}</em><i>{(p == me ? "Signed in now" : "Sign in as this person ›")}</i></a>"));
+    return "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=1280\"><title>IT Assets · Demo</title><link rel=\"stylesheet\" href=\"/itam.css\"><link rel=\"stylesheet\" href=\"/demo-badge.css\"></head><body class=\"x\"><main class=\"demo-main\">" +
+        "<div class=\"page-head\"><div><p class=\"eyebrow\">Local demo · invented data</p><h1>IT Assets demo: choose who you are</h1><p>Steps 1 and 2 of the build plan: asset register, purchase orders with the PO pack, handover with paper-signed delivery notes, labels, roles, master data and My Backup. Click a card to sign in as that invented person; use the blue Switch button at the bottom right to come back here.</p></div></div>" +
         $"<div class=\"demo-cards\">{cards}</div></main></body></html>";
 }
 
