@@ -302,13 +302,13 @@ public sealed partial class ItamStore
     byte[] OrderSheet(string no, string supplier, DateTime at, string? by, string? note, List<InkRow> reqs)
     {
         var pdf = Pdf ?? throw new InvalidOperationException("The PDF font is not configured.");
-        var d = pdf.Start(); const double M = ItamPdf.Doc.M, W = ItamPdf.Doc.W; const string muted = "0.38 0.47 0.55", ink = "0.07 0.09 0.15";
-        d.Text("ALTAWKILAT · IT Assets Management", M, d.Y, 9, false, muted); d.Text("إدارة أصول تقنية المعلومات", W - M, d.Y, 9, true, muted); d.Y -= 26;
-        d.Text($"Toner Order {no}", M, d.Y, 20, false, ink); d.Text("طلب أحبار", W - M, d.Y, 18, true, ink); d.Y -= 12; d.Box(M, d.Y, W - 2 * M, 2, "0.15 0.39 0.92"); d.Y -= 22;
+        var d = pdf.Start(); const double M = ItamPdf.Doc.M, W = ItamPdf.Doc.W; const string muted = "0.35 0.35 0.35", ink = "0 0 0";
+        d.Logo(M, d.Y + 10, 96); d.Text("إدارة أصول تقنية المعلومات", W - M, d.Y, 9, true, muted); d.Text("IT Assets Management", W - M, d.Y - 13, 9, true, muted); d.Y -= 40;
+        d.Text($"Toner Order {no}", M, d.Y, 20, false, ink); d.Text("طلب أحبار", W - M, d.Y, 18, true, ink); d.Y -= 12; d.Box(M, d.Y, W - 2 * M, 2, "0 0 0"); d.Y -= 22;
         d.Text($"To: {supplier}", M, d.Y, 11, false, ink); d.Text($"Date: {at.AddHours(3):dd/MM/yyyy}", W - M - 150, d.Y, 11, false, ink); d.Y -= 18;
         d.Text("Please deliver the requests below to the IT department as soon as possible, with the invoice.", M, d.Y, 10, false, ink); d.Y -= 22;
         double[] col = [M, M + 62, M + 180, M + 285, M + 375, M + 485];
-        d.Box(M, d.Y - 6, W - 2 * M, 20, "0.93 0.95 0.99");
+        d.Box(M, d.Y - 6, W - 2 * M, 20, "0.93 0.93 0.93");
         foreach (var (h, i) in new[] { "Request", "Employee", "Department", "Branch", "Printer – Toner", "Qty" }.Select((h, i) => (h, i))) d.Text(h, col[i] + 4, d.Y, 9, false, muted);
         d.Y -= 22;
         foreach (var r in reqs)

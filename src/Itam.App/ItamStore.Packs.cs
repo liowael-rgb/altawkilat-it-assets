@@ -16,10 +16,10 @@ public sealed partial class ItamStore
     {
         var pdf = Pdf ?? throw new InvalidOperationException("The PDF font is not configured.");
         var d = pdf.Start(); const double M = ItamPdf.Doc.M, W = ItamPdf.Doc.W;
-        const string muted = "0.38 0.47 0.55", ink = "0.16 0.24 0.31";
+        const string muted = "0.35 0.35 0.35", ink = "0.1 0.1 0.1";
         void Header()
         {
-            d.Text("IT Assets Management", M, d.Y, 9, false, muted); d.Text("إدارة أصول تقنية المعلومات", W - M, d.Y, 9, true, muted); d.Y -= 22;
+            d.Logo(M, d.Y + 10, 96); d.Text("إدارة أصول تقنية المعلومات", W - M, d.Y, 9, true, muted); d.Text("IT Assets Management", W - M, d.Y - 13, 9, true, muted); d.Y -= 38;
             d.Text($"PO Delivery Report — PO {p.Number}", M, d.Y, 15); d.Text("تقرير تسليم أمر الشراء", W - M, d.Y, 13, true); d.Y -= 12; d.Line(M, d.Y, W - M, d.Y); d.Y -= 16;
         }
         void Need(double space) { if (d.Y - space < M + 30) { d.NewPage(); Header(); } }
@@ -43,7 +43,7 @@ public sealed partial class ItamStore
             ("In IT stock", "في مخزون تقنية المعلومات", inStock), ("Reserved, pending delivery", "محجوز بانتظار التسليم", 0),
             ("Delivered, waiting for signed copy", "مسلم بانتظار النسخة الموقعة", waiting), ("Delivered and signed", "مسلم وموقع", signed)
         ];
-        d.Box(M, d.Y - counts.Length * 14 - 4, W - 2 * M, counts.Length * 14 + 14, "0.95 0.97 0.99");
+        d.Box(M, d.Y - counts.Length * 14 - 4, W - 2 * M, counts.Length * 14 + 14, "0.95 0.95 0.95");
         foreach (var x in counts) { d.Text(x.En, M + 8, d.Y, 9.5); d.Text(x.N.ToString(CultureInfo.InvariantCulture), M + 260, d.Y, 10, true); d.Text(x.Ar, W - M - 8, d.Y, 9.5, true); d.Y -= 14; }
         d.Y -= 16;
         // Lines with totals (VAT 15%).
@@ -76,12 +76,12 @@ public sealed partial class ItamStore
             d.Text(x.AssetNo, dc[0], d.Y, 8.5, false, ink); d.Fit(x.Model ?? "", dc[1], d.Y, 8.5, 76); d.Fit(x.Serial ?? x.ServiceTag ?? "", dc[2], d.Y, 8.5, 84);
             d.Fit(ItamStatuses.Label(x.Status), dc[3], d.Y, 8.5, 54); d.Fit(x.Employee ?? x.KeptAt, dc[4], d.Y, 8.5, 104);
             if (!x.Delivered) d.Text("Not yet delivered", dc[5], d.Y, 8.5, false, muted);
-            else d.Fit($"{x.DeliveryNo}, {(x.SignedAt is DateTime s ? s.AddHours(3).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) : "not yet signed")}", dc[5], d.Y, 8.5, W - M - dc[5], x.Signed ? ink : "0.60 0.36 0.00");
+            else d.Fit($"{x.DeliveryNo}, {(x.SignedAt is DateTime s ? s.AddHours(3).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) : "not yet signed")}", dc[5], d.Y, 8.5, W - M - dc[5], x.Signed ? ink : "0 0 0");
             d.Y -= 12;
         }
         var missing = (ordered - received) + p.Devices.Count(x => !x.Signed);
         d.Y -= 8; Need(30);
-        if (missing > 0) { d.Text($"Not yet complete: {ordered - received} still to come, {p.Devices.Count(x => !x.Delivered)} not yet delivered, {waiting} waiting for the signed copy.", M, d.Y, 9, false, "0.60 0.36 0.00"); d.Y -= 18; }
+        if (missing > 0) { d.Text($"Not yet complete: {ordered - received} still to come, {p.Devices.Count(x => !x.Delivered)} not yet delivered, {waiting} waiting for the signed copy.", M, d.Y, 9, false, "0 0 0"); d.Y -= 18; }
         Need(70); d.Y -= 10;
         d.Text("IT Assets Officer: ______________________   Date: ____________", M, d.Y, 9.5); d.Text("مسؤول أصول تقنية المعلومات", W - M, d.Y, 9, true); d.Y -= 26;
         d.Text("Received by Accounting: _________________   Date: ____________", M, d.Y, 9.5); d.Text("استلام المحاسبة", W - M, d.Y, 9, true); d.Y -= 22;

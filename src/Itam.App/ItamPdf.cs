@@ -140,33 +140,104 @@ public sealed class ItamPdf
     public sealed class Doc(ItamPdf pdf, double pageW = Doc.W, double pageH = Doc.H)
     {
         public const double W = 595.28, H = 841.89, M = 40;
-        readonly List<StringBuilder> pages = []; readonly SortedSet<ushort> used = [];
+        readonly List<StringBuilder> pages = []; readonly SortedSet<ushort> used = []; readonly List<Picture> pictures = [];
         StringBuilder page = null!;
         public double Y;
         public int Pages => pages.Count;
         public double PageW => pageW; public double PageH => pageH;
         public void NewPage() { page = new StringBuilder(); pages.Add(page); Y = pageH - M; }
         string Hex(string visual) { var sb = new StringBuilder("<"); foreach (var c in visual) { var g = pdf.Glyph(c); used.Add(g); sb.Append(g.ToString("X4", CultureInfo.InvariantCulture)); } return sb.Append('>').ToString(); }
-        public void Text(string? text, double x, double y, double size, bool right = false, string color = "0.08 0.21 0.31")
+        public void Text(string? text, double x, double y, double size, bool right = false, string color = "0 0 0")
         {
             if (string.IsNullOrEmpty(text)) return;
             var v = Visual(text); var tx = right ? x - v.Sum(c => pdf.advance[pdf.Glyph(c)]) * size / pdf.unitsPerEm : x;
             page.Append(CultureInfo.InvariantCulture, $"BT {color} rg /F1 {size:0.##} Tf {tx:0.##} {y:0.##} Td {Hex(v)} Tj ET\n");
         }
         /// <summary>Text cut with "…" to fit a width.</summary>
-        public void Fit(string? text, double x, double y, double size, double width, string color = "0.16 0.24 0.31")
+        public void Fit(string? text, double x, double y, double size, double width, string color = "0.1 0.1 0.1")
         {
             var t = text ?? ""; while (t.Length > 1 && pdf.Width(t, size) > width) t = t[..^2] + "…";
             Text(t, x, y, size, false, color);
         }
-        public void Line(double x1, double y1, double x2, double y2, string color = "0.78 0.83 0.88") => page.Append(CultureInfo.InvariantCulture, $"{color} RG 0.5 w {x1:0.##} {y1:0.##} m {x2:0.##} {y2:0.##} l S\n");
+        public void Line(double x1, double y1, double x2, double y2, string color = "0.7 0.7 0.7") => page.Append(CultureInfo.InvariantCulture, $"{color} RG 0.5 w {x1:0.##} {y1:0.##} m {x2:0.##} {y2:0.##} l S\n");
         public void Box(double x, double y, double w, double h, string fill) => page.Append(CultureInfo.InvariantCulture, $"{fill} rg {x:0.##} {y:0.##} {w:0.##} {h:0.##} re f\n");
-        public byte[] Build() => pdf.Build(pages, used, pageW, pageH);
+        /// <summary>Draws a picture with its bottom-left corner at (x, y) and the given width (height follows).</summary>
+        public double Image(Picture p, double x, double y, double width)
+        {
+            var i = pictures.IndexOf(p); if (i < 0) { pictures.Add(p); i = pictures.Count - 1; }
+            var height = width * p.Height / p.Width;
+            page.Append(CultureInfo.InvariantCulture, $"q {width:0.##} 0 0 {height:0.##} {x:0.##} {y:0.##} cm /Im{i} Do Q\n");
+            return height;
+        }
+        /// <summary>The company logo with its top at <paramref name="top"/>; returns its height.</summary>
+        public double Logo(double x, double top, double width) { var h = width * Logo_.Height / Logo_.Width; Image(Logo_, x, top - h, width); return h; }
+        static Picture Logo_ => ItamPdf.Logo;
+        public byte[] Build() => pdf.Build(pages, used, pictures, pageW, pageH);
     }
     public Doc Start() { var d = new Doc(this); d.NewPage(); return d; }
     public Doc Start(double width, double height) { var d = new Doc(this, width, height); d.NewPage(); return d; }
 
-    byte[] Build(List<StringBuilder> pages, SortedSet<ushort> used, double pageW, double pageH)
+
+    // Images and the company logo ------------------------------------------------------------------------------------------
+    /// <summary>A grayscale picture flattened on white paper (prints the same on black-and-white printers).</summary>
+    public sealed record Picture(int Width, int Height, byte[] Gray);
+
+    /// <summary>The company logo (Assets/company-logo.png, black on transparent).</summary>
+    public static Picture Logo { get; } = ReadPng(LogoBytes());
+    static byte[] LogoBytes()
+    {
+        var asm = typeof(ItamPdf).Assembly;
+        var name = asm.GetManifestResourceNames().Single(n => n.EndsWith("company-logo.png", StringComparison.OrdinalIgnoreCase));
+        using var s = asm.GetManifestResourceStream(name)!; using var ms = new MemoryStream(); s.CopyTo(ms); return ms.ToArray();
+    }
+
+    /// <summary>Reads an 8-bit, non-interlaced PNG (gray, RGB, gray + alpha or RGBA) into gray pixels on white.</summary>
+    public static Picture ReadPng(byte[] png)
+    {
+        static int Be(byte[] b, int i) => b[i] << 24 | b[i + 1] << 16 | b[i + 2] << 8 | b[i + 3];
+        static int Paeth(int a, int b, int c) { int p = a + b - c, pa = Math.Abs(p - a), pb = Math.Abs(p - b), pc = Math.Abs(p - c); return pa <= pb && pa <= pc ? a : pb <= pc ? b : c; }
+        int w = 0, h = 0, colorType = 0; using var idat = new MemoryStream();
+        for (var i = 8; i + 8 <= png.Length;)
+        {
+            var len = Be(png, i); var type = Encoding.ASCII.GetString(png, i + 4, 4);
+            if (type == "IHDR")
+            {
+                w = Be(png, i + 8); h = Be(png, i + 12); colorType = png[i + 17];
+                if (png[i + 16] != 8 || png[i + 20] != 0) throw new NotSupportedException("Only 8-bit, non-interlaced PNG images are supported.");
+            }
+            else if (type == "IDAT") idat.Write(png, i + 8, len);
+            else if (type == "IEND") break;
+            i += 12 + len;
+        }
+        var bpp = colorType switch { 0 => 1, 2 => 3, 4 => 2, 6 => 4, _ => throw new NotSupportedException("Unsupported PNG colour type.") };
+        idat.Position = 0; using var z = new ZLibStream(idat, CompressionMode.Decompress); using var raw = new MemoryStream(); z.CopyTo(raw);
+        var data = raw.ToArray(); var stride = w * bpp; var prev = new byte[stride]; var cur = new byte[stride]; var gray = new byte[w * h];
+        for (var y = 0; y < h; y++)
+        {
+            var f = data[y * (stride + 1)]; Array.Copy(data, y * (stride + 1) + 1, cur, 0, stride);
+            for (var x = 0; x < stride; x++)
+            {
+                int a = x >= bpp ? cur[x - bpp] : 0, b = prev[x], c = x >= bpp ? prev[x - bpp] : 0;
+                cur[x] = (byte)(cur[x] + f switch
+                {
+                    1 => a, 2 => b, 3 => (a + b) / 2,
+                    4 => Paeth(a, b, c),
+                    _ => 0
+                });
+            }
+            for (var x = 0; x < w; x++)
+            {
+                var o = x * bpp;
+                double lum = bpp >= 3 ? 0.299 * cur[o] + 0.587 * cur[o + 1] + 0.114 * cur[o + 2] : cur[o];
+                double alpha = bpp == 4 ? cur[o + 3] / 255.0 : bpp == 2 ? cur[o + 1] / 255.0 : 1;
+                gray[y * w + x] = (byte)Math.Round(255 - alpha * (255 - lum));
+            }
+            (prev, cur) = (cur, prev);
+        }
+        return new(w, h, gray);
+    }
+
+    byte[] Build(List<StringBuilder> pages, SortedSet<ushort> used, List<Picture> pictures, double pageW, double pageH)
     {
         var objects = new List<byte[]>();
         int Add(byte[] content) { objects.Add(content); return objects.Count; }
@@ -179,12 +250,14 @@ public sealed class ItamPdf
         var widths = string.Join(" ", used.Select(g => $"{g} [{(advance[g] * 1000.0 / unitsPerEm).ToString("0", inv)}]"));
         var cid = Add(Ascii($"<< /Type /Font /Subtype /CIDFontType2 /BaseFont /{fontName} /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor {descriptor} 0 R /W [{widths}] /CIDToGIDMap /Identity >>"));
         var type0 = Add(Ascii($"<< /Type /Font /Subtype /Type0 /BaseFont /{fontName} /Encoding /Identity-H /DescendantFonts [{cid} 0 R] >>"));
+        var images = pictures.Select(p => Add(Stream($"/Type /XObject /Subtype /Image /Width {p.Width} /Height {p.Height} /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode", Deflate(p.Gray)))).ToList();
+        var xobjects = images.Count == 0 ? "" : $" /XObject << {string.Join(" ", images.Select((id, i) => $"/Im{i} {id} 0 R"))} >>";
         var pagesId = objects.Count + 1; Add([]);
         var kids = new List<int>();
         foreach (var p in pages)
         {
             var content = Add(Stream("/Filter /FlateDecode", Deflate(Ascii(p.ToString()))));
-            kids.Add(Add(Ascii($"<< /Type /Page /Parent {pagesId} 0 R /MediaBox [0 0 {pageW.ToString("0.##", inv)} {pageH.ToString("0.##", inv)}] /Resources << /Font << /F1 {type0} 0 R >> >> /Contents {content} 0 R >>")));
+            kids.Add(Add(Ascii($"<< /Type /Page /Parent {pagesId} 0 R /MediaBox [0 0 {pageW.ToString("0.##", inv)} {pageH.ToString("0.##", inv)}] /Resources << /Font << /F1 {type0} 0 R >>{xobjects} >> /Contents {content} 0 R >>")));
         }
         objects[pagesId - 1] = Ascii($"<< /Type /Pages /Kids [{string.Join(" ", kids.Select(k => k + " 0 R"))}] /Count {kids.Count} >>");
         var catalog = Add(Ascii($"<< /Type /Catalog /Pages {pagesId} 0 R >>"));

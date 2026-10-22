@@ -209,18 +209,18 @@ public sealed partial class ItamStore
         (string En, string Ar, string? Name)[] signatures, string? stamp)
     {
         var pdf = Pdf ?? throw new InvalidOperationException("The PDF font is not configured.");
-        var doc = pdf.Start(); const double M = ItamPdf.Doc.M, W = ItamPdf.Doc.W; const string muted = "0.38 0.47 0.55", ink = "0.07 0.09 0.15", soft = "0.93 0.95 0.99";
+        var doc = pdf.Start(); const double M = ItamPdf.Doc.M, W = ItamPdf.Doc.W; const string muted = "0.35 0.35 0.35", ink = "0 0 0", soft = "0.93 0.93 0.93";
         void Centre(string? text, double cx, double y, double size, double width) { var t = text ?? ""; while (t.Length > 1 && pdf.Width(t, size) > width) t = t[..^2] + "…"; doc.Text(t, cx - pdf.Width(t, size) / 2, y, size, false, ink); }
-        doc.Text("ALTAWKILAT · IT Assets Management", M, doc.Y, 9, false, muted); doc.Text("إدارة أصول تقنية المعلومات", W - M, doc.Y, 9, true, muted); doc.Y -= 26;
-        doc.Text(titleEn, M, doc.Y, 20, false, ink); doc.Text(titleAr, W - M, doc.Y, 18, true, ink); doc.Y -= 12; doc.Box(M, doc.Y, W - 2 * M, 2, "0.15 0.39 0.92"); doc.Y -= 18;
-        if (stamp is not null) { doc.Box(M, doc.Y - 6, W - 2 * M, 22, "0.99 0.92 0.92"); doc.Text(stamp, M + 10, doc.Y, 11, false, "0.78 0.16 0.16"); doc.Text("لم يوقع بعد", W - M - 10, doc.Y, 11, true, "0.78 0.16 0.16"); doc.Y -= 28; }
+        doc.Logo(M, doc.Y + 10, 96); doc.Text("إدارة أصول تقنية المعلومات", W - M, doc.Y, 9, true, muted); doc.Text("IT Assets Management", W - M, doc.Y - 13, 9, true, muted); doc.Y -= 40;
+        doc.Text(titleEn, M, doc.Y, 20, false, ink); doc.Text(titleAr, W - M, doc.Y, 18, true, ink); doc.Y -= 12; doc.Box(M, doc.Y, W - 2 * M, 2, "0 0 0"); doc.Y -= 18;
+        if (stamp is not null) { doc.Box(M, doc.Y - 6, W - 2 * M, 22, "0.88 0.88 0.88"); doc.Text(stamp, M + 10, doc.Y, 11, false, "0 0 0"); doc.Text("لم يوقع بعد", W - M - 10, doc.Y, 11, true, "0 0 0"); doc.Y -= 28; }
         var cw = (W - 2 * M - 16) / 3;
         for (var i = 0; i < head.Length && i < 3; i++)
         { var x = M + i * (cw + 8); doc.Box(x, doc.Y - 30, cw, 44, soft); doc.Text(head[i].En, x + 8, doc.Y, 8.5, false, muted); doc.Text(head[i].Ar, x + cw - 8, doc.Y, 8.5, true, muted); Centre(head[i].V, x + cw / 2, doc.Y - 20, 12.5, cw - 16); }
         doc.Y -= 52;
         foreach (var (en, ar, rows) in sections)
         {
-            doc.Box(M, doc.Y - 6, W - 2 * M, 20, "0.08 0.21 0.48"); doc.Text(en, M + 8, doc.Y, 10.5, false, "1 1 1"); doc.Text(ar, W - M - 8, doc.Y, 10.5, true, "1 1 1"); doc.Y -= 22;
+            doc.Box(M, doc.Y - 6, W - 2 * M, 20, "0.86 0.86 0.86"); doc.Text(en, M + 8, doc.Y, 10.5, false, "0 0 0"); doc.Text(ar, W - M - 8, doc.Y, 10.5, true, "0 0 0"); doc.Y -= 22;
             foreach (var r in rows) { doc.Text(r.En, M + 8, doc.Y, 9.5, false, muted); Centre(r.Value, W / 2, doc.Y, 10.5, 250); doc.Text(r.Ar, W - M - 8, doc.Y, 9.5, true, muted); doc.Y -= 6; doc.Line(M, doc.Y, W - M, doc.Y); doc.Y -= 12; }
             doc.Y -= 8;
         }
@@ -230,7 +230,7 @@ public sealed partial class ItamStore
         {
             var x = M + i * (half + 30); var (en, ar, name) = signatures[i];
             doc.Text(en, x, sigY, 9.5, false, muted); doc.Text(ar, x + half, sigY, 9.5, true, muted); if (name is not null) doc.Fit(name, x, sigY - 18, 10, half, ink);
-            doc.Line(x, sigY - 58, x + half, sigY - 58, "0.55 0.60 0.68"); doc.Text("Signature · التوقيع", x, sigY - 70, 8, false, muted);
+            doc.Line(x, sigY - 58, x + half, sigY - 58, "0.45 0.45 0.45"); doc.Text("Signature · التوقيع", x, sigY - 70, 8, false, muted);
         }
         doc.Text($"IT Assets · {head[1].V}", M, M - 10, 7.5, false, muted); doc.Text("Printed from IT Assets", W - M, M - 10, 7.5, true, muted);
         return doc.Build();
@@ -293,22 +293,22 @@ public sealed partial class ItamStore
     byte[] Cover(string no, string supplier, string category, List<(DateOnly Date, string No, decimal Total)> invoices, string? by)
     {
         var pdf = Pdf ?? throw new InvalidOperationException("The PDF font is not configured.");
-        var d = pdf.Start(); const double M = ItamPdf.Doc.M, W = ItamPdf.Doc.W; const string muted = "0.38 0.47 0.55", ink = "0.07 0.09 0.15";
-        d.Text("ALTAWKILAT", M, d.Y, 11, false, muted); d.Text("التوكيلات", W - M, d.Y, 11, true, muted); d.Y -= 30;
-        d.Text("INTER-OFFICE MEMORANDUM", M, d.Y, 20, false, ink); d.Text("مذكرة داخلية", W - M, d.Y, 18, true, ink); d.Y -= 12; d.Box(M, d.Y, W - 2 * M, 2, "0.15 0.39 0.92"); d.Y -= 24;
+        var d = pdf.Start(); const double M = ItamPdf.Doc.M, W = ItamPdf.Doc.W; const string muted = "0.35 0.35 0.35", ink = "0 0 0";
+        d.Logo(M, d.Y + 10, 110); d.Text("IT Department", W - M, d.Y, 10, true, muted); d.Text("قسم تقنية المعلومات", W - M, d.Y - 14, 10, true, muted); d.Y -= 44;
+        d.Text("INTER-OFFICE MEMORANDUM", M, d.Y, 20, false, ink); d.Text("مذكرة داخلية", W - M, d.Y, 18, true, ink); d.Y -= 12; d.Box(M, d.Y, W - 2 * M, 2, "0 0 0"); d.Y -= 24;
         foreach (var (k, v) in new[] { ("Date", DateTime.UtcNow.AddHours(3).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)), ("To", "Accounts Department"), ("From", "IT Department"),
             ("Subject", $"Payment of {CategoryLabel(category).ToLowerInvariant()} invoices — {supplier}"), ("Reference", no) })
         { d.Text(k + ":", M, d.Y, 10.5, false, muted); d.Fit(v, M + 80, d.Y, 10.5, W - 2 * M - 80, ink); d.Y -= 17; }
         d.Y -= 10;
         d.Fit($"Attached please find {invoices.Count} invoice{(invoices.Count == 1 ? "" : "s")} from {supplier} which {(invoices.Count == 1 ? "is" : "are")} due for payment.", M, d.Y, 11, W - 2 * M, ink); d.Y -= 24;
         double[] col = [M, M + 150, M + 340];
-        d.Box(M, d.Y - 6, W - 2 * M, 20, "0.93 0.95 0.99"); d.Text("Date", col[0] + 6, d.Y, 9.5, false, muted); d.Text("Invoice No.", col[1] + 6, d.Y, 9.5, false, muted); d.Text("Amount (SAR, incl. VAT)", col[2] + 6, d.Y, 9.5, false, muted); d.Y -= 22;
+        d.Box(M, d.Y - 6, W - 2 * M, 20, "0.93 0.93 0.93"); d.Text("Date", col[0] + 6, d.Y, 9.5, false, muted); d.Text("Invoice No.", col[1] + 6, d.Y, 9.5, false, muted); d.Text("Amount (SAR, incl. VAT)", col[2] + 6, d.Y, 9.5, false, muted); d.Y -= 22;
         foreach (var i in invoices)
         { d.Text(i.Date.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture), col[0] + 6, d.Y, 10.5, false, ink); d.Fit(i.No, col[1] + 6, d.Y, 10.5, 180, ink); d.Text(i.Total.ToString("#,##0.00", CultureInfo.InvariantCulture), col[2] + 6, d.Y, 10.5, false, ink); d.Y -= 6; d.Line(M, d.Y, W - M, d.Y); d.Y -= 14; }
         d.Text("Total (SAR)", col[1] + 6, d.Y, 11, false, ink); d.Text(invoices.Sum(i => i.Total).ToString("#,##0.00", CultureInfo.InvariantCulture), col[2] + 6, d.Y, 11.5, false, ink); d.Y -= 44;
         var w = (W - 2 * M - 40) / 3;
         foreach (var (k, i) in new[] { "Checked by (IT)", "Approved by (Head of Department)", "Accountant" }.Select((k, i) => (k, i)))
-        { var x = M + i * (w + 20); d.Text(k, x, d.Y, 9.5, false, muted); if (i == 0 && by is not null) d.Fit(by, x, d.Y - 16, 10, w, ink); d.Line(x, d.Y - 56, x + w, d.Y - 56, "0.55 0.60 0.68"); d.Text("Signature and date", x, d.Y - 68, 8, false, muted); }
+        { var x = M + i * (w + 20); d.Text(k, x, d.Y, 9.5, false, muted); if (i == 0 && by is not null) d.Fit(by, x, d.Y - 16, 10, w, ink); d.Line(x, d.Y - 56, x + w, d.Y - 56, "0.45 0.45 0.45"); d.Text("Signature and date", x, d.Y - 68, 8, false, muted); }
         d.Text($"IT Assets · {no}", M, M - 10, 7.5, false, muted);
         return d.Build();
     }

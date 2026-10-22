@@ -368,7 +368,7 @@ public sealed partial class ItamStore
         var pdf = Pdf ?? throw new InvalidOperationException("The PDF font is not configured.");
         var snap = JsonSerializer.Deserialize<NoteSnapshot>(d.Snapshot, Json)!;
         var doc = pdf.Start(); const double M = ItamPdf.Doc.M, W = ItamPdf.Doc.W;
-        const string muted = "0.38 0.47 0.55", ink = "0.07 0.09 0.15", soft = "0.93 0.95 0.99";
+        const string muted = "0.35 0.35 0.35", ink = "0 0 0", soft = "0.93 0.93 0.93";
         var inv = CultureInfo.InvariantCulture;
         // Values sit in the middle, between the English and Arabic labels (owner, 22 October 2026).
         void Centre(string? text, double cx, double y, double size, double width, string color)
@@ -382,10 +382,10 @@ public sealed partial class ItamStore
             NoteKind.Receipt => ("Receipt Note", "سند استلام عهدة", d.No + "-R", d.ReceivedAt!.Value.AddHours(3).ToString("dd/MM/yyyy", inv)),
             _ => ("Technical Assessment", "تقييم فني", ta!.Value.No, ta.Value.At.AddHours(3).ToString("dd/MM/yyyy", inv))
         };
-        doc.Text("ALTAWKILAT · IT Assets Management", M, doc.Y, 9, false, muted); doc.Text("إدارة أصول تقنية المعلومات", W - M, doc.Y, 9, true, muted); doc.Y -= 26;
+        doc.Logo(M, doc.Y + 10, 96); doc.Text("إدارة أصول تقنية المعلومات", W - M, doc.Y, 9, true, muted); doc.Text("IT Assets Management", W - M, doc.Y - 13, 9, true, muted); doc.Y -= 40;
         doc.Text(titleEn, M, doc.Y, 20, false, ink); doc.Text(titleAr, W - M, doc.Y, 18, true, ink); doc.Y -= 12;
-        doc.Box(M, doc.Y, W - 2 * M, 2, "0.15 0.39 0.92"); doc.Y -= 18;
-        if (stamp is not null) { doc.Box(M, doc.Y - 6, W - 2 * M, 22, "0.99 0.92 0.92"); doc.Text(stamp, M + 10, doc.Y, 11, false, "0.78 0.16 0.16"); doc.Text("لم يوقع بعد", W - M - 10, doc.Y, 11, true, "0.78 0.16 0.16"); doc.Y -= 28; }
+        doc.Box(M, doc.Y, W - 2 * M, 2, "0 0 0"); doc.Y -= 18;
+        if (stamp is not null) { doc.Box(M, doc.Y - 6, W - 2 * M, 22, "0.88 0.88 0.88"); doc.Text(stamp, M + 10, doc.Y, 11, false, "0 0 0"); doc.Text("لم يوقع بعد", W - M - 10, doc.Y, 11, true, "0 0 0"); doc.Y -= 28; }
         // Date, document number, Asset No.
         var cw = (W - 2 * M - 16) / 3;
         (string En, string Ar, string V)[] head = [("Date", "التاريخ", date), ("Document No.", "رقم المستند", docNo), ("Asset No.", "رقم المخزون", d.AssetNo)];
@@ -398,7 +398,7 @@ public sealed partial class ItamStore
         doc.Y -= 52;
         void Section(string en, string ar, IEnumerable<NoteRow> rows)
         {
-            doc.Box(M, doc.Y - 6, W - 2 * M, 20, "0.08 0.21 0.48"); doc.Text(en, M + 8, doc.Y, 10.5, false, "1 1 1"); doc.Text(ar, W - M - 8, doc.Y, 10.5, true, "1 1 1"); doc.Y -= 22;
+            doc.Box(M, doc.Y - 6, W - 2 * M, 20, "0.86 0.86 0.86"); doc.Text(en, M + 8, doc.Y, 10.5, false, "0 0 0"); doc.Text(ar, W - M - 8, doc.Y, 10.5, true, "0 0 0"); doc.Y -= 22;
             foreach (var r in rows)
             {
                 doc.Text(r.En, M + 8, doc.Y, 9.5, false, muted); Centre(r.Value, W / 2, doc.Y, 10.5, 250, ink); doc.Text(r.Ar, W - M - 8, doc.Y, 9.5, true, muted);
@@ -415,7 +415,7 @@ public sealed partial class ItamStore
         if (extra.Any(r => !string.IsNullOrWhiteSpace(r.Value))) Section(kind == NoteKind.Delivery ? "Delivery Details" : kind == NoteKind.Receipt ? "Receipt Details" : "Assessment", kind == NoteKind.Delivery ? "تفاصيل التسليم" : kind == NoteKind.Receipt ? "تفاصيل الاستلام" : "التقييم", extra.Where(r => !string.IsNullOrWhiteSpace(r.Value)));
         if (kind == NoteKind.Assessment)
         {
-            doc.Box(M, doc.Y - 6, W - 2 * M, 20, "0.08 0.21 0.48"); doc.Text("Technical Review", M + 8, doc.Y, 10.5, false, "1 1 1"); doc.Text("المراجعة الفنية", W - M - 8, doc.Y, 10.5, true, "1 1 1"); doc.Y -= 22;
+            doc.Box(M, doc.Y - 6, W - 2 * M, 20, "0.86 0.86 0.86"); doc.Text("Technical Review", M + 8, doc.Y, 10.5, false, "0 0 0"); doc.Text("المراجعة الفنية", W - M - 8, doc.Y, 10.5, true, "0 0 0"); doc.Y -= 22;
             foreach (var line in Wrap(pdf, ta!.Value.Review, 10, W - 2 * M - 16)) { doc.Text(line, M + 8, doc.Y, 10, false, ink); doc.Y -= 14; if (doc.Y < M + 140) break; }
             doc.Y -= 8;
         }
@@ -432,7 +432,7 @@ public sealed partial class ItamStore
         {
             doc.Text(en, x, sigY, 9.5, false, muted); doc.Text(ar, x + w, sigY, 9.5, true, muted);
             if (name is not null) doc.Fit(name, x, sigY - 18, 10, w, ink);
-            doc.Line(x, sigY - 58, x + w, sigY - 58, "0.55 0.60 0.68"); doc.Text("Signature · التوقيع", x, sigY - 70, 8, false, muted);
+            doc.Line(x, sigY - 58, x + w, sigY - 58, "0.45 0.45 0.45"); doc.Text("Signature · التوقيع", x, sigY - 70, 8, false, muted);
         }
         var half = (W - 2 * M - 30) / 2;
         if (kind == NoteKind.Assessment) Sign(M, half, "IT Representative", "ممثل تقنية المعلومات", itPerson);
@@ -492,7 +492,7 @@ public sealed partial class ItamStore
         for (var r = 0; r < m.Count; r++) for (var k = 0; k < m[r].Length; k++) if (m[r][k]) d.Box(qx + k * cell, qy + (m.Count - 1 - r) * cell, cell + 0.05, cell + 0.05, "0 0 0");
         d.Text(new Uri(LabelBaseUrl).Host, qx + qr / 2 - pdf.Width(new Uri(LabelBaseUrl).Host, 5) / 2, 2.2 * mm, 5, false, "0 0 0");
         double bx = 28 * mm, bw = Wd - bx - 2 * mm;
-        d.Text("ALTAWKILAT", bx + 1 * mm, Ht - 8 * mm, 12, false, "0 0 0"); d.Text("التوكيلات", bx + bw - 1 * mm, Ht - 13.2 * mm, 8.5, true, "0 0 0");
+        d.Logo(bx + 0.5 * mm, Ht - 3 * mm, bw - 1 * mm);
         double by = 3.5 * mm, bh = 19 * mm, row = bh / 2, lw = 7 * mm;
         d.Line(bx, by, bx + bw, by, "0 0 0"); d.Line(bx, by + bh, bx + bw, by + bh, "0 0 0"); d.Line(bx, by + row, bx + bw, by + row, "0 0 0");
         d.Line(bx, by, bx, by + bh, "0 0 0"); d.Line(bx + bw, by, bx + bw, by + bh, "0 0 0"); d.Line(bx + lw, by, bx + lw, by + bh, "0 0 0");
