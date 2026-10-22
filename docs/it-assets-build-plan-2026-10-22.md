@@ -1,0 +1,157 @@
+# IT Assets (ITAM) — Build Plan (standalone application)
+
+**Date:** 22 October 2026 · **Status:** plan; nothing built yet
+**Design input:** `New Platform\IT Assets` (Project Plan v1.9, Business Scenarios, CONFIRMED_RULES, Permission Matrix,
+40 form workbooks, 31 email templates, master data workbook, document and label examples, clickable demo).
+
+## Owner decision, 22 October 2026: a separate application, in its own repository
+
+IT Assets is **a separate application, not part of the shared platform**, as CONFIRMED_RULES and Standalone_Hosting say
+(an earlier choice the same day to host it in the hub was withdrawn). Its code lives in **its own GitHub repository**.
+Everything in CONFIRMED_RULES stays authoritative.
+
+| Area | IT Assets as a standalone application |
+| --- | --- |
+| Servers | The same ATWK-WEB-1 and ATWK-SQL-1, but nothing shared with the hub |
+| Site | Its own IIS site and application pool; address, binding and certificate to configure (`ITAssetsBaseUrl`; not hub.altawkilat.com/itasm) |
+| Sign-in | Its own Windows / Active Directory sign-in (the employee's own Windows account) |
+| Database | Its own database `ITAM_Production` (own runtime login, migrations ledger, backups, restore runbook) |
+| Directory | Its own read-only Active Directory reading of the users OU (OU=Users,OU=ALTAWKILAT Users) and of the computer OUs |
+| Roles | Its own roles and regional scopes (IT Support Specialist per region, Team Leader, System Administrator, Voice Administrator, IT Assets Officer, IT Manager, IT Administrator, Auditor) |
+| Email | Its own sender, templates IT-EM-xx and outbox, through the corporate SMTP relay with an independent connection |
+| Jobs, files, PDFs | Its own scheduler, document store (folder per record) and PDF generation |
+| Test | A separate IT Assets test site and test database on the same servers; test email only to a test mailbox (plan v1.9) |
+| Code | Its own repository: `src/Itam.Web` (site), `src/Itam.Core` (rules and store), `db/` (migrations), `tools/Itam.Demo`, `tests/Itam.Checks`; written in the same style as the platform code but sharing no code at runtime |
+| Releases | Its own install and update packages with preview, backup and rollback |
+| Master data | Its own regions, branches and IT warehouses (the Shared Administration Center is postponed and IT Assets does not depend on it) |
+
+## Owner decision, 22 October 2026: delivery notes are signed on paper by the employee himself
+
+Replaces the electronic acceptance in plan v1.9 (Accept / Report a problem, stamped PDF, acceptance reminders):
+
+1. IT issues the delivery in IT Assets; the bilingual delivery note PDF is generated and printed.
+2. **The employee signs the printed note by hand, himself.** No one signs or accepts for him: not IT, not his manager,
+   not a backup.
+3. IT scans and uploads the signed copy to the delivery. The delivery shows **Waiting for signed copy** until then, and
+   **Signed** after (who uploaded, when). The signed copy is kept unchanged; the unsigned PDF stays as issued.
+4. Reminders go to the IT person who issued the delivery (and the Team Leader when overdue), not to the employee.
+5. The employee still sees the note on My IT Assets (read-only) and may get it by email for information, without an
+   Accept button.
+6. Where the plan says "accepted delivery note" (procurement documents for Accounting, branch transfers that change
+   custody), it now means the delivery note with the signed copy uploaded.
+
+Ink delivery notes follow the same rule: printed, signed on paper by the employee himself, signed copy uploaded by the ink handler (confirmed by the owner, 22 October 2026).
+
+## Purchase orders (PO) — added on the owner's request, 22 October 2026
+
+There is no SAP: Procurement sends each PO to IT by email. IT records it in IT Assets and registers the devices by
+receiving them against the PO (forms 12 Purchase Order and 13 PO Stock Receiving).
+
+**Record a PO** (IT Assets Officer):
+
+| Field | Rule |
+| --- | --- |
+| PO Number | As written on the PO document; unique; required |
+| PO Date, Supplier | Required (supplier from master data) |
+| Raised by | Procurement, or the IT procurement request it came from (PR-n) |
+| PO lines | One row per product: asset type, manufacturer, model, specification, quantity, unit cost (SAR before VAT); line and PO totals with VAT 15% |
+| Invoice number | Optional; added when the invoice arrives |
+| PO document | The PDF from Procurement, attached; required |
+
+**Receive devices against a PO** (IT Assets Officer, or regional IT for its own warehouse):
+
+- Choose the PO line and the receiving IT warehouse or branch; enter each device on its own row with serial number,
+  service tag, MAC address and the other fields of its type. Each row becomes an asset with its Asset No. (PC-n …),
+  status In Store, the PO number, supplier, unit cost and PO date as purchase details.
+- Partial receipts are allowed (several deliveries per PO); **receiving more than the remaining quantity of a line is
+  refused**, and duplicate serial numbers, service tags and MAC addresses are refused.
+- Optional delivery evidence (supplier's delivery note) and invoice reference per receipt.
+
+**PO page and PO Delivery Report** (counts kept by the system):
+
+| Count | Meaning |
+| --- | --- |
+| Ordered | Sum of the PO line quantities |
+| Received by IT | Devices registered against the PO |
+| Still to come | Ordered minus received |
+| In IT stock | Received devices In Store and not reserved |
+| Reserved, pending delivery | In Store and reserved for an approved request |
+| Delivered, waiting for signed copy | In Use; the delivery note is not yet signed on paper and uploaded |
+| Delivered and signed | In Use with the signed delivery note uploaded |
+
+The **PO Delivery Report** is a printable bilingual PDF for Accounting: the PO, these counts, and each device with its
+state, employee or location, request, delivery note and signed date; signed by the IT Assets Officer and received by
+Accounting (the date sent is recorded).
+
+**Goal (owner, 22 October 2026): print one PO pack with the delivery notes of all its items.** "Print PO pack" makes
+one PDF, in this order:
+
+1. Cover: the PO Delivery Report above (PO, counts, one line per device).
+2. The PO document from Procurement.
+3. The delivery note of every device on the PO, in Asset No. order: the **signed copy** uploaded by IT; if a device is
+   not yet signed, the issued note marked "Not yet signed"; if not yet delivered, a line "In IT stock / reserved".
+
+The cover lists anything not yet delivered or signed, so the IT Assets Officer can print now or wait until the PO is
+complete. Each print is recorded (who, when, how many notes, which were unsigned) together with the date sent to Accounting.
+
+Migration: existing assets keep the PO and invoice numbers typed in SharePoint as references; PO records start with the
+new system (there is no PO list today).
+
+## Ink invoices — ink is tracked by the supplier's invoice (owner, 22 October 2026)
+
+Printer ink has no PO: the supplier invoice is the purchase record.
+
+- **Record an ink invoice** (ink handler of the region or IT Assets Officer): invoice number (unique per supplier),
+  date, supplier, region, invoice PDF attached, lines (toner model, quantity, unit cost before VAT; totals with VAT 15%).
+- **Ink delivery from an invoice:** when the ink handler delivers ink for an approved ink request, he picks the
+  invoice line the cartridge comes from. Delivering more than the line's remaining quantity is refused. The ink delivery
+  note (printer Asset No. + ink sequence, e.g. PNT-2879-602) is printed, signed on paper by the employee and uploaded.
+- **Invoice page:** invoiced, delivered (signed / waiting for signed copy), still in stock, per line.
+- **Print invoice pack:** one PDF with a cover (invoice, lines, counts, one line per ink delivery: employee, printer,
+  request INK-n, signed date), the invoice document, then every **signed ink delivery note** for that invoice (unsigned ones
+  marked "Not yet signed"). Each print and the date sent to Accounting are recorded.
+- Migration: the 589 SharePoint ink deliveries keep their cost and become ink delivery notes without an invoice link
+  (no invoice list exists today); invoice tracking starts with the new system.
+
+**Create the invoice from the uploaded file (owner request, 22 October 2026).** The handler uploads the supplier's
+invoice PDF; the system reads it and fills the invoice form (number, date, supplier and VAT number, lines, totals). The
+handler always reviews and corrects before saving; nothing is created without that check. Reading, from most to least
+reliable:
+
+1. **Saudi e-invoice (ZATCA / FATOORA):** PDF/A-3 with the invoice XML (UBL 2.1) embedded: exact header, lines and totals,
+   read on our own server.
+2. **Text PDF:** text read on our server with a small reading rule per supplier (one or two sample invoices per supplier
+   needed to set it up).
+3. **Scanned picture:** OCR on our server (weak on tables and Arabic) or, only if the owner and IT approve sending
+   invoices outside the company, cloud AI reading.
+
+Then: each line is matched to a toner model in master data (unmatched lines are flagged for the handler to choose, and
+the choice is remembered for that supplier's wording); totals and VAT 15% are checked; an invoice number already
+recorded for the supplier is refused. The same reading can later fill PO lines from the PO document.
+
+To confirm: sample invoices from the main ink suppliers (to see which level applies), and whether cloud AI reading of
+scanned invoices is allowed (default: no).
+
+## Build order (demo first, every step reviewed by the owner)
+
+| Step | Content | Result |
+| --- | --- | --- |
+| 1. Foundation + register + PO | Database, roles and regional scopes, audit, master data (types and short codes, statuses, regions, branches, IT warehouses, suppliers), asset register (fields per type, Asset No. by rule, duplicate serial/service tag/MAC checks, history), purchase orders (record the PO with its lines and document; receive devices against it, partial receipts, no over-receipt; PO page, PO Delivery Report and the PO pack with all delivery notes), My Backup | Demo: record a PO, receive devices, find assets, print the PO pack |
+| 2. Handover | Delivery to an employee (one open custody per asset, computer-name rule), bilingual delivery note PDF printed and signed by the employee on paper, signed copy uploaded (Waiting for signed copy / Signed, reminders to IT), receipt note (-R), technical assessment on the delivery, AD/Endpoint and CUCM removal tasks, labels (Zebra ZPL 63.5 x 38.1 mm + PDF) | Demo: full handover cycle |
+| 3. Self-service + requests | My IT Assets (and My Team), device and accessory requests with manager one-click approval and cost approval, ink requests (regional handler, manager approval), ink invoices and ink delivery notes from an invoice, invoice pack, request documents for Accounting | Demo: employee and manager pages |
+| 4. Stock movements | Stock allocation, gate passes and branch transfers (approval, dispatch, per-asset receipt, discrepancies), warehouse transfers (no approval), maintenance orders | Demo: movements |
+| 5. End of life + AD | Loss cases, disposal (approval then completion), sale, employee clearance, Assets to collect, AD computer comparison, licenses (encrypted keys) | Feature complete |
+| 6. Reports + migration | Dashboards, Excel exports, SharePoint migration (read-only extract, cleaning, numbers kept, two rehearsals) | Ready for UAT |
+| 7. Production | IT creates the IIS sites (test and production) and binding; install packages (database, site files), test site with test mailbox, UAT, final migration, go-live | Live |
+
+Numbers stay as today: Asset No. = short code + one shared sequence (PC-822; continue after 4808), delivery note
+PNT-2879-3060 (continue after 4132), receipt = delivery number + -R, TA-<delivery no.>, ink delivery = printer Asset No. +
+ink sequence (after 601), PR-n, GP-n, WT-n.
+
+## To confirm with the owner (not blocking step 1)
+
+1. Address and binding of the IT Assets site (production and test), and its certificate; done by IT infrastructure.
+2. Who holds IT Administrator (plan open question 20; proposed: the System Administrator and a backup).
+3. Cairo location and UAE assets (open question 1); Zebra printer model and dpi; reminder timings.
+4. Unfilled permission rows in the matrix (liability/write-off, disposal completion, branch discrepancy resolution) stay
+   disabled until confirmed.
