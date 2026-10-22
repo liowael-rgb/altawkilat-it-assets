@@ -409,3 +409,8 @@
 .x .x-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 18px}
 .x .x-filterbar{display:flex;align-items:center;gap:14px;margin:0 0 14px}
 .x .x-filterbar input{max-width:380px}
+/* Filter buttons in colour (owner, 22 October 2026): the chosen one solid blue, the others light blue. */
+.x .x-seg{border-color:#bcd3f7;background:var(--accbg)}
+.x .x-seg button{color:var(--acc2)}
+.x .x-seg button:hover{background:#d7e6fd;color:var(--acc2)}
+.x .x-seg button[aria-pressed=true]{background:var(--acc);color:#fff;box-shadow:0 1px 2px #2563eb4d,0 4px 10px #2563eb33}
