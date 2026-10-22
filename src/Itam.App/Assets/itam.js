@@ -111,6 +111,7 @@ export async function shell(current){
   if(m.can.admin){adminH.hidden=false;link(adminNav,'admin','Administration Center','/admin.html');const areas=$('side');if(areas&&current==='admin'){areas.className='it-subnav';adminNav.append(areas);}}
   const roles=[...new Set(m.roles.map(r=>r.label))].join(', ')||'Employee';
   const who=el('div');const regs=[...new Set([...(m.regions||[]),...(m.inkRegions||[])])];who.append(el('b',m.name),el('small',roles+(m.viewsAll?' · All regions':regs.length?' · '+regs.join(', '):'')));meBox.append(el('span',initials(m.name),'x-avatar'),who);
+  watchTables();
   return m;
 }
 
@@ -191,3 +192,45 @@ export function adDrawer(e){
   const close=el('button','Close','x-drawer-close');close.type='button';close.onclick=()=>d.close();
   d.replaceChildren(close,adCard(e));d.showModal();
 }
+
+// Search on every table (owner, 22 October 2026): a box above each list searches all columns or one chosen column (every
+// word must match, case and accents ignored), shows how many rows match, and a click on a column heading sorts it. Added
+// automatically to every table on every page; the search is kept when the page redraws the table after an action.
+const tableSearch=new Map();
+const norm=s=>(s||'').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim();
+function sortKey(text){const t=(text||'').trim();
+  const d=t.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:,?\s*(\d{2}):(\d{2}))?/);if(d)return {n:Number(d[3]+d[2]+d[1]+(d[4]||'00')+(d[5]||'00'))};
+  const n=t.replace(/SAR|,/g,'').trim();if(n!==''&&!isNaN(Number(n)))return {n:Number(n)};
+  const code=t.match(/^([A-Z]{2,4})-(\d+)/);if(code)return {s:code[1],n:Number(code[2])};
+  return {s:norm(t)};}
+function compare(a,b){if(a.s!==undefined||b.s!==undefined){const c=(a.s||'').localeCompare(b.s||'');if(c)return c;}return (a.n??0)-(b.n??0);}
+function enhanceTable(wrap){
+  if(wrap.dataset.search||wrap.closest('dialog'))return;const t=wrap.querySelector('table');const body=t?.tBodies[0];if(!body)return;
+  const data=()=>[...body.rows].filter(r=>!r.classList.contains('x-nomatch')&&!r.querySelector('td.empty'));
+  if(data().length<3){wrap.dataset.search='few';return;}
+  // A list that already has its own search box (Assets, Handover) keeps it.
+  if([...(wrap.closest('.card')||wrap.parentNode).querySelectorAll('input[type=search],input[type=text]')].some(i=>!i.closest('.x-tsearch')&&!t.contains(i))){wrap.dataset.search='own';return;}
+  wrap.dataset.search='on';
+  const heads=[...(t.tHead?.rows[0]?.cells||[])];
+  const card=wrap.closest('.card');const key=location.pathname+'|'+(card?.querySelector('h2')?.textContent||'')+'|'+heads.map(h=>h.textContent).join(',');
+  const bar=el('div',null,'x-tsearch');const q=el('label',null,'x-tq');const input=document.createElement('input');input.type='search';input.placeholder='Search this list';input.setAttribute('aria-label','Search this list');
+  q.append(svg('search'),input);
+  const col=document.createElement('select');col.setAttribute('aria-label','Search in');col.append(option('','In all columns'));
+  heads.forEach((h,i)=>{const name=h.textContent.trim();if(name)col.append(option(String(i),'In '+name));});
+  const count=el('span',null,'x-tcount');const clear=el('button','Clear','x-tclear');clear.type='button';clear.hidden=true;
+  bar.append(q,col,count,clear);wrap.parentNode.insertBefore(bar,wrap);
+  let none=null;
+  const apply=()=>{const words=norm(input.value).split(' ').filter(Boolean);const c=col.value;const rows=data();let n=0;
+    for(const r of rows){const text=norm(c===''?r.textContent:r.cells[Number(c)]?.textContent);const ok=words.every(w=>text.includes(w));r.hidden=!ok;if(ok)n++;}
+    count.textContent=words.length?`${n} of ${rows.length}`:`${rows.length} rows`;clear.hidden=!words.length&&c==='';
+    if(!n&&words.length){if(!none){none=el('tr',null,'x-nomatch');const td=el('td','No row matches the search.');td.colSpan=heads.length||1;none.append(td);}body.append(none);}else none?.remove();
+    tableSearch.set(key,{q:input.value,c});};
+  input.addEventListener('input',apply);col.addEventListener('change',apply);clear.onclick=()=>{input.value='';col.value='';apply();input.focus();};
+  heads.forEach((h,i)=>{if(!h.textContent.trim())return;h.classList.add('x-sortable');h.title='Sort by '+h.textContent.trim();
+    h.onclick=()=>{const dir=h.dataset.sort==='asc'?'desc':'asc';heads.forEach(x=>delete x.dataset.sort);h.dataset.sort=dir;
+      const rows=data().map(r=>[r,sortKey(r.cells[i]?.textContent)]);rows.sort((a,b)=>compare(a[1],b[1])*(dir==='asc'?1:-1));for(const [r] of rows)body.append(r);if(none?.isConnected)body.append(none);};});
+  const saved=tableSearch.get(key);if(saved){input.value=saved.q;col.value=saved.c;}apply();
+}
+let enhanceTimer;
+function watchTables(){const run=()=>document.querySelectorAll('.table-wrap').forEach(enhanceTable);
+  new MutationObserver(()=>{clearTimeout(enhanceTimer);enhanceTimer=setTimeout(run,40);}).observe(document.body,{childList:true,subtree:true});run();}

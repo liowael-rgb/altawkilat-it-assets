@@ -484,3 +484,29 @@
 .x .x-alert-text .x-sub{display:block}
 .x .x-alert-refs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:4px}
 .x a.x-alert>.x-i{flex:0 0 auto;width:18px;height:18px;color:var(--faint)}
+
+/* ---- Visual refresh before production (owner, 22 October 2026): coloured titles, accent card headings, tinted table headers. ---- */
+.x{--title:#0f2f6b;--title2:#1d4ed8;--thbg:#eef3fc;--think:#33476e;--rowhover:#f6f9ff}
+.x .eyebrow{color:var(--acc);text-transform:uppercase;letter-spacing:.09em;font-size:11.5px;font-weight:750}
+.x .page-head{padding-bottom:18px;border-bottom:1px solid var(--line)}
+.x .page-head h1{color:var(--title);font-size:29px}
+.x .card>h2{color:var(--title)}
+.x .card>h2::before{content:"";flex:0 0 4px;align-self:stretch;min-height:18px;border-radius:4px;background:linear-gradient(180deg,var(--acc),#60a5fa)}
+.x .card h3{color:var(--title2)}
+.x th{background:var(--thbg);color:var(--think);border-bottom:1px solid #d9e3f5}
+.x tbody tr:hover td{background:var(--rowhover)}
+.x .x-rail .x-nav.on{box-shadow:inset 3px 0 0 var(--acc)}
+.x .x-navh{color:var(--acc);opacity:.8}
+
+/* ---- Search on every table: all columns or one column, how many rows match, sort by clicking a column heading. ---- */
+.x .x-tsearch{display:flex;align-items:center;gap:10px;margin:0 0 10px;flex-wrap:wrap}
+.x .x-tsearch .x-tq{position:relative;flex:1 1 280px;max-width:460px}
+.x .x-tsearch .x-tq input{width:100%;height:38px;padding:0 12px 0 36px;border:1px solid var(--line2);border-radius:10px;background:#fff;font:inherit;font-size:13.5px}
+.x .x-tsearch .x-tq input:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px var(--accring)}
+.x .x-tsearch .x-tq .x-i{position:absolute;left:11px;top:10px;width:17px;height:17px;color:var(--faint)}
+.x .x-tsearch select{height:38px;padding:0 10px;border:1px solid var(--line2);border-radius:10px;background:#fff;font:inherit;font-size:13px;max-width:240px}
+.x .x-tsearch .x-tcount{color:var(--sub);font-size:12.5px;font-weight:600}
+.x .x-tsearch button.x-tclear{height:32px;padding:0 10px;font-size:12.5px}
+.x th.x-sortable{cursor:pointer;user-select:none}.x th.x-sortable:hover{color:var(--acc2)}
+.x th.x-sortable[data-sort]::after{content:" \25B2";font-size:9px;color:var(--acc)}.x th.x-sortable[data-sort="desc"]::after{content:" \25BC"}
+.x tr.x-nomatch td{color:var(--sub);text-align:center;font-style:italic}

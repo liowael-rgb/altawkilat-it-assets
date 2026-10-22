@@ -407,3 +407,13 @@ the page where the work is done; items with a deadline or overdue are marked urg
 - End of life: assets to collect, clearances ready to complete, users to disable in AD, disposals to complete, loss
   settlements and recovered assets to review, AD comparison differences.
 Emails and the weekly summary (IT-EM-12, IT-EM-61) will use the same list when the email step is built.
+
+## Look and table search before production (owner, 22 October 2026)
+
+- Look: section labels in blue capitals, page and card titles in navy with a blue accent bar on each card heading, tinted
+  table headings, row highlight on hover, the active menu item marked with a blue bar.
+- Search on every list: a box above each table searches all columns, or one chosen column ("In Employee", "In Asset"...);
+  every word must match (case ignored); it shows "n of m" rows and "No row matches" when nothing does; a click on a column
+  heading sorts it (dates, amounts and numbers like PC-4816 in their real order), a second click reverses. The search is
+  kept when the page redraws the list after an action. Lists that already have their own search (Assets with its full
+  search panel, Handover) keep theirs; lists of fewer than three rows have no box.
