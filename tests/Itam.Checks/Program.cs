@@ -60,7 +60,7 @@ try
     // ---- Register ----------------------------------------------------------------------------------------------------------------
     ItamAssetInput A(string type, int loc, int model, string? serial, string? tag = null, string? mac = null, Dictionary<string, string?>? at = null, string? osKey = null, int mf = 1)
         => new(type, loc, mf, model, null, serial, tag, mac, null, "New", new DateOnly(2026, 1, 10), null, null, null, null, null, at, osKey, null);
-    var pcAttrs = new Dictionary<string, string?> { ["ComputerType"] = "Notebook", ["OperatingSystem"] = "Win11", ["MemoryGb"] = "16" };
+    var pcAttrs = new Dictionary<string, string?> { ["ComputerType"] = "Notebook", ["OperatingSystem"] = "Win11", ["MemoryGb"] = "16", ["Processor"] = "Core i5", ["CapacityGb"] = "512" };
     var pc = JsonSerializer.SerializeToElement(await store.Register(U(1), A("PC", 1, 1, "SN-0001", "TAG1", null, pcAttrs, "AAAAA-BBBBB"), default));
     var mon = JsonSerializer.SerializeToElement(await store.Register(U(1), A("MON", 2, 2, "MN-0001"), default));
     Check(pc.GetProperty("assetNo").GetString() == "PC-4809" && mon.GetProperty("assetNo").GetString() == "MON-4810", "Asset No.: product code and one sequence for all types, after 4808");
@@ -69,6 +69,8 @@ try
     Check((await Error(() => store.Register(U(1), A("IP", 1, 3, "IP-0001", mf: 2), default))).Contains("MAC"), "MAC address required for IP phones");
     Check((await Error(() => store.Register(U(1), A("MON", 1, 2, null), default))).Contains("Serial"), "Serial number required (except software)");
     Check(await Throws<ArgumentException>(() => store.Register(U(1), A("PC", 1, 1, "SN-0003", "TAG3", null, new() { ["ComputerType"] = "Spaceship" }), default)), "List fields accept list values only");
+    Check((await Error(() => store.Register(U(1), A("PC", 1, 1, null, "TAG-NOCPU", null, new() { ["ComputerType"] = "Notebook", ["MemoryGb"] = "16", ["CapacityGb"] = "512", ["OperatingSystem"] = "Win11" }), default))).Contains("Processor is required"),
+        "Computers need processor, memory, storage and operating system");
     Check(await Throws<ArgumentException>(() => store.Register(U(1), A("MON", 1, 2, "MN-0009") with { PurchaseDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(5)) }, default)), "Purchase date cannot be in the future");
     var phone = JsonSerializer.SerializeToElement(await store.Register(U(6), A("IP", 1, 3, "IP-0002", mac: "aa-bb-cc-dd-ee-ff", mf: 2), default));
     Check(await Scalar($"SELECT mac_address FROM itam_data.asset WHERE asset_id={phone.GetProperty("id").GetInt32()}") as string == "AA:BB:CC:DD:EE:FF", "MAC address stored as AA:BB:CC:DD:EE:FF");
@@ -105,7 +107,7 @@ try
     Check(await store.ViewKey(U(1), pcId, "OsKey", default) == "AAAAA-BBBBB" && await Scalar($"SELECT COUNT(*) FROM itam_data.secret_view WHERE asset_id={pcId}") is 1, "Assets Officer sees the key; the view is logged");
     var detail = JsonSerializer.SerializeToElement(await store.Asset(U(1), pcId, default));
     var version = detail.GetProperty("asset").GetProperty("version").GetString();
-    await store.Update(U(1), pcId, A("PC", 1, 1, "SN-0001", "TAG1", null, new() { ["ComputerType"] = "Notebook", ["OperatingSystem"] = "Win11", ["MemoryGb"] = "32" }) with { Version = version }, default);
+    await store.Update(U(1), pcId, A("PC", 1, 1, "SN-0001", "TAG1", null, new() { ["ComputerType"] = "Notebook", ["OperatingSystem"] = "Win11", ["MemoryGb"] = "32", ["Processor"] = "Core i5", ["CapacityGb"] = "512" }) with { Version = version }, default);
     Check(await Scalar($"SELECT TOP 1 detail FROM itam_data.asset_event WHERE asset_id={pcId} AND kind='Edited'") as string is { } h && h.Contains("Memory (GB): 16 → 32"), "History records what changed");
     Check(await Throws<ItamConflict>(() => store.Update(U(1), pcId, A("PC", 1, 1, "SN-0001", "TAG1", null, pcAttrs) with { Version = version }, default)), "A stale edit is refused");
     var phoneId = phone.GetProperty("id").GetInt32();
@@ -127,7 +129,7 @@ try
     Check(await Throws<ArgumentException>(() => store.CreatePo(U(3), poInput, new("po.pdf", "application/pdf", poPdf), default)), "The same PO number twice is refused");
     Check(await Scalar($"SELECT request_ref FROM itam_data.po WHERE po_id={po}") as string == "PR-3", "Request number stored as PR-n");
     int Line(int no) => (int)Scalar($"SELECT po_line_id FROM itam_data.po_line WHERE po_id={po} AND line_no={no}").Result!;
-    ItamDeviceInput Dev(string? serial, string? tag = null) => new(serial, tag, null, null, "New", new() { ["ComputerType"] = "Notebook" }, null, null, null);
+    ItamDeviceInput Dev(string? serial, string? tag = null) => new(serial, tag, null, null, "New", new() { ["ComputerType"] = "Notebook", ["Processor"] = "Core i7", ["MemoryGb"] = "16", ["CapacityGb"] = "512", ["OperatingSystem"] = "Win11" }, null, null, null);
     var r1 = JsonSerializer.SerializeToElement(await store.Receive(U(1), po, new(Line(1), 1, null, "INV-1", null, [Dev("POSN1", "POTAG1"), Dev("POSN2", "POTAG2")]), null, default));
     Check(r1.GetProperty("assets").GetArrayLength() == 2, "Partial receipt: 2 of 3");
     var before = await Scalar("SELECT COUNT(*) FROM itam_data.asset");
@@ -165,7 +167,7 @@ try
     Console.WriteLine("PASS PO pack");
 
     // ---- Handover (build step 2) -------------------------------------------------------------------------------------------------
-    var hpcAttrs = new Dictionary<string, string?> { ["ComputerType"] = "Notebook" };
+    var hpcAttrs = new Dictionary<string, string?> { ["ComputerType"] = "Notebook", ["Processor"] = "Core i5", ["MemoryGb"] = "8", ["CapacityGb"] = "256", ["OperatingSystem"] = "Win11" };
     var hpc = JsonSerializer.SerializeToElement(await store.Register(U(1), A("PC", 1, 1, "SN-H01", "TAGH01", null, hpcAttrs), default)).GetProperty("id").GetInt32();
     var hpc2 = JsonSerializer.SerializeToElement(await store.Register(U(1), A("PC", 1, 1, "SN-H02", "TAGH02", null, hpcAttrs), default)).GetProperty("id").GetInt32();
     var handDay = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(3));

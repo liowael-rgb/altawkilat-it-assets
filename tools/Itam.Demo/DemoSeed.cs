@@ -48,7 +48,7 @@ static class DemoSeed
             => await store.Register(officer, new ItamAssetInput(type, await Loc(loc), await Mf(mf), await M(model), null, serial, tag, mac, ip, "New",
                 new DateOnly(2026, 3, 15), null, null, null, null, null, attrs, osKey, null), default);
         await Reg("PC", "Dell", "OptiPlex 7010", "Riyadh IT Warehouse (demo)", "DEMOSN0001", new() { ["ComputerType"] = "Desktop", ["Processor"] = "Intel Core i5", ["MemoryGb"] = "16", ["CapacityGb"] = "512", ["OperatingSystem"] = "Win11" }, "DEMOTAG01", osKey: "DEMO-KEY-11111-22222");
-        await Reg("PC", "HP", "EliteBook 840 G10", "Jeddah IT Warehouse (demo)", "DEMOSN0002", new() { ["ComputerType"] = "Notebook", ["MemoryGb"] = "16", ["OperatingSystem"] = "Win11" }, "DEMOTAG02");
+        await Reg("PC", "HP", "EliteBook 840 G10", "Jeddah IT Warehouse (demo)", "DEMOSN0002", new() { ["ComputerType"] = "Notebook", ["Processor"] = "Intel Core i7", ["MemoryGb"] = "16", ["CapacityGb"] = "512", ["OperatingSystem"] = "Win11" }, "DEMOTAG02");
         await Reg("PNT", "HP", "LaserJet Pro M404dn", "Abha Branch (demo)", "DEMOPR0001", new() { ["PrinterType"] = "Network", ["PrinterLocation"] = "Reception", ["TonerType"] = "Black" }, ip: "10.20.30.40");
         await Reg("IP", "Cisco", "IP Phone 8841", "Dammam IT Warehouse (demo)", "DEMOIP0001", new() { ["Extension"] = "4321" }, mac: "00:11:22:33:44:55");
         await Reg("IP", "Cisco", "IP Phone 8841", "Jeddah IT Warehouse (demo)", "DEMOIP0002", new() { ["Extension"] = "4322" }, mac: "00:11:22:33:44:56");
@@ -64,7 +64,7 @@ static class DemoSeed
         async Task<int> Line(int no) { await using var c = new SqlConnection(cs); await c.OpenAsync(); using var q = new SqlCommand("SELECT po_line_id FROM itam_data.po_line WHERE po_id=@p AND line_no=@n", c); q.Parameters.AddWithValue("@p", poId); q.Parameters.AddWithValue("@n", no); return (int)(await q.ExecuteScalarAsync())!; }
         int line1 = await Line(1), line2 = await Line(2);
         await store.Receive(officer, poId, new ItamReceiveInput(line1, await Loc("Riyadh IT Warehouse (demo)"), null, null, "First delivery",
-            [.. Enumerable.Range(1, 3).Select(i => new ItamDeviceInput($"DEMOLT000{i}", $"DEMOLTAG{i}", null, null, "New", new() { ["ComputerType"] = "Notebook", ["MemoryGb"] = "16", ["OperatingSystem"] = "Win11" }, null, null, null))]), null, default);
+            [.. Enumerable.Range(1, 3).Select(i => new ItamDeviceInput($"DEMOLT000{i}", $"DEMOLTAG{i}", null, null, "New", new() { ["ComputerType"] = "Notebook", ["Processor"] = "Intel Core i7", ["MemoryGb"] = "16", ["CapacityGb"] = "512", ["OperatingSystem"] = "Win11" }, null, null, null))]), null, default);
         await store.Receive(officer, poId, new ItamReceiveInput(line2, await Loc("Riyadh IT Warehouse (demo)"), null, null, null,
             [.. Enumerable.Range(1, 2).Select(i => new ItamDeviceInput($"DEMOMN010{i}", null, null, null, "New", null, null, null, null))]), null, default);
         // Handover (step 2): deliveries in every state, one overdue for its signed copy, two returns with their clean-up tasks.

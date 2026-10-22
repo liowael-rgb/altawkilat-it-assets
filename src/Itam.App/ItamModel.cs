@@ -45,10 +45,10 @@ public static class ItamTypeFields
 {
     static readonly Dictionary<string, ItamField[]> Fields = new()
     {
-        ["PC"] = [new("ComputerType", "Computer type", "list", true, "ComputerType"), new("Processor", "Processor", "text", false),
-            new("CapacityGb", "Storage (GB)", "number", false), new("MemoryGb", "Memory (GB)", "number", false),
-            new("OperatingSystem", "Operating system", "list", false, "OperatingSystem"), new("ComputerName", "Computer name", "text", false)],
-        ["PNT"] = [new("PrinterType", "Printer type", "list", true, "PrinterType"), new("PrinterLocation", "Printer location", "text", false),
+        ["PC"] = [new("ComputerType", "Computer type", "list", true, "ComputerType"), new("Processor", "Processor", "text", true),
+            new("CapacityGb", "Storage (GB)", "number", true), new("MemoryGb", "Memory (GB)", "number", true),
+            new("OperatingSystem", "Operating system", "list", true, "OperatingSystem"), new("ComputerName", "Computer name", "text", false)],
+        ["PNT"] = [new("PrinterType", "Printer type", "list", false, "PrinterType"), new("PrinterLocation", "Printer location", "text", false),
             new("TonerType", "Toner type", "list", false, "TonerType"), new("TonerCode", "Toner code", "text", false)],
         ["IP"] = [new("Extension", "Extension number", "text", false)],
         ["SOF"] = [new("Software", "Software name", "text", true)],
