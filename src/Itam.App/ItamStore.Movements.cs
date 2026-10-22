@@ -15,9 +15,9 @@ public sealed record ItamMovementReceipt(List<ItamReceiptLine>? Lines);
 public sealed record ItamMovementResolve(int LineId, string? Resolution, string? Note);
 
 /// <summary>Stock movements (plan v1.9 step 4): branch-to-branch transfers and other building exits on a gate pass GP-n
-/// (Team Leader approval), and IT warehouse-to-warehouse transfers WT-n (no approval; issued pass). Security checks the printed
+/// (approved by the Team Leader, System Administrator or IT Manager), and IT warehouse-to-warehouse transfers WT-n (no approval; issued pass). Security checks the printed
 /// pass against the labels; the named sender (or IT) records the actual dispatch; the named receiver records each asset;
-/// discrepancies are resolved per asset by the Team Leader (or backup) with evidence. Stock moves only on actual dispatch and
+/// discrepancies are resolved per asset by an approver (or backup) with evidence. Stock moves only on actual dispatch and
 /// receipt; dispatch validity never completes a dispatched movement.</summary>
 public sealed partial class ItamStore
 {
@@ -39,9 +39,9 @@ public sealed partial class ItamStore
                 Day(r, 13)!.Value, Day(r, 14)!.Value, Day(r, 15), r.GetString(16)), token, ("@i", id))).SingleOrDefault() ?? throw new ArgumentException("The movement was not found.");
     static Guid? G0(DbDataReader r, int i) => r.IsDBNull(i) ? null : r.GetGuid(i);
 
-    /// <summary>The Team Leader, or the Team Leader's backup during leave; never the person who asked.</summary>
+    /// <summary>The IT Helpdesk Team Leader, System Administrator or IT Manager, or their backup during leave; never the person who asked.</summary>
     static async Task<bool> MovementApprover(DbConnection c, DbTransaction? tx, ItamScope s, Guid requestedBy, CancellationToken token)
-        => s.Id != requestedBy && (s.TeamLeader || await Scalar(c, tx, "SELECT TOP 1 1 FROM itam_access.leave_backup b JOIN itam_access.role_assignment r ON r.employee_id=b.person_id AND r.role_code=N'TeamLeader' " +
+        => s.Id != requestedBy && (s.MovementApproverRole || await Scalar(c, tx, "SELECT TOP 1 1 FROM itam_access.leave_backup b JOIN itam_access.role_assignment r ON r.employee_id=b.person_id AND r.role_code IN(N'ItManager',N'TeamLeader',N'SystemAdministrator') " +
             "WHERE b.backup_employee_id=@me AND b.cancelled_at_utc IS NULL AND b.person_id<>@q AND CAST(DATEADD(hour,3,SYSUTCDATETIME()) AS date) BETWEEN b.leave_from AND b.leave_to", token, ("@me", s.Id), ("@q", requestedBy)) is not null);
     bool MovementIt(ItamScope s, MoveRow m) => s.CanHandover(m.FromRegion) || (m.ToRegion is string t && s.CanHandover(t));
 
@@ -145,7 +145,7 @@ public sealed partial class ItamStore
         foreach (var l in lines)
         {
             await Exec(c, tx, "INSERT itam_data.movement_line(movement_id,asset_id,previous_status,holder_id,state) VALUES(@m,@a,@s,@h,N'Pending')", token, ("@m", mid), ("@a", l.Id), ("@s", l.Status), ("@h", l.Holder));
-            await Event(c, tx, l.Id, s.Id, kind == "Warehouse" ? "Warehouse transfer" : "Gate pass", kind == "Warehouse" ? $"{no} submitted (pass {passNo}): reserved for the transfer" : $"{no}: {purpose}, waiting for the Team Leader's approval", token);
+            await Event(c, tx, l.Id, s.Id, kind == "Warehouse" ? "Warehouse transfer" : "Gate pass", kind == "Warehouse" ? $"{no} submitted (pass {passNo}): reserved for the transfer" : $"{no}: {purpose}, waiting for approval", token);
         }
         await Audit(c, tx, s.Id, "movement", no, "Create", null, new { kind, purpose, assets = lines.Select(l => l.No), from = from.Id, to, receiver, exit, expected }, null, token);
         await tx.CommitAsync(token);
@@ -160,7 +160,7 @@ public sealed partial class ItamStore
         var s = await Scope(c, tx, user, token);
         var m = await LoadMove(c, tx, id, token);
         if (m.Kind == "Warehouse") throw new ArgumentException("Warehouse transfers need no approval.");
-        Require(await MovementApprover(c, tx, s, m.RequestedBy, token), "Only the IT Helpdesk Team Leader, or the Team Leader's backup during leave, decides gate passes; nobody approves their own.");
+        Require(await MovementApprover(c, tx, s, m.RequestedBy, token), "Only the IT Helpdesk Team Leader, the System Administrator or the IT Manager (or a backup during leave) decides gate passes; nobody approves their own.");
         if (m.Status != "Submitted") throw new ArgumentException($"{m.No} is {MovementStatusLabel(m.Status)}.");
         string? reason = null; var valid = m.ValidUntil;
         if (x.Approve) { if (x.ValidUntil is DateOnly v) { if (v < m.ExitDate || v > m.ValidUntil) throw new ArgumentException("Valid until: between the exit date and the default validity."); valid = v; } }
@@ -284,7 +284,7 @@ public sealed partial class ItamStore
         await Exec(c, tx, $"UPDATE itam_data.movement SET status=@s{(status is "Completed" or "ClosedWithExceptions" ? ",completed_at_utc=COALESCE(completed_at_utc,SYSUTCDATETIME())" : "")} WHERE movement_id=@i", token, ("@s", status), ("@i", id));
     }
 
-    // Discrepancy resolution (Team Leader or backup), per asset, with evidence ---------------------------------------------------------
+    // Discrepancy resolution (approvers or backup), per asset, with evidence ---------------------------------------------------------
     public async Task ResolveMovement(ItamUser user, int id, ItamMovementResolve x, ItamUpload? evidence, CancellationToken token)
     {
         if (evidence is null) throw new ArgumentException("Attach the evidence of the resolution.");
@@ -293,7 +293,7 @@ public sealed partial class ItamStore
         await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var s = await Scope(c, tx, user, token);
         var m = await LoadMove(c, tx, id, token);
-        Require(await MovementApprover(c, tx, s, Guid.Empty, token), "Only the IT Helpdesk Team Leader, or the Team Leader's backup during leave, resolves discrepancies.");
+        Require(await MovementApprover(c, tx, s, Guid.Empty, token), "Only the IT Helpdesk Team Leader, the System Administrator or the IT Manager (or a backup during leave) resolves discrepancies.");
         var l = (await Rows(c, tx, "SELECT asset_id,state,previous_status FROM itam_data.movement_line WITH (UPDLOCK) WHERE line_id=@l AND movement_id=@m", r => (Asset: r.GetInt32(0), State: r.GetString(1), Previous: r.GetString(2)), token, ("@l", x.LineId), ("@m", id))).SingleOrDefault();
         if (l.State is not ("Missing" or "Damaged" or "Incorrect" or "Dispatched")) throw new ArgumentException("Only a missing, damaged, incorrect or overdue asset is resolved.");
         var res = x.Resolution is "ArrivedLater" or "NeverDispatched" or "ReturnedToSource" or "ConfirmedLost" or "AcceptedAtDestination" ? x.Resolution : throw new ArgumentException("Choose the resolution.");
@@ -409,7 +409,7 @@ public sealed partial class ItamStore
         var list = new List<object>();
         foreach (var (row, id) in await Rows(c, null, MoveSelect + "ORDER BY m.movement_id DESC", r => (Row: MapMove(r), Id: r.GetInt32(0)), token))
             if (await SeesMovement(c, s, await LoadMove(c, null, id, token), token)) list.Add(row);
-        var approver = s.TeamLeader || await MovementApprover(c, null, s, Guid.Empty, token);
+        var approver = s.MovementApproverRole || await MovementApprover(c, null, s, Guid.Empty, token);
         return new { movements = list, me = s.Id, isApprover = approver, canCreateIt = s.CanHandoverAny, validityDays = PassValidityDays, purposes = MovementPurposes };
     }
 

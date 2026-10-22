@@ -478,7 +478,7 @@ try
     await store.CancelMovement(U(9), wtId, new("Second one stays"), default);
     await store.ReceiveMovement(U(4), wtId, new([new(wl0, "Missing", "Not on the truck")]), default);
     Check(await Scalar($"SELECT status FROM itam_data.movement WHERE movement_id={wtId}") as string == "ReceiptDisputed" && await Scalar($"SELECT status FROM itam_data.asset WHERE asset_id={w2}") as string == "InStore"
-        && await Throws<ItamAccessDenied>(() => store.ResolveMovement(U(9), wtId, new(wl0, "ConfirmedLost", "x"), scan, default)), "Missing asset: discrepancy pending; the cancelled one is free again; only the Team Leader resolves");
+        && await Throws<ItamAccessDenied>(() => store.ResolveMovement(U(9), wtId, new(wl0, "ConfirmedLost", "x"), scan, default)), "Missing asset: discrepancy pending; the cancelled one is free again; only an approver resolves");
     await store.ResolveMovement(U(3), wtId, new(wl0, "ConfirmedLost", "The driver confirmed it fell off"), scan, default);
     Check(await Scalar($"SELECT status FROM itam_data.movement WHERE movement_id={wtId}") as string == "ClosedWithExceptions" && await Scalar($"SELECT status FROM itam_data.asset WHERE asset_id={w1}") as string == "Lost",
         "Confirmed lost: the transfer closes with exceptions; the asset is Lost, never received");
@@ -492,11 +492,12 @@ try
     var exitAsset = JsonSerializer.SerializeToElement(await store.Register(U(1), A("MON", 1, 2, "EXIT-MON-1"), default)).GetProperty("id").GetInt32();
     await store.Deliver(U(1), exitAsset, Dl(G(10), null), default);
     var ex = JsonSerializer.SerializeToElement(await store.CreateMovement(U(10), new("Exit", null, [exitAsset], "Work from home", null, "Returnable", 1, null, "Home", mvDay, mvDay.AddDays(2), "Employee", null, null, null, null, null), default)).GetProperty("id").GetInt32();
-    await store.DecideMovement(U(3), ex, new(true, null, null), default); await store.DispatchMovement(U(10), ex, new(null), default);
-    Check(await Scalar($"SELECT status FROM itam_data.movement WHERE movement_id={ex}") as string == "Out", "Exit pass: out of the building until the return");
+    Check(await Throws<ItamAccessDenied>(() => store.DecideMovement(U(6), ex, new(true, null, null), default)), "The Voice Administrator does not approve gate passes");
+    await store.DecideMovement(U(5), ex, new(true, null, null), default); await store.DispatchMovement(U(10), ex, new(null), default);
+    Check(await Scalar($"SELECT status FROM itam_data.movement WHERE movement_id={ex}") as string == "Out", "Approved by the System Administrator: the exit pass is out of the building until the return");
     await store.ReturnMovement(U(10), ex, default);
     var ex2 = JsonSerializer.SerializeToElement(await store.CreateMovement(U(10), new("Exit", null, [exitAsset], "Work from home", null, "Returnable", 1, null, "Home", mvDay, mvDay.AddDays(2), "Employee", null, null, null, null, null), default)).GetProperty("id").GetInt32();
-    await store.DecideMovement(U(3), ex2, new(true, null, null), default);
+    await store.DecideMovement(U(2), ex2, new(true, null, null), default);
     await Exec($"UPDATE itam_data.movement SET exit_date=DATEADD(day,-5,exit_date),valid_until=DATEADD(day,-1,CAST(SYSUTCDATETIME() AS date)) WHERE movement_id={ex2}");
     Check(await Scalar($"SELECT status FROM itam_data.movement WHERE movement_id={ex}") as string == "Completed" && await store.ExpireMovements(default) == 1
         && await Scalar($"SELECT status FROM itam_data.movement WHERE movement_id={ex2}") as string == "Expired" && await Throws<ArgumentException>(() => store.DispatchMovement(U(10), ex2, new(null), default)),

@@ -36,7 +36,7 @@ async function load(note){
       l.resolution?`${RES[l.resolution]||l.resolution} · ${l.resolutionNote||''} (${l.resolvedBy||''})`:''],
     l=>can.resolve&&['Missing','Damaged','Incorrect','Dispatched'].includes(l.state)?[['Resolve',()=>resolve(l)]]:l.hasEvidence?[['Evidence',()=>open(`/api/movements/${id}/evidence/${l.id}`)]]:[]);
   $('view').replaceChildren(card('Movement',null,info),card('Assets',x.kind==='Branch'?'The named receiver confirms each asset; when the receiver is not the person who had it, the custody passes with a new delivery note to sign.':
-    x.kind==='Warehouse'?'Dispatch some or all assets; the destination IT receiver confirms each one. Missing, damaged or incorrect assets stay open until the Team Leader resolves them.':'Security checks the printed pass against the labels.',lines));
+    x.kind==='Warehouse'?'Dispatch some or all assets; the destination IT receiver confirms each one. Missing, damaged or incorrect assets stay open until an approver (Team Leader, System Administrator or IT Manager) resolves them.':'Security checks the printed pass against the labels.',lines));
   if(note)message(note);
 }
 function decide(approve){
@@ -54,7 +54,7 @@ function receive(){
   edit('Confirm the receipt',lines.flatMap(l=>[{key:'o'+l.id,label:`${l.assetNo} · ${l.type} · ${l.serial||''}`,type:'select',options:[['Received','Received in good condition'],['Damaged','Damaged'],['Incorrect','Incorrect (another asset)'],['Missing','Missing'],['','Not yet (still on the way)']]},
     {key:'n'+l.id,label:'Note',max:500,hint:'Required when damaged, incorrect or missing.'}]),
     x=>api(`/movements/${id}/receipt`,{method:'POST',json:{lines:lines.filter(l=>x['o'+l.id]).map(l=>({lineId:l.id,outcome:x['o'+l.id],note:x['n'+l.id]||null}))}}),
-    {reason:false,button:'Confirm',hint:'Check each label against the pass. Missing, damaged or incorrect assets go to the Team Leader.',done:()=>load('Receipt recorded.')});
+    {reason:false,button:'Confirm',hint:'Check each label against the pass. Missing, damaged or incorrect assets go to an approver to resolve.',done:()=>load('Receipt recorded.')});
 }
 function resolve(l){
   edit(`Resolve ${l.assetNo}`,[{key:'res',label:'Resolution',type:'select',required:true,wide:true,options:[['','Choose'],['ArrivedLater','Arrived later (received at the destination)'],['AcceptedAtDestination','Accepted at the destination (damaged or incorrect)'],
@@ -69,7 +69,7 @@ function cancel(){edit(`Cancel ${d.movement.no}?`,[{key:'reason',label:'Reason',
 async function newMovement(kindParam){
   const md=await api('/my');const warehouse=kindParam==='warehouse';const L=m.lists;
   $('title').textContent=warehouse?'New warehouse transfer':'New gate pass';$('eyebrow').textContent='Movement';
-  $('subtitle').textContent=warehouse?'Move IT stock between IT warehouses: no approval; the stock is reserved and a pass is issued for Security.':'Take assets out of a building: to another branch (transfer) or for another purpose. The IT Helpdesk Team Leader approves; print the pass for Security.';
+  $('subtitle').textContent=warehouse?'Move IT stock between IT warehouses: no approval; the stock is reserved and a pass is issued for Security.':'Take assets out of a building: to another branch (transfer) or for another purpose. The IT Helpdesk Team Leader, System Administrator or IT Manager approves; print the pass for Security.';
   const sel=(list,blank)=>{const s=document.createElement('select');if(blank!==undefined)s.append(option('',blank));for(const [v,t] of list)s.append(option(v,t));return s;};
   const inp=(type='text',max)=>{const i=document.createElement('input');i.type=type;if(max)i.maxLength=max;i.autocomplete='off';return i;};
   const field=(label,input,{req,hint,wide}={})=>{const l=el('label',null,'x-f'+(wide?' wide':''));const t=el('span',label,'x-l');t.append(req?el('span','*','req'):el('span','Optional','opt'));l.append(t,input);if(hint)l.append(el('span',hint,'x-help'));return l;};

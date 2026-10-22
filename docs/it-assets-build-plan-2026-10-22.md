@@ -317,7 +317,8 @@ and the applied matrix is regenerated as "IT Assets - Permission Matrix (applied
   - **Branch transfer**: from one branch to another, with a named receiver at the destination.
   - **Exit pass**: out of the building for a purpose (work from home, exhibition, repair, other with details);
     Returnable or Non-returnable.
-- Every gate pass is approved by the **IT Helpdesk Team Leader** (or a backup on leave), never by the requester; the
+- Every gate pass is approved by the **IT Helpdesk Team Leader, the System Administrator or the IT Manager** (owner,
+  22 October 2026: like maintenance orders), or a backup on leave, never by the requester; the
   approver can shorten the validity. The pass prints only after approval (bilingual A4, logo, assets table, signatures
   for the sender, Security and the receiver, QR code to /g/GP-n). It is valid for dispatch for **3 days** from the exit
   date; an approved pass not dispatched in time expires.
@@ -330,9 +331,9 @@ and the applied matrix is regenerated as "IT Assets - Permission Matrix (applied
 - **Warehouse transfer WT-n**: IT of the source region moves In Store stock to another IT warehouse; no approval; the
   receiver must be IT of the destination region. Lines can be dispatched in parts; the rest stays reserved or is
   cancelled. On receipt the assets are In Store at the destination, with no delivery note.
-- **Discrepancies**: any Missing, Damaged or Incorrect line puts the movement in "Discrepancy pending". The Team Leader
+- **Discrepancies**: any Missing, Damaged or Incorrect line puts the movement in "Discrepancy pending". An approver
   resolves each line with an evidence file: Arrived later, Accepted at the destination, Returned to the source, Never
   dispatched or Confirmed lost (the asset becomes Lost). A movement with exceptions closes as "Closed with exceptions".
 - An asset is on one open movement at a time; the picker shows only assets that can move.
-- To confirm: the Team Leader as the only approver (the plan); Movements rights are not yet in the permission matrix.
+- To confirm: Movements rights are not yet in the permission matrix.
   Emails (IT-EM-19/20/32-38/57) come with the email step.

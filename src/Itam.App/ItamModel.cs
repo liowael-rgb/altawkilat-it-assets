@@ -143,6 +143,8 @@ public sealed record ItamScope(Guid Id, string Name, string[] Roles, string[] Re
     // Maintenance orders: create and follow; approve (Team Leader, System Administrator, IT Manager; never their own order)
     public bool MaintenanceManage => Wide || Specialist;
     public bool MaintenanceApproverRole => TeamLeader || SysAdmin || Manager;
+    /// <summary>Gate passes: approve and resolve discrepancies (same three roles as maintenance; never their own pass).</summary>
+    public bool MovementApproverRole => TeamLeader || SysAdmin || Manager;
     public bool MaintenanceView => Wide || Specialist;
     public bool ItRepair(string region) => CanHandover(region);
 
