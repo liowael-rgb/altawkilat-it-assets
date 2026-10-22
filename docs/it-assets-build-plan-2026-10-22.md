@@ -425,7 +425,12 @@ Emails and the weekly summary (IT-EM-12, IT-EM-61) will use the same list when t
   tiles for maintenance cost and sales this year and toner delivered this month (for the roles of those modules); the most
   urgent alerts; charts of assets by type and by region (in use and in store; a bar opens the Assets list filtered), all
   assets by status, stock in store per location, ageing from the purchase date, and deliveries per month.
-- **Reports** (14, grouped by area): asset register; by type and status; by region and location; assets per employee;
+- **Available computers by computer type** (owner, 22 October 2026): computers In Store, minus those reserved for a
+  device request, per computer type (Desktop, Notebook, All In One...): a dashboard tile and chart (a bar opens the Assets
+  list filtered by computer type), a summary report by type and location with subtotals, and a list with each computer's
+  processor, memory, storage and operating system.
+- **Reports** (16, grouped by area): asset register; by type and status; by region and location; assets per employee;
+  available computers by computer type; available computers (list);
   ageing; delivery notes not signed; leavers holding assets; maintenance cost; ink use; purchase orders received;
   gate passes and transfers; sales; disposals; loss cases. Filters: dates (where the report has a date) and region.
   Every report keeps the person's visibility (assets by type and region; unit costs only for the purchase roles; module

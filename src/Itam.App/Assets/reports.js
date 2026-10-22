@@ -36,8 +36,8 @@ async function open(){
 async function show(out,def){
   out.replaceChildren(el('p','Loading…','hint'));
   const r=await api(`/reports/${current}?`+params().toString());
-  const n=r.rows.filter(x=>x[0]!=='Total').length;const t=table(r.columns,r.rows,row=>row.map((v,i)=>fmt(v,r.columns[i])),null,{empty:'Nothing in this report for these filters.'});
-  for(const tr of t.querySelectorAll('tbody tr'))if(tr.cells[0]?.textContent==='Total')tr.classList.add('x-total');
+  const n=r.rows.filter(x=>!String(x[0]).startsWith('Total')).length;const t=table(r.columns,r.rows,row=>row.map((v,i)=>fmt(v,r.columns[i])),null,{empty:'Nothing in this report for these filters.'});
+  for(const tr of t.querySelectorAll('tbody tr'))if(tr.cells[0]?.textContent.startsWith('Total'))tr.classList.add('x-total');
   out.replaceChildren(card(`${n} row${n===1?'':'s'}`,null,t));
 }
 try{await shell('reports');list=await api('/reports');if(current)await open();else await menu();}catch(e){fail(e);}

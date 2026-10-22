@@ -18,6 +18,8 @@ public sealed partial class ItamStore
         new("by-location", "Assets by region and location", "How many assets are kept in each region, warehouse and branch, by status.", "Assets", false),
         new("employees", "Assets per employee", "Who holds what: each employee with the assets in their custody.", "Assets", false),
         new("ageing", "Asset ageing", "Age of each asset from its purchase date, in bands.", "Assets", false),
+        new("available-computers", "Available computers by computer type", "Computers In Store, by computer type and where they are kept; reserved ones shown apart.", "Assets", false),
+        new("available-computers-list", "Available computers (list)", "Each computer In Store with its type, processor, memory, storage and operating system.", "Assets", false),
         new("unsigned", "Delivery notes not signed", "Delivery notes still waiting for the copy the employee signed on paper.", "Handover", true),
         new("leavers", "Leavers holding assets", "Employees marked Resigned with assets still to collect.", "End of life", false),
         new("maintenance", "Maintenance cost", "Maintenance orders with the quotation and the final cost.", "Maintenance", true),
@@ -62,6 +64,20 @@ public sealed partial class ItamStore
                 S(r, 12), S(r, 13), G0(r, 14), S(r, 15), S(r, 16), S(r, 17), Day(r, 18), r.GetInt32(19) == 1, Day(r, 20), S(r, 21), S(r, 22), r.IsDBNull(23) ? null : r.GetDecimal(23), Utc(r, 24)), token))
             .Where(a => s.CanView(a.TypeCode, a.Region)).ToList();
 
+
+    // Available computers by computer type (owner, 22 October 2026): computers In Store, minus those reserved for a device request.
+    sealed record ComputerFact(int Id, string No, string Type, string? TypeCode, string? Model, string? Tag, string? Processor, string? Memory, string? Storage, string? Os, string KeptAt, string Region, bool Reserved);
+    static async Task<List<ComputerFact>> InStoreComputers(DbConnection c, ItamScope s, CancellationToken token)
+        => (await Rows(c, null, "SELECT a.asset_id,a.asset_no,COALESCE(vt.name_en,ct.value,N'Not set'),CONCAT(mf.name_en,' ',mo.name_en),a.service_tag," +
+            "(SELECT value FROM itam_data.asset_attribute x WHERE x.asset_id=a.asset_id AND x.attr_code=N'Processor'),(SELECT value FROM itam_data.asset_attribute x WHERE x.asset_id=a.asset_id AND x.attr_code=N'MemoryGb')," +
+            "(SELECT value FROM itam_data.asset_attribute x WHERE x.asset_id=a.asset_id AND x.attr_code=N'CapacityGb'),COALESCE(vo.name_en,os.value),g.name_en,g.region_code," +
+            "CASE WHEN EXISTS(SELECT 1 FROM itam_data.request q WHERE q.reserved_asset_id=a.asset_id AND q.status=N'StockAssigned') THEN 1 ELSE 0 END,ct.value " +
+            "FROM itam_data.asset a JOIN itam_ref.location g ON g.location_id=a.location_id LEFT JOIN itam_ref.manufacturer mf ON mf.manufacturer_id=a.manufacturer_id LEFT JOIN itam_ref.model mo ON mo.model_id=a.model_id " +
+            "LEFT JOIN itam_data.asset_attribute ct ON ct.asset_id=a.asset_id AND ct.attr_code=N'ComputerType' LEFT JOIN itam_ref.value_item vt ON vt.list_code=N'ComputerType' AND vt.item_code=ct.value " +
+            "LEFT JOIN itam_data.asset_attribute os ON os.asset_id=a.asset_id AND os.attr_code=N'OperatingSystem' LEFT JOIN itam_ref.value_item vo ON vo.list_code=N'OperatingSystem' AND vo.item_code=os.value " +
+            "WHERE a.type_code=N'PC' AND a.status=N'InStore' ORDER BY a.asset_seq",
+            r => new ComputerFact(r.GetInt32(0), r.GetString(1), r.GetString(2), S(r, 12), S(r, 3)?.Trim(), S(r, 4), S(r, 5), S(r, 6), S(r, 7), S(r, 8), r.GetString(9), r.GetString(10), r.GetInt32(11) == 1), token))
+            .Where(x => s.CanView("PC", x.Region)).ToList();
     public async Task<ItamReportData> Report(ItamUser user, string key, DateOnly? from, DateOnly? to, string? region, CancellationToken token)
     {
         var def = ReportDefs.FirstOrDefault(r => r.Key == key) ?? throw new ArgumentException("Unknown report.");
@@ -117,6 +133,25 @@ public sealed partial class ItamStore
                 cols = ["Asset No.", "Type", "Model", "Purchase date", "Age (years)", "Age band", "Status", "Kept at", "Region", "Employee"];
                 rows = a.OrderBy(x => x.Purchase ?? DateOnly.MaxValue).Select(x => (object?[])[x.No, x.Type, string.Join(" ", new[] { x.Maker, x.Model }.Where(v => v is not null)), x.Purchase,
                     x.Purchase is DateOnly b ? Math.Round((today.DayNumber - b.DayNumber) / 365.25m, 1) : null, AgeBand(x.Purchase, today), L(x.Status), x.KeptAt, x.Region, x.Holder]).ToList();
+                break;
+            }
+            case "available-computers":
+            {
+                var a = (await InStoreComputers(c, s, token)).Where(x => string.IsNullOrEmpty(region) || x.Region == region).ToList();
+                cols = ["Computer type", "Kept at", "Region", "Available", "Reserved for a request", "In store"];
+                rows = a.GroupBy(x => (x.Type, x.KeptAt, x.Region)).OrderBy(g => g.Key.Type).ThenBy(g => g.Key.Region).ThenBy(g => g.Key.KeptAt)
+                    .Select(g => (object?[])[g.Key.Type, g.Key.KeptAt, g.Key.Region, g.Count(x => !x.Reserved), g.Count(x => x.Reserved), g.Count()]).ToList();
+                foreach (var t in a.GroupBy(x => x.Type).OrderBy(g => g.Key))
+                    rows.Add([$"Total {t.Key}", null, null, t.Count(x => !x.Reserved), t.Count(x => x.Reserved), t.Count()]);
+                rows.Add(["Total", null, null, a.Count(x => !x.Reserved), a.Count(x => x.Reserved), a.Count]);
+                break;
+            }
+            case "available-computers-list":
+            {
+                var a = (await InStoreComputers(c, s, token)).Where(x => string.IsNullOrEmpty(region) || x.Region == region).ToList();
+                cols = ["Asset No.", "Computer type", "Model", "Service tag", "Processor", "Memory (GB)", "Storage (GB)", "Operating system", "Kept at", "Region", "Available"];
+                rows = a.OrderBy(x => x.Type).ThenBy(x => x.Region).Select(x => (object?[])[x.No, x.Type, x.Model, x.Tag, x.Processor, x.Memory, x.Storage, x.Os, x.KeptAt, x.Region,
+                    x.Reserved ? "Reserved for a request" : "Available"]).ToList();
                 break;
             }
             case "unsigned":
@@ -246,6 +281,8 @@ public sealed partial class ItamStore
             byRegion = live.GroupBy(x => x.Region).OrderBy(g => g.Key).Select(g => new { label = g.Key, inUse = g.Count(x => x.Status == "InUse"), inStore = g.Count(x => x.Status == "InStore"), total = g.Count() }),
             stock = live.Where(x => x.Status == "InStore").GroupBy(x => x.KeptAt).OrderByDescending(g => g.Count()).Take(8).Select(g => new { label = g.Key, count = g.Count() }),
             ageing = AgeBands.Select(b => new { label = b, count = live.Count(x => AgeBand(x.Purchase, today) == b) }),
+            computers = (await InStoreComputers(c, s, token)).GroupBy(x => x.Type).OrderByDescending(g => g.Count(x => !x.Reserved))
+                .Select(g => new { label = g.Key, code = g.First().TypeCode, available = g.Count(x => !x.Reserved), reserved = g.Count(x => x.Reserved), total = g.Count() }),
             deliveries = months.Select(m => new { label = m.ToString("MMM yyyy", System.Globalization.CultureInfo.InvariantCulture), count = deliveries.Count(d => d.On.Year == m.Year && d.On.Month == m.Month) }),
             money = new { maintenance = maint, sales, inkThisMonth = ink, year = today.Year },
             alerts = alerts.OrderByDescending(x => x.Urgent).ThenByDescending(x => x.Count).Take(6).Select(x => new { label = x.Label, count = x.Count, href = x.Href, urgent = x.Urgent })

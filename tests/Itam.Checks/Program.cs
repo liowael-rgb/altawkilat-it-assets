@@ -634,8 +634,12 @@ try
         "Licenses list: seats and key recorded, never the key itself; IT only");
     Console.WriteLine("PASS end of life");
     // Reports and dashboard: every report opens for the IT Manager; visibility kept; Excel export is a real workbook.
-    foreach (var key in new[] { "assets", "by-type", "by-location", "employees", "ageing", "unsigned", "leavers", "maintenance", "ink", "pos", "movements", "sales", "disposals", "loss" })
+    foreach (var key in new[] { "assets", "by-type", "by-location", "employees", "ageing", "available-computers", "available-computers-list", "unsigned", "leavers", "maintenance", "ink", "pos", "movements", "sales", "disposals", "loss" })
         Check((await store.Report(U(2), key, null, null, null, default)).Columns.Length > 0, $"Report {key} opens");
+    var avail = await store.Report(U(2), "available-computers", null, null, null, default);
+    Check(Convert.ToInt32(avail.Rows[^1][^1]) == Convert.ToInt32(await Scalar("SELECT COUNT(*) FROM itam_data.asset WHERE type_code=N'PC' AND status=N'InStore'"))
+        && (await store.Report(U(2), "available-computers-list", null, null, null, default)).Rows.Count == Convert.ToInt32(avail.Rows[^1][^1])
+        && JsonSerializer.SerializeToElement(await store.Dashboard(U(2), default)).GetProperty("computers").GetArrayLength() > 0, "Available computers by computer type: every computer In Store is counted, in the report, the list and the dashboard");
     var westAssets = await store.Report(U(4), "assets", null, null, null, default);
     var regionCol = Array.IndexOf(westAssets.Columns, "Region");
     Check(westAssets.Rows.Count > 0 && westAssets.Rows.All(r => (string?)r[regionCol] == "West") && await Throws<ItamAccessDenied>(() => store.Reports(U(10), default))

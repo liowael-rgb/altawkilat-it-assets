@@ -35,13 +35,15 @@ async function load(){
   const tile=(n,label,href,cls)=>{const a=el('a',null,'x-dtile'+(cls?' '+cls:''));a.href=href;a.append(el('b',String(n)),el('span',label));return a;};
   const tiles=el('div',null,'x-dtiles');
   tiles.append(tile(t.assets,'Assets in service','/'),tile(t.inUse,'In use with employees','/?status=InUse'),tile(t.inStore,'In store','/?status=InStore'),
-    tile(t.inRepair,'In repair','/?status=InRepair'),tile(t.inTransit,'In transit','/?status=InTransit'),tile(t.pendingDisposal,'Pending disposal','/?status=PendingDisposal',t.pendingDisposal?'warn':''),
+    tile(d.computers.reduce((n,c)=>n+c.available,0),'Computers available','/?type=PC&status=InStore'),tile(t.inRepair,'In repair','/?status=InRepair'),tile(t.inTransit,'In transit','/?status=InTransit'),tile(t.pendingDisposal,'Pending disposal','/?status=PendingDisposal',t.pendingDisposal?'warn':''),
     tile(t.lost,'Lost','/?status=Lost',t.lost?'bad':''),tile(t.unsigned,'Delivery notes not signed','/handover.html',t.unsigned?'warn':''),tile(t.alerts,'Alerts for you','/alerts.html',t.alerts?'bad':''));
   const two=el('div',null,'x-dgrid');
   two.append(card('Assets by type','In use and in store; a bar opens the list.',legend([['In use','x-bar-a'],['In store','x-bar-b']]),bars(d.byType,{series:[['inUse','x-bar-a'],['inStore','x-bar-b']],href:i=>'/?type='+encodeURIComponent(i.code)})),
     card('Assets by region',null,legend([['In use','x-bar-a'],['In store','x-bar-b']]),bars(d.byRegion,{series:[['inUse','x-bar-a'],['inStore','x-bar-b']],href:i=>'/?region='+encodeURIComponent(i.label)})),
     card('All assets by status','Including disposed and sold.',bars(d.byStatus,{series:[['count','x-bar-a']],href:i=>'/?status='+i.code})),
     card('Stock in store','Where the In Store assets are kept.',bars(d.stock,{series:[['count','x-bar-b']]})),
+    card('Available computers by computer type','In store and free to deliver; reserved ones are kept for a device request. A bar opens the list.',legend([['Available','x-bar-a'],['Reserved for a request','x-bar-b']]),
+      bars(d.computers,{series:[['available','x-bar-a'],['reserved','x-bar-b']],href:i=>'/?type=PC&status=InStore'+(i.code?'&computerType='+encodeURIComponent(i.code):'')})),
     card('Asset ageing','From the purchase date.',bars(d.ageing,{series:[['count','x-bar-c']]})),
     card('Deliveries per month','Delivery notes issued in the last six months.',columns(d.deliveries)));
   const money2=el('div',null,'x-dtiles small');const mo=d.money;
