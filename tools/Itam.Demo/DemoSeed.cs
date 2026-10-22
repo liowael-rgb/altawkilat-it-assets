@@ -167,6 +167,12 @@ static class DemoSeed
         var gpExit = DeliveryId(await store.CreateMovement(Who(11), new("Exit", null, [await AssetId("PC-4817")], "Work from home", "Two days of remote work", "Returnable", await Loc("Abha Branch (demo)"), null, "Home",
             mvToday, mvToday.AddDays(2), "Employee", null, null, null, null, null), default));
         await store.DecideMovement(Who(3), gpExit, new(true, null, null), default);
+        // Stock to try transfers with several assets at once (invented): monitors, notebooks and IP phones in the warehouses.
+        for (var i = 1; i <= 8; i++) await Reg("MON", "Dell", "P2422H", "Riyadh IT Warehouse (demo)", $"DEMOSTM{i:00}");
+        for (var i = 1; i <= 4; i++) await Reg("PC", "Dell", "Latitude 5440", "Riyadh IT Warehouse (demo)", null,
+            new() { ["ComputerType"] = "Notebook", ["Processor"] = "Intel Core i7", ["MemoryGb"] = "16", ["CapacityGb"] = "512", ["OperatingSystem"] = "Win11" }, $"DEMOSTP{i:00}");
+        for (var i = 1; i <= 3; i++) await Reg("IP", "Cisco", "IP Phone 8841", "Riyadh IT Warehouse (demo)", null, new() { ["Extension"] = $"45{i:00}" }, mac: $"00:11:22:33:45:{i:00}");
+        for (var i = 1; i <= 3; i++) await Reg("MON", "Dell", "P2422H", "Jeddah IT Warehouse (demo)", $"DEMOSTJ{i:00}");
         Console.WriteLine("IT Assets demo data seeded.");
     }
 }
