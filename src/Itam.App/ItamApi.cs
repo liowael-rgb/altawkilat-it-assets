@@ -100,6 +100,7 @@ public static class ItamApi
         api.MapPost("/deliveries/{id:int}/signed", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => { var (_, f) = await Form<object>(ctx.Request); await store.UploadSigned(u, id, f, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
         api.MapPost("/deliveries/{id:int}/return", (HttpContext ctx, ItamStore store, int id, ItamReturnInput input) => Guard(ctx, async u => Results.Ok(await store.ReturnAsset(u, id, input, ctx.RequestAborted))));
         api.MapPost("/deliveries/{id:int}/assessment", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => { var (d, f) = await Form<ItamAssessmentInput>(ctx.Request); return Results.Ok(await store.Assess(u, id, d, f, ctx.RequestAborted)); }));
+        api.MapGet("/tasks", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.MyTasks(u, ctx.RequestAborted))));
         api.MapPost("/tasks/{id:int}/done", (HttpContext ctx, ItamStore store, int id, ItamTaskDone input) => Guard(ctx, async u => { await store.TaskDone(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
 
         api.MapGet("/admin", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Admin(u, ctx.RequestAborted))));

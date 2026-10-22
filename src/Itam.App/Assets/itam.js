@@ -48,7 +48,8 @@ export const ICONS={
   upload:'<path d="M12 15V4M7.5 8.5L12 4l4.5 4.5"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/>',
   user:'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
   back:'<path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
-  tag:'<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.5"/>'
+  tag:'<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.5"/>',
+  tasks:'<path d="M9 6h11M9 12h11M9 18h11"/><path d="M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17"/>'
 };
 const initials=n=>(n||'').split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase();
 /** The page frame: white side menu (logo, the pages the person may open, who is signed in) and a top bar with the asset
@@ -70,6 +71,7 @@ export async function shell(current){
   const link=(n,key,text,href)=>{const a=el('a',null,'x-nav'+(key===current?' on':''));a.href=href;a.append(svg(key),el('span',text));if(key===current)a.setAttribute('aria-current','page');n.append(a);return a;};
   if(m.can.viewAssets)link(nav,'assets','Assets','/');
   if(m.can.handover)link(nav,'handover','Handover','/handover.html');
+  if(m.can.tasks){const t=link(nav,'tasks','Tasks','/tasks.html');if(m.openTasks)t.append(el('span',String(m.openTasks),'x-count x-count-hot'));}
   if(m.can.poView)link(nav,'pos','Purchase orders','/pos.html');
   if(m.can.ownBackup||m.can.backupsView)link(nav,'backups','My Backup','/backups.html');
   if(m.can.admin){adminH.hidden=false;link(adminNav,'admin','Administration Center','/admin.html');const areas=$('side');if(areas&&current==='admin'){areas.className='it-subnav';adminNav.append(areas);}}

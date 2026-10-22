@@ -414,3 +414,4 @@
 .x .x-seg button{color:var(--acc2)}
 .x .x-seg button:hover{background:#d7e6fd;color:var(--acc2)}
 .x .x-seg button[aria-pressed=true]{background:var(--acc);color:#fff;box-shadow:0 1px 2px #2563eb4d,0 4px 10px #2563eb33}
+.x .x-nav .x-count-hot{background:var(--bad);border-color:var(--bad);color:#fff}

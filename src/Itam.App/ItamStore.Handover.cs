@@ -273,6 +273,22 @@ public sealed partial class ItamStore
     }
 
     sealed record TaskView(int id, string kind, string subject, int assetId, string assetNo, DateTime created, DateTime? done, string? doneBy, string? note, bool canDo);
+    /// <summary>The Tasks page: the System Administrator's computer removals (AD and Endpoint Central) and the Voice
+    /// Administrator's extension removals (CUCM); the national IT roles see all of them read-only.</summary>
+    public async Task<object> MyTasks(ItamUser user, CancellationToken token)
+    {
+        await using var c = await Open(token);
+        var s = await Scope(c, null, user, token);
+        Require(s.AdTasks || s.CucmTasks || s.ViewsAll, "You have no infrastructure tasks.");
+        var tasks = await Tasks(c, s, token);
+        return new { tasks, mine = new { ad = s.AdTasks, cucm = s.CucmTasks }, open = tasks.Count(t => t.canDo) };
+    }
+
+    /// <summary>Open tasks the person must do (the count on the Tasks menu item).</summary>
+    internal static async Task<int> OpenTaskCount(DbConnection c, ItamScope s, CancellationToken token)
+        => !s.AdTasks && !s.CucmTasks ? 0 : Convert.ToInt32(await Scalar(c, null,
+            "SELECT COUNT(*) FROM itam_data.task WHERE done_at_utc IS NULL AND ((kind=N'RemoveFromAd' AND @ad=1) OR (kind=N'RemoveFromCucm' AND @cu=1))", token, ("@ad", s.AdTasks), ("@cu", s.CucmTasks)));
+
     async Task<List<TaskView>> Tasks(DbConnection c, ItamScope s, CancellationToken token)
     {
         var all = await Rows(c, null, "SELECT TOP 200 k.task_id,k.kind,k.subject,a.asset_id,a.asset_no,k.created_at_utc,k.done_at_utc,e.display_name,k.done_note FROM itam_data.task k JOIN itam_data.asset a ON a.asset_id=k.asset_id " +

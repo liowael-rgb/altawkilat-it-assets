@@ -213,6 +213,10 @@ try
     var cucm = (int)(await Scalar($"SELECT task_id FROM itam_data.task WHERE delivery_id={phoneDn} AND kind='RemoveFromCucm'"))!;
     Check(await Throws<ItamAccessDenied>(() => store.TaskDone(U(5), cucm, new(null), default)), "Only the Voice Administrator confirms the CUCM removal");
     await store.TaskDone(U(6), cucm, new(null), default);
+    var sysTasks = JsonSerializer.SerializeToElement(await store.MyTasks(U(5), default)).GetProperty("tasks").EnumerateArray().ToList();
+    var voiceTasks = JsonSerializer.SerializeToElement(await store.MyTasks(U(6), default)).GetProperty("tasks").EnumerateArray().ToList();
+    Check(sysTasks.Count > 0 && sysTasks.All(t => t.GetProperty("kind").GetString() == "RemoveFromAd") && voiceTasks.Count > 0 && voiceTasks.All(t => t.GetProperty("kind").GetString() == "RemoveFromCucm")
+        && await Throws<ItamAccessDenied>(() => store.MyTasks(U(4), default)), "Tasks page: the System Administrator sees computer removals, the Voice Administrator extension removals");
     Check(await Throws<ItamAccessDenied>(() => store.LabelPdf(U(4), hpc2, default)) && await Throws<ItamAccessDenied>(() => store.LabelPdf(U(8), hpc2, default)), "Labels: own regions for specialists; not the Auditor");
     var label = await store.LabelPdf(U(7), hpc2, default); var zpl = System.Text.Encoding.UTF8.GetString((await store.LabelZpl(U(1), hpc2, default)).Content);
     Check(System.Text.Encoding.ASCII.GetString(label.Content, 0, 5) == "%PDF-" && zpl.Contains("^BQN", StringComparison.Ordinal) && zpl.Contains("TAGH02", StringComparison.Ordinal), "Label as PDF and Zebra ZPL (QR code, Asset No., service tag)");
