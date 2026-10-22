@@ -34,12 +34,12 @@ CREATE TABLE itam_data.supplier_order(
  note nvarchar(500) NULL, created_by uniqueidentifier NOT NULL, created_at_utc datetime2 NOT NULL DEFAULT SYSUTCDATETIME());
 ALTER TABLE itam_data.ink_request ADD CONSTRAINT FK_itam_ink_request_order FOREIGN KEY(order_id) REFERENCES itam_data.supplier_order(order_id);
 
--- Payment pack PAY-n: one supplier and category; cover memo + every invoice with its order and signed notes.
+-- Payment pack PAY-n: picked invoices of one supplier (one category, or Mixed); cover memo + each invoice with its ink request documents.
 CREATE TABLE itam_data.payment_pack(
  pack_id int IDENTITY(1,1) NOT NULL PRIMARY KEY,
  pack_no nvarchar(20) NOT NULL CONSTRAINT UX_itam_payment_pack_no UNIQUE,
  supplier_id int NOT NULL REFERENCES itam_ref.supplier(supplier_id),
- category nvarchar(20) NOT NULL CHECK(category IN(N'Toners',N'Devices',N'PartsMaintenance')),
+ category nvarchar(20) NOT NULL CHECK(category IN(N'Toners',N'Devices',N'PartsMaintenance',N'Mixed')), -- Mixed: invoices of several categories
  created_by uniqueidentifier NOT NULL, created_at_utc datetime2 NOT NULL DEFAULT SYSUTCDATETIME(),
  sent_on date NULL, sent_by uniqueidentifier NULL, paid_on date NULL, paid_note nvarchar(200) NULL,
  signed_cover_file_id bigint NULL REFERENCES itam_data.stored_file(file_id));

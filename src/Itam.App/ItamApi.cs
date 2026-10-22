@@ -116,6 +116,10 @@ public static class ItamApi
         api.MapPost("/orders", (HttpContext ctx, ItamStore store, ItamOrderInput input) => Guard(ctx, async u => Results.Ok(await store.CreateOrder(u, input, ctx.RequestAborted))));
         api.MapGet("/orders/{id:int}/order.pdf", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Pdf(await store.OrderPdf(u, id, ctx.RequestAborted))));
         api.MapGet("/ink/{id:int}/request.pdf", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Pdf(await store.InkRequestPdf(u, id, ctx.RequestAborted))));
+        api.MapGet("/suppliers", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Suppliers(u, ctx.RequestAborted))));
+        api.MapGet("/suppliers/{id:int}", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Results.Ok(await store.Supplier(u, id, ctx.RequestAborted))));
+        api.MapPost("/suppliers", (HttpContext ctx, ItamStore store, ItamSupplierInput input) => Guard(ctx, async u => Results.Ok(await store.SaveSupplier(u, null, input, ctx.RequestAborted))));
+        api.MapPost("/suppliers/{id:int}", (HttpContext ctx, ItamStore store, int id, ItamSupplierInput input) => Guard(ctx, async u => Results.Ok(await store.SaveSupplier(u, id, input, ctx.RequestAborted))));
         api.MapGet("/invoices", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Invoices(u, ctx.RequestAborted))));
         api.MapGet("/invoices/{id:int}", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Results.Ok(await store.Invoice(u, id, ctx.RequestAborted))));
         api.MapGet("/invoices/{id:int}/file", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Pdf(await store.InvoiceFile(u, id, ctx.RequestAborted))));

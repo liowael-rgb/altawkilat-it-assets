@@ -55,7 +55,10 @@ CREATE TABLE itam_ref.location(
  region_code nvarchar(20) NOT NULL REFERENCES itam_ref.region(region_code), city nvarchar(100) NULL, active bit NOT NULL DEFAULT 1);
 CREATE TABLE itam_ref.supplier(
  supplier_id int IDENTITY(1,1) NOT NULL PRIMARY KEY, name_en nvarchar(200) NOT NULL CONSTRAINT UX_itam_supplier UNIQUE,
- vat_no nvarchar(20) NULL, active bit NOT NULL DEFAULT 1);
+ vat_no nvarchar(20) NULL, active bit NOT NULL DEFAULT 1,
+ -- Supplier module (owner, 22 October 2026): contact details; added by the Ink Officer, IT Assets Officer or IT Administrator.
+ cr_no nvarchar(20) NULL, contact_name nvarchar(200) NULL, phone nvarchar(30) NULL, email nvarchar(200) NULL, address nvarchar(300) NULL,
+ notes nvarchar(500) NULL, created_by uniqueidentifier NULL, created_at_utc datetime2 NOT NULL DEFAULT SYSUTCDATETIME());
 CREATE TABLE itam_ref.manufacturer(
  manufacturer_id int IDENTITY(1,1) NOT NULL PRIMARY KEY, name_en nvarchar(100) NOT NULL CONSTRAINT UX_itam_manufacturer UNIQUE, active bit NOT NULL DEFAULT 1);
 CREATE TABLE itam_ref.model(

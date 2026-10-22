@@ -1,5 +1,5 @@
 // One PO: counts, lines, receiving devices (form 13), devices, receipts, and the PO pack for Accounting.
-import {$,el,api,shell,fail,message,when,date,money,card,dl,table,buttons,option,form,edit} from '/itam.js';
+import {$,el,api,shell,fail,message,when,date,money,card,dl,table,buttons,option,form,edit,accounting} from '/itam.js';
 const id=Number(new URLSearchParams(location.search).get('id'));
 let m,d;
 const stat=(n,t)=>{const s=el('div',null,'stat');s.append(el('b',String(n)),el('span',t));return s;};
@@ -17,21 +17,21 @@ async function load(note){
     stat(c.reserved,'reserved'),stat(c.deliveredWaitingSigned,'delivered, waiting for signed copy'),stat(c.deliveredSigned,'delivered and signed'));
   const toCome=d.lines.filter(l=>l.toCome>0);
   $('view').replaceChildren(...[counts,
-    card('PO',null,dl([['PO number',el('strong',p.number)],['PO date',date(p.date)],['Supplier',p.supplier+(p.supplierVat?` (VAT ${p.supplierVat})`:'')],['Raised by',p.raisedBy],
+    card('PO',null,dl([['PO number',el('strong',p.number)],['PO date',date(p.date)],['Supplier',p.supplier+(p.supplierVat?` (VAT ${p.supplierVat})`:'')],['Raised by',p.raisedBy],['PO pack',(()=>{const k=d.prints.find(x=>x.sentOn);return k?el('span','Sent to Accounting '+date(k.sentOn),'tag ok'):el('span',d.prints.length?'Printed, not sent to Accounting':'Not sent to Accounting','tag warn');})()],
       ['Request',p.requestRef],['Invoice number',p.invoiceNo],['Note',p.note],['PO document',doc]])),
     card('Lines',`Subtotal ${money(d.totals.net)} · VAT 15% ${money(d.totals.vat)} · Total ${money(d.totals.total)}`,
       table(['Line','Type','Manufacturer and model','Specification','Quantity','Unit cost','Line total','Received','To come'],d.lines,
         l=>[String(l.no),l.typeName,[l.manufacturer,l.model].filter(Boolean).join(' ')||'-',l.specification||'',String(l.quantity),money(l.unitCost),money(l.lineTotal),String(l.received),String(l.toCome)])),
     d.canManage&&toCome.length?receiveCard(toCome):null,
     card('Invoices',`${d.invoicedDevices} of ${c.received} received devices are on a recorded invoice.`+(d.canManage?' Record device invoices on the Invoices page.':''),
-      table(['Invoice','Date','Total incl. VAT','Devices'],d.invoices,i=>[i.no,date(i.date),money(i.total),String(i.devices)],null,{empty:'No invoice recorded for this PO yet.',onRow:()=>location.assign('/invoices.html')})),
+      table(['Invoice','Date','Total incl. VAT','Devices','Accounting'],d.invoices,i=>[i.no,date(i.date),money(i.total),String(i.devices),accounting(i)],null,{empty:'No invoice recorded for this PO yet.',onRow:()=>location.assign('/invoices.html')})),
     card('Devices received','Each device has its own Asset No.; open one to see its details and history.',
       table(['Asset No.','Line','Model','Serial / service tag','Status','Kept at / employee','Delivery note','Received'],d.devices,x=>[x.assetNo,String(x.line),x.model||'',x.serial||x.serviceTag||'',x.status,x.employee||x.keptAt,x.deliveryNo?(()=>{const s=el('span');s.append(x.deliveryNo+' ',el('span',x.signed?'Signed':'Waiting for signed copy','tag '+(x.signed?'ok':'warn')));return s;})():'Not yet delivered',when(x.receivedAt)],null,
         {empty:'No device received yet.',onRow:x=>location.assign('/asset.html?id='+x.id)})),
     card('Receipts',null,table(['When','By','Received at','Devices','Invoice','Evidence','Note'],d.receipts,r=>[when(r.at),r.by||'',r.location,String(r.devices),r.invoiceRef||'',
       r.evidence?(()=>{const a=el('a','Open');a.href='/api/files/'+r.evidence;a.target='_blank';return a;})():'',r.note||''],null,{empty:'No receipt yet.'})),
     card('PO pack prints','Print the PO pack, then record the date it went to Accounting.',table(['Printed','By','Devices','Sent to Accounting'],d.prints,
-      k=>[when(k.at),k.by||'',String(k.devices),k.sentOn?`${date(k.sentOn)} (${k.sentBy||''})`:''],d.canManage?k=>k.sentOn?[]:[['Sent to Accounting',()=>sent(k)]]:null,{empty:'Not printed yet.'}))].filter(Boolean));
+      k=>[when(k.at),k.by||'',String(k.devices),k.sentOn?el('span',`Sent ${date(k.sentOn)} (${k.sentBy||''})`,'tag ok'):el('span','Not sent','tag warn')],d.canManage?k=>k.sentOn?[]:[['Sent to Accounting',()=>sent(k)]]:null,{empty:'Not printed yet.'}))].filter(Boolean));
   if(note)message(note);
 }
 function sent(k){edit('Sent to Accounting',[{key:'on',label:'Date sent',type:'date',value:new Date(Date.now()+3*3600e3).toISOString().slice(0,10),required:true}],

@@ -235,3 +235,13 @@ English text is in Calibri; Arabic stays in Arial, because Calibri has no Arabic
 it uses, so a one-page note is about 90 KB instead of 575 KB.
 Deployment: the server needs `calibri.ttf` (it comes with Microsoft Office, not always with Windows Server); without it the
 English text falls back to Arial.
+
+### Supplier module (owner, 22 October 2026)
+
+A Suppliers page lists every supplier with VAT number, contact person and phone (shared click-to-call control), and how many
+invoices are waiting for a payment pack. One supplier's page shows its details (VAT, CR, contact, phone, email, address),
+invoices, payment packs, toner orders and POs. The Ink Officer, the IT Assets Officer and the IT Administrator add and change
+suppliers (audited). Tick any of the supplier's invoices waiting for a pack and put them in one payment pack; one pack holds
+invoices of one supplier, of one category or several together (Mixed), and the person needs the right for each category.
+Invoices, the PO page and the PO list show where each stands with Accounting: not in a pack, in a pack not yet sent, sent
+to Accounting (date), or paid (date); the PO list and page show whether the PO pack was sent to Accounting.

@@ -31,7 +31,9 @@ static class DemoSeed
                  (N'Riyadh IT Warehouse (demo)','ITWarehouse','Central',N'Riyadh'),(N'Jeddah IT Warehouse (demo)','ITWarehouse','West',N'Jeddah'),
                  (N'Dammam IT Warehouse (demo)','ITWarehouse','East',N'Dammam'),(N'Abha Branch (demo)','Branch','South',N'Abha'),
                  (N'Al Kharj Branch (demo)','Branch','Central',N'Al Kharj'),(N'Dubai Office (demo)','Branch','UAE',N'Dubai');
-                INSERT itam_ref.supplier(name_en,vat_no) VALUES(N'Demo Computers Co.','300000000000003'),(N'Demo Network Supplies',NULL),(N'Demo Office Equipment',NULL),(N'Demo Toner Trading (A)','300000000000011'),(N'Demo Toner Trading (B)','300000000000029');
+                INSERT itam_ref.supplier(name_en,vat_no,cr_no,contact_name,phone,email,address) VALUES(N'Demo Computers Co.','300000000000003','1010000001',N'Demo Sales Desk','0110000001','sales@computers.example.invalid',N'Riyadh'),
+                 (N'Demo Network Supplies',NULL,NULL,NULL,NULL,NULL,NULL),(N'Demo Office Equipment',NULL,NULL,NULL,NULL,NULL,NULL),
+                 (N'Demo Toner Trading (A)','300000000000011','4030000002',N'Demo Toner Desk','0120000002','orders@toner-a.example.invalid',N'Jeddah'),(N'Demo Toner Trading (B)','300000000000029',NULL,N'Demo Contact B','0130000003',NULL,N'Dammam');
                 INSERT itam_ref.manufacturer(name_en) VALUES(N'Dell'),(N'HP'),(N'Lenovo'),(N'Cisco'),(N'Canon'),(N'Epson'),(N'Samsung'),(N'Microsoft');
                 INSERT itam_ref.model(manufacturer_id,type_code,name_en) SELECT m.manufacturer_id,v.t,v.n FROM (VALUES
                  (N'Dell','PC',N'Latitude 5440'),(N'Dell','PC',N'OptiPlex 7010'),(N'HP','PC',N'EliteBook 840 G10'),(N'Lenovo','PC',N'ThinkPad T14'),
@@ -113,7 +115,8 @@ static class DemoSeed
         await store.SendInkForApproval(Who(13), k5, new(G(2)), default); await store.DecideInk(Who(2), k5, new(false, "Three is too many; ask for one at a time."), default);
         var k6 = DeliveryId(await store.CreateInkRequest(Who(12), new(printer, null, 1, null, "Cyan for the colour printer"), default));
         await store.SendInkForApproval(Who(13), k6, new(G(2)), default);
-        await store.CreatePack(Who(13), new(supplierA, "Toners", [inv]), default);
+        var pay1 = DeliveryId(await store.CreatePack(Who(13), new(supplierA, "Toners", [inv]), default));
+        await store.PackDates(Who(13), pay1, new(today, null, null), default);
         // A printer not in IT Assets: the employee types its serial number and model; the region comes from the AD office (Abha, South).
         var canon = await One("SELECT model_id FROM itam_ref.model WHERE name_en=N'imageRUNNER 2425'");
         await store.CreateInkRequest(Who(11), new(null, null, 1, "C-EXV33", "Printer in the accounts room has no IT label", "DEMO-CN-7781", canon), default);

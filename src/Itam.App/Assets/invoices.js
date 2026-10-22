@@ -1,6 +1,6 @@
 // Invoices page (build step 3a): record supplier invoices (toners, devices, parts and maintenance) with their lines, see what
 // each covers, and prepare the monthly payment pack (cover memo, then each invoice with its ink request documents and approvals) for Accounting.
-import {$,el,api,shell,fail,message,date,when,money,card,table,edit,form,option,svg} from '/itam.js';
+import {$,el,api,shell,fail,message,date,when,money,card,table,edit,form,option,svg,accounting} from '/itam.js';
 let m,d,cat='all';
 const open=href=>window.open(href,'_blank');
 const btn=(text,fn,cls,icon)=>{const b=el('button',null,cls||'');b.type='button';if(icon)b.append(svg(icon));b.append(text);b.onclick=fn;return b;};
@@ -18,10 +18,10 @@ async function load(note){
   const bar=el('div',null,'x-filterbar');bar.append(seg);
   const list=d.invoices.filter(i=>cat==='all'||i.category===cat);
   $('view').replaceChildren(
-    card('Invoices',null,bar,table(['Invoice','Date','Supplier','Category','Total incl. VAT','Order / PO','Payment pack'],list,
-      i=>[el('span',i.no,'mono'),date(i.date),i.supplier,i.categoryLabel,money(i.total),i.order||i.po||'',i.pack?`${i.pack}${i.paidOn?' · paid '+date(i.paidOn):i.sentOn?' · sent '+date(i.sentOn):''}`:el('span','Not in a pack','tag warn')],
+    card('Invoices',null,bar,table(['Invoice','Date','Supplier','Category','Total incl. VAT','Order / PO','Accounting'],list,
+      i=>[el('span',i.no,'mono'),date(i.date),i.supplier,i.categoryLabel,money(i.total),i.order||i.po||'',accounting(i)],
       null,{empty:'No invoices yet.',onRow:i=>show(i.id)})),
-    card('Payment packs','One pack per supplier and category: the Inter-Office Memo cover, then each invoice followed by the ink request documents it pays for, with their approvals. Record when it went to Accounting and when the supplier was paid.',
+    card('Payment packs','Picked invoices of one supplier per pack (also from the Suppliers page): the Inter-Office Memo cover, then each invoice followed by the ink request documents it pays for, with their approvals. Record when it went to Accounting and when the supplier was paid.',
       table(['Pack','Supplier','Category','Invoices','Total','Prepared','Sent to Accounting','Paid'],d.packs,
         p=>[el('span',p.no,'mono'),p.supplier,p.category,String(p.invoices),money(p.total),`${when(p.at)} by ${p.by||''}`,p.sentOn?date(p.sentOn):'',p.paidOn?`${date(p.paidOn)}${p.paidNote?' · '+p.paidNote:''}`:''],
         p=>[['Print',()=>open(`/api/packs/${p.id}/pack.pdf`)],...(d.canPack?[['Record dates',()=>dates(p)]]:[])],{empty:'No payment packs yet.'})));
@@ -38,7 +38,7 @@ async function show(id){
   if(x.receipts.length)box.append(el('h3',`PO ${i.poNumber}: receipts`),table(['Receipt','Received','At','Devices','On this invoice'],x.receipts,r=>[String(r.id),when(r.at),r.location,String(r.devices),r.onThis?'Yes':r.onOther?'Another invoice':'No']));
   const acts=el('div',null,'actions');acts.append(btn('Open the invoice PDF',()=>open(`/api/invoices/${id}/file`),'primary','doc'),btn('Close',()=>load()));
   if(i.poId){const a=el('a');a.href='/po.html?id='+i.poId;a.append(el('button',`Open PO ${i.poNumber}`));acts.append(a);}
-  $('view').replaceChildren(card(`Invoice ${i.no}`,`${i.supplier}${i.supplierVat?' (VAT '+i.supplierVat+')':''} · ${date(i.date)} · ${i.categoryLabel}${i.pack?' · in '+i.pack:''} · recorded ${when(i.at)} by ${i.by||''}`,box,acts));
+  $('view').replaceChildren(card(`Invoice ${i.no}`,`${i.supplier}${i.supplierVat?' (VAT '+i.supplierVat+')':''} · ${date(i.date)} · ${i.categoryLabel} · recorded ${when(i.at)} by ${i.by||''}`,(()=>{const p=el('p');p.append(el('b','Accounting: '),accounting(i));return p;})(),box,acts));
   window.scrollTo(0,0);
 }
 
@@ -76,17 +76,17 @@ function newInvoice(){
   refresh();addLine();window.scrollTo(0,0);
 }
 
-// Payment pack: choose supplier and category, then tick the invoices not yet in a pack.
+// Payment pack: choose the supplier, then tick its invoices not yet in a pack (any category you handle; also from the Suppliers page).
 function newPack(){
-  const sup=sel([...new Map(d.invoices.filter(i=>!i.packId).map(i=>[i.supplierId,i.supplier])).entries()],'Choose');const c=sel(d.categories.map(k=>[k.code,k.label]),'Choose');
+  const sup=sel([...new Map(d.invoices.filter(i=>!i.packId).map(i=>[i.supplierId,i.supplier])).entries()],'Choose');const mine=new Set(d.categories.map(k=>k.code));
   const box=el('div',null,'wide');const picked=new Set();
-  const refresh=()=>{box.replaceChildren();picked.clear();const list=d.invoices.filter(i=>!i.packId&&String(i.supplierId)===sup.value&&i.category===c.value);
+  const refresh=()=>{box.replaceChildren();picked.clear();const list=d.invoices.filter(i=>!i.packId&&String(i.supplierId)===sup.value&&mine.has(i.category));
     for(const i of list){const l=el('label',null,'inline');const cb=document.createElement('input');cb.type='checkbox';cb.checked=true;picked.add(i.id);cb.onchange=()=>cb.checked?picked.add(i.id):picked.delete(i.id);
-      l.append(cb,`${i.no} · ${date(i.date)} · ${money(i.total)}`);box.append(l);}
-    if(!list.length)box.append(el('p',sup.value&&c.value?'No invoices of this supplier and category waiting for a pack.':'Choose the supplier and category.','hint'));};
-  sup.onchange=refresh;c.onchange=refresh;
-  const grid=el('div',null,'x-sec-body');grid.append(field('Supplier',sup,{req:true}),field('Category',c,{req:true}),field('Invoices',box,{req:true,wide:true}));
-  const save=btn('Prepare and print the pack',async()=>{try{const r=await api('/packs',{method:'POST',json:{supplierId:Number(sup.value)||null,category:c.value||null,invoiceIds:[...picked]}});
+      l.append(cb,`${i.no} · ${date(i.date)} · ${i.categoryLabel} · ${money(i.total)}`);box.append(l);}
+    if(!list.length)box.append(el('p',sup.value?'No invoices of this supplier waiting for a pack.':'Choose the supplier.','hint'));};
+  sup.onchange=refresh;
+  const grid=el('div',null,'x-sec-body');grid.append(field('Supplier',sup,{req:true}),field('Invoices',box,{req:true,wide:true}));
+  const save=btn('Prepare and print the pack',async()=>{try{const r=await api('/packs',{method:'POST',json:{supplierId:Number(sup.value)||null,invoiceIds:[...picked]}});
     open(`/api/packs/${r.id}/pack.pdf`);await load(`Payment pack ${r.packNo} prepared. Sign the cover, then take it to the Head of Department and Accounting.`);}catch(e){fail(e);}},'primary','doc');
   $('view').replaceChildren(card('Prepare a payment pack','The cover lists Date | Invoice No. | Amount with the total; it is signed by IT ("Checked by"), the Head of Department and the Accountant.',grid,(()=>{const a=el('div',null,'actions');a.append(save,btn('Cancel',()=>load()));return a;})()));
   refresh();window.scrollTo(0,0);
@@ -98,4 +98,4 @@ function dates(p){
     x=>api(`/packs/${p.id}/dates`,{method:'POST',json:{sentOn:x.sent,paidOn:x.paid,paidNote:x.note}}),{reason:false,done:()=>load('Saved.')});
 }
 
-try{m=await shell('invoices');if(!m.can.invoices)throw Error('You cannot see invoices.');await load();}catch(e){fail(e);}
+try{m=await shell('invoices');if(!m.can.invoices)throw Error('You cannot see invoices.');await load();const inv=Number(new URLSearchParams(location.search).get('id'));if(inv)await show(inv);}catch(e){fail(e);}

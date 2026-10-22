@@ -430,3 +430,9 @@
 .x .x-seg .x-segc{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:20px;margin-left:8px;padding:0 7px;border-radius:999px;background:#fff;color:var(--acc2);font-size:11.5px;font-weight:800}
 .x .x-seg .x-segc.hot{background:var(--acc);color:#fff}
 .x .x-seg button[aria-pressed=true] .x-segc{background:#fff;color:var(--acc2)}
+/* Shared click-to-call control (.c2c with data-call), as in the other systems */
+.x a.c2c{display:inline-flex;align-items:center;gap:6px;padding:3px 10px 3px 8px;border:1px solid var(--line,#dbe3ee);border-radius:999px;background:#fff;color:var(--acc2,#1d4ed8);font-weight:600;text-decoration:none;white-space:nowrap}
+.x a.c2c:hover{border-color:var(--acc,#2563eb);background:#eff6ff}
+.x a.c2c .x-i{width:14px;height:14px}
+.x .x-pick{width:18px;height:18px;margin:0}
+.x .x-filter-search{flex:1;max-width:340px;height:40px;padding:0 14px;border:1px solid var(--line2);border-radius:10px;background:#fff;font:inherit}

@@ -18,9 +18,9 @@ public sealed record ItamPackDates(DateOnly? SentOn, DateOnly? PaidOn, string? P
 public sealed partial class ItamStore
 {
     public static readonly (string Code, string Label)[] InvoiceCategories = [("Toners", "Toners"), ("Devices", "Devices"), ("PartsMaintenance", "Parts and maintenance")];
-    static string CategoryLabel(string c) => InvoiceCategories.FirstOrDefault(x => x.Code == c).Label ?? c;
+    static string CategoryLabel(string c) => c == "Mixed" ? "Mixed" : InvoiceCategories.FirstOrDefault(x => x.Code == c).Label ?? c;
     /// <summary>Toner and parts invoices: the regional IT handlers; device invoices (PO receipts): Team Leader and IT Assets Officer.</summary>
-    static bool CanInvoice(ItamScope s, string category) => category switch { "Devices" => s.PoManage, "Toners" => s.CanInkAny, _ => s.CanHandoverAny };
+    static bool CanInvoice(ItamScope s, string category) => category switch { "Devices" => s.PoManage, "Toners" => s.CanInkAny, "Mixed" => s.PoManage || s.CanInkAny || s.CanHandoverAny, _ => s.CanHandoverAny };
     static bool CanSeeInvoices(ItamScope s) => s.PoView || s.CanHandoverAny || s.CanInkAny;
 
     // Invoices -----------------------------------------------------------------------------------------------------------------------
@@ -100,11 +100,11 @@ public sealed partial class ItamStore
         await using var c = await Open(token);
         var s = await Scope(c, null, user, token);
         Require(CanSeeInvoices(s), "You cannot see invoices.");
-        var i = (await Rows(c, null, "SELECT i.invoice_no,i.invoice_date,su.name_en,su.vat_no,i.category,i.file_id,i.order_id,o.order_no,i.po_id,p.po_number,i.net,i.vat,i.total,i.note,pk.pack_no,i.pack_id,e.display_name,i.created_at_utc " +
+        var i = (await Rows(c, null, "SELECT i.invoice_no,i.invoice_date,su.name_en,su.vat_no,i.category,i.file_id,i.order_id,o.order_no,i.po_id,p.po_number,i.net,i.vat,i.total,i.note,pk.pack_no,i.pack_id,e.display_name,i.created_at_utc,pk.sent_on,pk.paid_on " +
             "FROM itam_data.invoice i JOIN itam_ref.supplier su ON su.supplier_id=i.supplier_id LEFT JOIN itam_data.supplier_order o ON o.order_id=i.order_id LEFT JOIN itam_data.po p ON p.po_id=i.po_id " +
             "LEFT JOIN itam_data.payment_pack pk ON pk.pack_id=i.pack_id LEFT JOIN itam_access.employee e ON e.employee_id=i.created_by WHERE i.invoice_id=@i",
             r => new { no = r.GetString(0), date = Day(r, 1), supplier = r.GetString(2), supplierVat = S(r, 3), category = r.GetString(4), categoryLabel = CategoryLabel(r.GetString(4)), file = r.GetInt64(5), orderId = I(r, 6), orderNo = S(r, 7),
-                poId = I(r, 8), poNumber = S(r, 9), net = r.GetDecimal(10), vat = r.GetDecimal(11), total = r.GetDecimal(12), note = S(r, 13), pack = S(r, 14), packId = I(r, 15), by = S(r, 16), at = Utc(r, 17) }, token, ("@i", id))).SingleOrDefault()
+                poId = I(r, 8), poNumber = S(r, 9), net = r.GetDecimal(10), vat = r.GetDecimal(11), total = r.GetDecimal(12), note = S(r, 13), pack = S(r, 14), packId = I(r, 15), by = S(r, 16), at = Utc(r, 17), sentOn = Day(r, 18), paidOn = Day(r, 19) }, token, ("@i", id))).SingleOrDefault()
             ?? throw new ArgumentException("The invoice was not found.");
         var lines = await Rows(c, null, "SELECT l.line_id,l.line_no,l.description,l.quantity,l.unit_cost,ISNULL((SELECT SUM(r.quantity) FROM itam_data.ink_delivery d JOIN itam_data.ink_request r ON r.request_id=d.request_id WHERE d.invoice_line_id=l.line_id),0) " +
             "FROM itam_data.invoice_line l WHERE l.invoice_id=@i ORDER BY l.line_no",
@@ -237,23 +237,28 @@ public sealed partial class ItamStore
     }
 
     // Payment pack ---------------------------------------------------------------------------------------------------------------------
-    /// <summary>Put invoices of one supplier and category in a payment pack (PAY-n) for Accounting.</summary>
+    /// <summary>Put picked invoices of one supplier in a payment pack (PAY-n) for Accounting (owner, 22 October 2026: any of the
+    /// supplier's invoices waiting for a pack, from the Suppliers or Invoices page). The pack's category is the invoices'
+    /// category, or Mixed; the person must be allowed to handle every invoice's category.</summary>
     public async Task<object> CreatePack(ItamUser user, ItamPackInput x, CancellationToken token)
     {
         await using var c = await Open(token);
         await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var s = await Scope(c, tx, user, token);
-        var category = InvoiceCategories.Any(k => k.Code == x.Category) ? x.Category! : throw new ArgumentException("Choose the category.");
-        Require(CanInvoice(s, category), "You cannot prepare payment packs for this category.");
+        if (await Scalar(c, tx, "SELECT 1 FROM itam_ref.supplier WHERE supplier_id=@s", token, ("@s", x.SupplierId ?? 0)) is null) throw new ArgumentException("Choose the supplier.");
         var ids = (x.InvoiceIds ?? []).Distinct().ToArray();
         if (ids.Length == 0) throw new ArgumentException("Choose the invoices for this payment pack.");
+        var categories = new HashSet<string>();
         foreach (var id in ids)
         {
             var i = (await Rows(c, tx, "SELECT invoice_no,supplier_id,category,pack_id FROM itam_data.invoice WITH (UPDLOCK) WHERE invoice_id=@i", r => (No: r.GetString(0), Sup: r.GetInt32(1), Cat: r.GetString(2), Pack: I(r, 3)), token, ("@i", id))).SingleOrDefault();
             if (i.No is null) throw new ArgumentException("An invoice was not found.");
-            if (i.Sup != x.SupplierId || i.Cat != category) throw new ArgumentException($"Invoice {i.No} is of another supplier or category: one pack holds one supplier and category.");
+            if (i.Sup != x.SupplierId) throw new ArgumentException($"Invoice {i.No} is of another supplier: one pack holds the invoices of one supplier.");
             if (i.Pack is not null) throw new ArgumentException($"Invoice {i.No} is already in a payment pack.");
+            Require(CanInvoice(s, i.Cat), $"You cannot put {CategoryLabel(i.Cat).ToLowerInvariant()} invoices in a payment pack ({i.No}).");
+            categories.Add(i.Cat);
         }
+        var category = categories.Count == 1 ? categories.Single() : "Mixed";
         var no = $"PAY-{await Next(c, tx, "PaymentPack", token)}";
         var pack = Convert.ToInt32(await Scalar(c, tx, "INSERT itam_data.payment_pack(pack_no,supplier_id,category,created_by) OUTPUT inserted.pack_id VALUES(@n,@s,@c,@b)", token, ("@n", no), ("@s", x.SupplierId), ("@c", category), ("@b", s.Id)));
         foreach (var id in ids) await Exec(c, tx, "UPDATE itam_data.invoice SET pack_id=@p WHERE invoice_id=@i", token, ("@p", pack), ("@i", id));
@@ -297,7 +302,7 @@ public sealed partial class ItamStore
         d.Logo(M, d.Y + 10, 110); d.Text("IT Department", W - M, d.Y, 10, true, muted); d.Text("قسم تقنية المعلومات", W - M, d.Y - 14, 10, true, muted); d.Y -= 44;
         d.Text("INTER-OFFICE MEMORANDUM", M, d.Y, 20, false, ink); d.Text("مذكرة داخلية", W - M, d.Y, 18, true, ink); d.Y -= 12; d.Box(M, d.Y, W - 2 * M, 2, "0 0 0"); d.Y -= 24;
         foreach (var (k, v) in new[] { ("Date", DateTime.UtcNow.AddHours(3).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)), ("To", "Accounts Department"), ("From", "IT Department"),
-            ("Subject", $"Payment of {CategoryLabel(category).ToLowerInvariant()} invoices — {supplier}"), ("Reference", no) })
+            ("Subject", category == "Mixed" ? $"Payment of invoices — {supplier}" : $"Payment of {CategoryLabel(category).ToLowerInvariant()} invoices — {supplier}"), ("Reference", no) })
         { d.Text(k + ":", M, d.Y, 10.5, false, muted); d.Fit(v, M + 80, d.Y, 10.5, W - 2 * M - 80, ink); d.Y -= 17; }
         d.Y -= 10;
         d.Fit($"Attached please find {invoices.Count} invoice{(invoices.Count == 1 ? "" : "s")} from {supplier} which {(invoices.Count == 1 ? "is" : "are")} due for payment.", M, d.Y, 11, W - 2 * M, ink); d.Y -= 24;

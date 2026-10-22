@@ -51,6 +51,9 @@ export const ICONS={
   tag:'<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.5"/>',
   ink:'<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>',
   invoices:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/>',
+  suppliers:'<path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><circle cx="7" cy="17.5" r="1.6"/><circle cx="17" cy="17.5" r="1.6"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  phone:'<path d="M5 4h3l2 5-2.5 1.5a11 11 0 0 0 6 6L15 14l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>',
   tasks:'<path d="M9 6h11M9 12h11M9 18h11"/><path d="M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17"/>'
 };
 const initials=n=>(n||'').split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase();
@@ -77,6 +80,7 @@ export async function shell(current){
   {const k=link(nav,'ink','Ink','/ink.html');if(m.pendingApprovals)k.append(el('span',String(m.pendingApprovals),'x-count x-count-hot'));}
   if(m.can.poView)link(nav,'pos','Purchase orders','/pos.html');
   if(m.can.invoices)link(nav,'invoices','Invoices','/invoices.html');
+  if(m.can.suppliers)link(nav,'suppliers','Suppliers','/suppliers.html');
   if(m.can.ownBackup||m.can.backupsView)link(nav,'backups','My Backup','/backups.html');
   if(m.can.admin){adminH.hidden=false;link(adminNav,'admin','Administration Center','/admin.html');const areas=$('side');if(areas&&current==='admin'){areas.className='it-subnav';adminNav.append(areas);}}
   const roles=[...new Set(m.roles.map(r=>r.label))].join(', ')||'Employee';
@@ -128,4 +132,8 @@ export function table(head,list,cells,actions,{empty='Nothing here yet.',onRow}=
 }
 export function card(title,hint,...content){const c=el('section',null,'card');if(title)c.append(el('h2',title));if(hint)c.append(el('p',hint,'hint'));c.append(...content.filter(Boolean));return c;}
 export function buttons(...list){const a=el('div',null,'actions');for(const b of list){if(!b)continue;const [text,fn,cls]=b;const x=el('button',text,cls||'');x.type='button';x.onclick=fn;a.append(x);}return a;}
+// The shared click-to-call control (all systems): a tel: link with data-call, which the telephony integration hooks into later.
+export function call(number){if(!number)return '';const a=el('a',null,'c2c');a.href='tel:'+String(number).replace(/[^0-9+]/g,'');a.dataset.call=number;a.append(svg('phone'),el('span',number));return a;}
+// Where a supplier invoice stands with Accounting (payment pack sent and paid dates).
+export function accounting(x){if(x.paidOn)return el('span','Paid '+date(x.paidOn),'tag ok');if(x.sentOn)return el('span','Sent to Accounting '+date(x.sentOn),'tag ok');if(x.pack)return el('span',x.pack+': not sent to Accounting','tag warn');return el('span','Not in a payment pack','tag warn');}
 export function dl(pairs){const l=el('dl',null,'kv');for(const [k,v] of pairs){if(v===null||v===undefined||v==='')continue;l.append(el('dt',k));const dd=el('dd');dd.append(v instanceof Node?v:document.createTextNode(String(v)));l.append(dd);}return l;}

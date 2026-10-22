@@ -123,6 +123,8 @@ public sealed record ItamScope(Guid Id, string Name, string[] Roles, string[] Re
     /// Active Directory location not matched) is seen by every Ink Officer.</summary>
     public bool CanInk(string? region) => Officer || (region is null ? InkRegions.Length > 0 : InkRegions.Contains(region));
     public bool CanInkAny => Officer || InkRegions.Length > 0;
+    /// <summary>Add and edit suppliers (Supplier module, owner 22 October 2026): Ink Officer, IT Assets Officer, IT Administrator.</summary>
+    public bool SuppliersManage => Officer || InkRegions.Length > 0 || ItAdmin;
     public bool RolesManage => Manager || ItAdmin;
     public bool MasterData => ItAdmin;
     public bool AuditView => Manager || ItAdmin || Auditor;

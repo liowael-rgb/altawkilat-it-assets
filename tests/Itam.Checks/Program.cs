@@ -305,6 +305,24 @@ try
         "An invoice is in one pack; paid only after it went to Accounting");
     await store.PackDates(U(9), payPack, new(handDay, null, null), default); await store.PackDates(U(9), payPack, new(null, handDay, "Ref 123"), default);
     Check(await Scalar($"SELECT CASE WHEN sent_on IS NOT NULL AND paid_on IS NOT NULL THEN 1 ELSE 0 END FROM itam_data.payment_pack WHERE pack_id={payPack}") is 1, "Sent to Accounting and paid dates recorded");
+    // Supplier module: the Ink Officer and IT Assets Officer add suppliers; picked invoices of one supplier go in one pack.
+    Check(await Throws<ItamAccessDenied>(() => store.SaveSupplier(U(10), null, new("Toner House", null, null, null, null, null, null, null), default))
+        && await Throws<ArgumentException>(() => store.SaveSupplier(U(9), null, new("Toner House", "123", null, null, null, null, null, null), default))
+        && await Throws<ArgumentException>(() => store.SaveSupplier(U(9), null, new("Supplier One", null, null, null, null, null, null, null), default)), "Only IT supplier roles add suppliers; VAT 15 digits; names unique");
+    var house = JsonSerializer.SerializeToElement(await store.SaveSupplier(U(9), null, new("Toner House", "300000000000099", "1010101010", "Sami", "0551234567", "orders@example.invalid", "Riyadh", null), default)).GetProperty("id").GetInt32();
+    await store.SaveSupplier(U(1), house, new("Toner House Co.", "300000000000099", null, "Sami", "0551234567", null, null, null), default);
+    var supList = JsonSerializer.SerializeToElement(await store.Suppliers(U(9), default));
+    var sup1 = JsonSerializer.SerializeToElement(await store.Supplier(U(1), 1, default));
+    Check(supList.GetProperty("suppliers").EnumerateArray().Any(x => x.GetProperty("name").GetString() == "Toner House Co.") && sup1.GetProperty("invoices").GetArrayLength() >= 2,
+        "Suppliers list and one supplier's invoices");
+    var dInv = (int)(await Scalar("SELECT invoice_id FROM itam_data.invoice WHERE invoice_no=N'INV-D1'"))!;
+    var pInv = JsonSerializer.SerializeToElement(await store.CreateInvoice(U(1), new(1, "INV-P1", handDay, "PartsMaintenance", null, null, null, null, [new("Fuser unit", 1, 100m)]), invPdf, default)).GetProperty("id").GetInt32();
+    var hInv = JsonSerializer.SerializeToElement(await store.CreateInvoice(U(9), new(house, "H-1", handDay, "Toners", null, null, null, null, [new("Toner", 1, 50m)]), invPdf, default)).GetProperty("id").GetInt32();
+    Check(await Throws<ArgumentException>(() => store.CreatePack(U(1), new(1, null, [dInv, hInv]), default))
+        && await Throws<ItamAccessDenied>(() => store.CreatePack(U(9), new(1, null, [dInv, pInv]), default)), "One pack holds one supplier's invoices; each category needs its right");
+    var mixed = JsonSerializer.SerializeToElement(await store.CreatePack(U(1), new(1, null, [dInv, pInv]), default)).GetProperty("id").GetInt32();
+    Check(await Scalar($"SELECT category FROM itam_data.payment_pack WHERE pack_id={mixed}") as string == "Mixed"
+        && System.Text.Encoding.ASCII.GetString((await store.PackPdf(U(1), mixed, default)).Content, 0, 5) == "%PDF-", "Picked invoices of different categories make a Mixed pack");
     // A printer not in IT Assets: serial number and model typed by the employee, region and office from Active Directory, linked or
     // registered by the Ink Officer before it goes for approval.
     await Exec($"UPDATE itam_access.employee SET branch=N'Riyadh WH',region=N'Central' WHERE employee_id='{G(10)}'");
