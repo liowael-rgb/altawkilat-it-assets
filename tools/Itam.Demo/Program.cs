@@ -26,6 +26,8 @@ builder.Services.AddScoped<IItamSession, DemoSession>();
 builder.Services.AddItamSignIn(httpsOnly: false);
 builder.Services.AddSingleton<IItamPasswordCheck, DemoPasswordCheck>();
 builder.Services.AddSingleton<IItamComputerDirectory, DemoComputers>();
+// The AD job with the invented demo directory (every 15 minutes, and "Read AD now").
+builder.Services.AddItamDirectorySync(_ => _ => Task.FromResult(DemoSeed.People()), 15);
 var app = builder.Build();
 
 if (await Scalar(cs, "SELECT COUNT(*) FROM itam_access.employee") is 0)

@@ -69,7 +69,7 @@ public sealed partial class ItamStore
             audit = s.AuditView ? await Rows(c, null, "SELECT TOP 300 at_utc,actor_id,entity,entity_key,action,after_json,reason FROM itam_access.audit ORDER BY audit_id DESC",
                 r => (object)new { at = Utc(r, 0), who = N(r.GetGuid(1)), entity = r.GetString(2), key = r.GetString(3), action = r.GetString(4), detail = S(r, 5), reason = S(r, 6) }, token) : [],
             employees = new { total = await Scalar(c, null, "SELECT COUNT(*) FROM itam_access.employee", token), active = await Scalar(c, null, "SELECT COUNT(*) FROM itam_access.employee WHERE enabled=1", token),
-                lastRead = await Scalar(c, null, "SELECT MAX(synced_at_utc) FROM itam_access.employee", token) }
+                lastRead = await Scalar(c, null, "SELECT MAX(synced_at_utc) FROM itam_access.employee", token) is DateTime t ? DateTime.SpecifyKind(t, DateTimeKind.Utc) : (DateTime?)null }
         };
     }
 

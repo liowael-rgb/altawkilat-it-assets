@@ -6,11 +6,14 @@ static class DemoSeed
 {
     static Guid G(int n) => new($"00000000-0000-0000-0000-{n:000000000000}");
 
+    /// <summary>The demo "Active Directory": invented people only (no real people): mobile, branch, company and HR code as printed
+    /// on the delivery note. Also read by the demo AD job.</summary>
+    public static IReadOnlyCollection<ItamEmployee> People() => [.. DemoPeople.All.Select((p, i) => new ItamEmployee(p.Id, p.Account, p.Name, p.Account + "@example.invalid", p.Role, i is >= 9 and <= 11 ? "Sales (demo)" : "IT (demo)", p.Id == G(2) ? null : G(2), true,
+        $"050000{i + 1:0000}", i is >= 9 and <= 11 ? "Abha Branch (demo)" : "Head Office (demo)", "ALTAWKILAT (demo)", $"DEMO-{i + 1:000}", i is >= 9 and <= 11 ? "South" : null, $"{70000 + i + 1}", $"{4100 + i + 1}"))];
+
     public static async Task Run(string cs, ItamStore store, ItamPdf pdf)
     {
-        // Invented directory details (no real people): mobile, branch, company and HR code as printed on the delivery note.
-        await store.SyncEmployees([.. DemoPeople.All.Select((p, i) => new ItamEmployee(p.Id, p.Account, p.Name, p.Account + "@example.invalid", p.Role, i is >= 9 and <= 11 ? "Sales (demo)" : "IT (demo)", p.Id == G(2) ? null : G(2), true,
-            $"050000{i + 1:0000}", i is >= 9 and <= 11 ? "Abha Branch (demo)" : "Head Office (demo)", "ALTAWKILAT (demo)", $"DEMO-{i + 1:000}", i is >= 9 and <= 11 ? "South" : null, $"{70000 + i + 1}", $"{4100 + i + 1}"))], default);
+        await store.SyncEmployees(People(), default);
         await using (var c = new SqlConnection(cs))
         {
             await c.OpenAsync();

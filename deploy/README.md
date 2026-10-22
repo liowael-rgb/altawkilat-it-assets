@@ -70,7 +70,8 @@ accept the site's own Windows identity (the IIS application pool identity).
   until *Sign out* or the browser is closed. A person is let in when their AD account is enabled and copied into IT Assets.
   Five wrong passwords for one account (or 20 from one PC) within 15 minutes wait 15 minutes before AD is asked again, so
   guessing cannot lock the AD account. Sign-ins and failures are in the event log.
-- **Employees**: copied from the users OU every hour (`Directory:SyncEveryMinutes`). A read that would disable more than
+- **Employees**: copied from the users OU every 15 minutes (`Directory:SyncEveryMinutes`, 15 to 1440), and at once with
+  *Read AD now* (Administration Center > Employees, IT Manager or System Administrator; kept in the audit log). A read that would disable more than
   half of the enabled employees is refused and logged (wrong OU or partial read): nothing changes.
 - **AD computer comparison**: every day at `Directory:CompareAtHour` (Riyadh time), and with *Compare now*.
 - **Emails**: written to the outbox in every case; sent only when `Mail:Enabled` is true. With `Mail:TestRecipient` every

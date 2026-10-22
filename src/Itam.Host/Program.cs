@@ -36,7 +36,8 @@ if (settings.Directory.Enabled)
     builder.Services.AddSingleton<ItamLdapDirectory>();
     builder.Services.AddSingleton<IItamPasswordCheck, ItamLdapPasswordCheck>();
     builder.Services.AddSingleton<IItamComputerDirectory>(sp => sp.GetRequiredService<ItamLdapDirectory>());
-    builder.Services.AddHostedService<ItamEmployeeSync>();
+    // The AD employee job: every SyncEveryMinutes (15), and "Read AD now" in the Administration Center.
+    builder.Services.AddItamDirectorySync(sp => { var d = sp.GetRequiredService<ItamLdapDirectory>(); return t => Task.Run(d.Employees, t); }, settings.Directory.SyncEveryMinutes);
     builder.Services.AddHostedService<ItamAdCompareJob>();
 }
 if (settings.Mail.Enabled)

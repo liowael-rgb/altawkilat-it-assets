@@ -66,8 +66,27 @@ const render={
     return lists.map(([code,label])=>card(label,null,table(['Code','Name','Order','Active'],L().values.filter(v=>v.list===code),v=>[v.code,v.name,String(v.sort),yes(v.active)],
       d.can.masterData?v=>[['Edit',()=>ref('value',{...v,list:code},[['code','Code',true,true],['name','Name'],['sort','Order','number']],code)]]:null),
       d.can.masterData&&add('Add a value',()=>ref('value',{list:code,active:true},[['code','Code'],['name','Name'],['sort','Order','number']],code))));},
-  employees:()=>[card('Employees','Read from the Active Directory users OU (read-only). Accounts no longer found are kept, marked disabled, so history and custody stay linked.',
-    el('p',`${d.employees.active} active of ${d.employees.total} employees. Last read: ${when(d.employees.lastRead)}.`))],
+  employees:()=>{
+    // The AD job (owner, 22 October 2026): every 15 minutes, or now with "Read AD now" (IT Manager, System Administrator).
+    const job=el('div');
+    const show=async(note)=>{const j=await api('/admin/ad-sync');job.replaceChildren();
+      if(!j.available){job.append(el('p','Active Directory is not set up on this site.','hint'));return;}
+      const r=j.last;const rows=[['Runs',`Every ${j.everyMinutes} minutes, and when the site starts`],['Now',j.running?'Running…':'Waiting for the next run']];
+      if(r)rows.push(['Last run',`${when(r.finished)} · started by ${r.by==='Schedule'?'the schedule':r.by}`],
+        ['Result',r.ok?`${r.read} accounts read: ${r.added} added, ${r.changed} changed, ${r.disabled} disabled`:r.error]);
+      else rows.push(['Last run','Not yet since the site started']);
+      const dl=el('dl',null,'kv');for(const [k,v] of rows){dl.append(el('dt',k),el('dd',v));}job.append(dl);
+      if(r&&!r.ok)job.prepend(el('p',r.error,'msg error'));
+      if(note)job.prepend(el('p',note,'msg ok'));
+      if(j.canRun)job.append(buttons(['Read AD now',async e=>{const b=e.currentTarget;b.disabled=true;b.textContent='Reading Active Directory…';
+        try{const x=await api('/admin/ad-sync',{method:'POST'});d=await api('/admin');
+          await show(x.ok?`Done: ${x.read} accounts read, ${x.added} added, ${x.changed} changed, ${x.disabled} disabled.`:'');count.textContent=counts();}
+        catch(err){fail(err);b.disabled=false;b.textContent='Read AD now';}},'primary']));};
+    const counts=()=>`${d.employees.active} active of ${d.employees.total} employees. Last change from AD: ${when(d.employees.lastRead)}.`;
+    const count=el('p',counts());
+    show().catch(fail);
+    return [card('Employees','Read from the Active Directory users OU (read-only). Accounts no longer found are kept, marked disabled, so history and custody stay linked.',count),
+      card('AD job','Copies the employees from Active Directory: names, emails, departments, managers and enabled accounts. A read that would disable more than half of the employees is refused and nothing changes.',job)];},
   csv:()=>{
     // Export any list to a CSV file (opens in Excel); import master data and roles from a CSV file with the same columns.
     const exp=table(['List','Columns',''],d.csv,x=>{const a=el('a','Export CSV');a.href='/api/admin/csv/'+x.key;a.setAttribute('download','');return [x.title,x.columns.join(', '),a];});

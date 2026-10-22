@@ -79,34 +79,6 @@ public sealed class ItamLdapPasswordCheck(DirectorySettings settings) : IItamPas
     }
 }
 
-/// <summary>Copies the users OU into IT Assets every hour (names, departments, managers, enabled). A read that would disable more
-/// than half of the enabled employees is refused (a wrong OU or a partial read), and nothing changes.</summary>
-public sealed class ItamEmployeeSync(IServiceScopeFactory scopes, ItamLdapDirectory directory, DirectorySettings settings, ILogger<ItamEmployeeSync> log) : BackgroundService
-{
-    protected override async Task ExecuteAsync(CancellationToken token)
-    {
-        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(settings.SyncEveryMinutes));
-        do
-        {
-            try
-            {
-                var people = directory.Employees();
-                await using var scope = scopes.CreateAsyncScope();
-                var store = scope.ServiceProvider.GetRequiredService<ItamStore>();
-                var enabledNow = await store.EnabledEmployees(token);
-                if (enabledNow > 20 && people.Count(p => p.Enabled) < enabledNow / 2)
-                    log.LogError("IT Assets: the AD read returned {Read} enabled users for {Now} enabled employees; nothing changed. Check ItamHost:Directory:UsersBaseDn.", people.Count(p => p.Enabled), enabledNow);
-                else
-                {
-                    var (added, changed, disabled) = await store.SyncEmployees(people, token);
-                    log.LogInformation("IT Assets: employees from AD: {Added} added, {Changed} changed, {Disabled} disabled.", added, changed, disabled);
-                }
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException) { log.LogError(ex, "IT Assets: the AD employee read failed; it runs again later."); }
-        } while (await timer.WaitForNextTickAsync(token));
-    }
-}
-
 /// <summary>Runs the AD computer comparison once a day at the configured hour (Riyadh time).</summary>
 public sealed class ItamAdCompareJob(IServiceScopeFactory scopes, ItamLdapDirectory directory, DirectorySettings settings, ILogger<ItamAdCompareJob> log) : BackgroundService
 {

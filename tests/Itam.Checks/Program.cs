@@ -867,6 +867,49 @@ try
         && CsvText(await store.ExportCsv(U(2), "roles", default)).Contains("u10,") && CsvText(await store.ExportCsv(U(2), "audit", default)).Contains("CSV import"),
         "CSV import of roles: by username and role name; a disabled employee is refused; roles and the audit log export");
     Console.WriteLine("PASS CSV import and export");
+
+    // ---- AD employee job: every 15 minutes or "Read AD now" (owner, 22 October 2026) ----------------------------------------
+    {
+        var everyone = new List<ItamEmployee>();
+        await using (var c = new SqlConnection(cs))
+        {
+            await c.OpenAsync();
+            await using var q = new SqlCommand("SELECT employee_id,account,display_name,email,job_title,department,manager_id,enabled,mobile,branch,company,hr_code,region,sap_id,ip_phone FROM itam_access.employee", c);
+            await using var r = await q.ExecuteReaderAsync();
+            string? T(int i) => r.IsDBNull(i) ? null : r.GetString(i);
+            while (await r.ReadAsync()) everyone.Add(new(r.GetGuid(0), r.GetString(1), r.GetString(2), T(3), T(4), T(5), r.IsDBNull(6) ? null : r.GetGuid(6), r.GetBoolean(7), T(8), T(9), T(10), T(11), T(12), T(13), T(14)));
+        }
+        var newcomer = new ItamEmployee(Guid.NewGuid(), "new.joiner", "New Joiner", "new.joiner@example.invalid", "Accountant", "Finance", null, true, null, null, null, null, null, null, null);
+        Func<CancellationToken, Task<IReadOnlyCollection<ItamEmployee>>> read = _ => Task.FromResult<IReadOnlyCollection<ItamEmployee>>([.. everyone, newcomer]);
+        var hold = new TaskCompletionSource();
+        var services = new ServiceCollection().AddLogging().AddScoped(_ => new ItamStore(Runtime, new FakeSecrets()) { Pdf = pdf });
+        services.AddItamDirectorySync(_ => async t => { await hold.Task; return await read(t); }, 15, schedule: false);
+        await using var sp = services.BuildServiceProvider();
+        var job = sp.GetRequiredService<ItamDirectorySync>();
+        var first = job.Run("Schedule", default);
+        var second = await job.Run("Schedule", default);
+        var runningSeen = job.Running;
+        hold.SetResult();
+        var done = await first;
+        Check(second is null && runningSeen && done is { Ok: true, Added: 1, StartedBy: "Schedule" } && job.Last == done && !job.Running
+            && await Scalar("SELECT enabled FROM itam_access.employee WHERE account=N'new.joiner'") is true,
+            "AD job: copies a new AD account; one run at a time (a second start while running is refused)");
+        Check(await Throws<ItamAccessDenied>(() => store.RunDirectorySync(U(3), job, default)) && await Throws<ArgumentException>(() => store.RunDirectorySync(U(2), null, default)),
+            "AD job: only the IT Manager and the System Administrator run it now; a site without AD says so");
+        var manual = JsonSerializer.SerializeToElement(await store.RunDirectorySync(U(5), job, default));
+        var status = J(await store.DirectorySyncStatus(U(2), job, default));
+        Check(manual.GetProperty("ok").GetBoolean() && manual.GetProperty("added").GetInt32() == 0 && manual.GetProperty("by").GetString() == "Person 5"
+            && status.Contains("\"everyMinutes\":15") && status.Contains("\"canRun\":true") && await Throws<ItamAccessDenied>(() => store.DirectorySyncStatus(U(3), job, default))
+            && await Scalar("SELECT COUNT(*) FROM itam_access.audit WHERE entity=N'ad-sync' AND action=N'Run now'") is 1,
+            "AD job: \"Read AD now\" runs it at once, shows who ran it and the result, and is kept in the audit log");
+        var failing = new ItamDirectorySync(sp.GetRequiredService<IServiceScopeFactory>(), _ => throw new InvalidOperationException("server down"), 15, sp.GetRequiredService<ILogger<ItamDirectorySync>>());
+        var bad = await failing.Run("Schedule", default);
+        var tiny = new ItamDirectorySync(sp.GetRequiredService<IServiceScopeFactory>(), _ => Task.FromResult<IReadOnlyCollection<ItamEmployee>>([]), 15, sp.GetRequiredService<ILogger<ItamDirectorySync>>());
+        var empty = await tiny.Run("Schedule", default);
+        Check(bad is { Ok: false } && bad.Error!.Contains("server down") && empty is { Ok: false, Disabled: 0 } && await Scalar("SELECT enabled FROM itam_access.employee WHERE account=N'new.joiner'") is true,
+            "AD job: a failed or empty AD read changes nothing and shows the error");
+    }
+    Console.WriteLine("PASS AD job");
     // Review copies of the emails (only when ITAM_MAIL_SAMPLES names a folder): the latest email of each template, as sent,
     // with the logo embedded so each file opens on its own. Invented check data only.
     if (Environment.GetEnvironmentVariable("ITAM_MAIL_SAMPLES") is { Length: > 0 } sampleDir)

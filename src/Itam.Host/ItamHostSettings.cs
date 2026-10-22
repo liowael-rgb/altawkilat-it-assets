@@ -53,7 +53,7 @@ public sealed class DirectorySettings
     public List<ComparedOu> ComparedOus { get; set; } = [];
     /// <summary>Computer name patterns left out of the comparison (regular expressions), for example servers.</summary>
     public List<string> LeaveOutNames { get; set; } = [];
-    public int SyncEveryMinutes { get; set; } = 60;
+    public int SyncEveryMinutes { get; set; } = 15;
     /// <summary>The local (Riyadh) hour of the daily AD comparison.</summary>
     public int CompareAtHour { get; set; } = 6;
 
