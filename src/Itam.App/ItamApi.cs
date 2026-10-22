@@ -92,6 +92,19 @@ public static class ItamApi
         api.MapGet("/requests/{id:int}/document.pdf", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Pdf(await store.RequestPdf(u, id, ctx.RequestAborted))));
         api.MapGet("/requests/{id:int}/pack.pdf", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Pdf(await store.RequestPack(u, id, ctx.RequestAborted))));
         api.MapGet("/requests/{id:int}/files/{which}", (HttpContext ctx, ItamStore store, int id, string which) => Guard(ctx, async u => { var f = await store.RequestFile(u, id, which, ctx.RequestAborted); return Results.File(f.Content, f.MediaType, f.FileName); }));
+        api.MapGet("/movements", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Movements(u, ctx.RequestAborted))));
+        api.MapGet("/movements/find", (HttpContext ctx, ItamStore store, string? no) => Guard(ctx, async u => Results.Ok(await store.MovementByNo(u, no, ctx.RequestAborted))));
+        api.MapGet("/movements/assets", (HttpContext ctx, ItamStore store, string? q, int? warehouse) => Guard(ctx, async u => Results.Ok(await store.MovementAssets(u, q, warehouse, ctx.RequestAborted))));
+        api.MapGet("/movements/{id:int}", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Results.Ok(await store.Movement(u, id, ctx.RequestAborted))));
+        api.MapPost("/movements", (HttpContext ctx, ItamStore store, ItamMovementInput input) => Guard(ctx, async u => Results.Ok(await store.CreateMovement(u, input, ctx.RequestAborted))));
+        api.MapPost("/movements/{id:int}/decision", (HttpContext ctx, ItamStore store, int id, ItamMovementDecision input) => Guard(ctx, async u => { await store.DecideMovement(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+        api.MapPost("/movements/{id:int}/dispatch", (HttpContext ctx, ItamStore store, int id, ItamMovementLines input) => Guard(ctx, async u => { await store.DispatchMovement(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+        api.MapPost("/movements/{id:int}/receipt", (HttpContext ctx, ItamStore store, int id, ItamMovementReceipt input) => Guard(ctx, async u => { await store.ReceiveMovement(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+        api.MapPost("/movements/{id:int}/resolve", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => { var (d, f) = await Form<ItamMovementResolve>(ctx.Request); await store.ResolveMovement(u, id, d, f, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+        api.MapPost("/movements/{id:int}/return", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => { await store.ReturnMovement(u, id, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+        api.MapPost("/movements/{id:int}/cancel", (HttpContext ctx, ItamStore store, int id, ItamCancelInput input) => Guard(ctx, async u => { await store.CancelMovement(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+        api.MapGet("/movements/{id:int}/pass.pdf", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Pdf(await store.GatePassPdf(u, id, ctx.RequestAborted))));
+        api.MapGet("/movements/{id:int}/evidence/{line:int}", (HttpContext ctx, ItamStore store, int id, int line) => Guard(ctx, async u => { var f = await store.MovementEvidence(u, id, line, ctx.RequestAborted); return Results.File(f.Content, f.MediaType, f.FileName); }));
         api.MapGet("/maintenance", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.MaintenanceOrders(u, ctx.RequestAborted))));
         api.MapGet("/maintenance/asset", (HttpContext ctx, ItamStore store, string? no) => Guard(ctx, async u => Results.Ok(await store.MaintenanceAsset(u, no, ctx.RequestAborted))));
         api.MapPost("/maintenance", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => { var (d, f) = await Form<ItamMaintenanceOrderInput>(ctx.Request); return Results.Ok(await store.CreateMaintenanceOrder(u, d, f, ctx.RequestAborted)); }));
@@ -167,6 +180,7 @@ public static class ItamApi
         // The QR code on the asset label: opens the asset list filtered on the Asset No.
         app.MapGet("/a/{no}", (string no) => Results.Redirect("/?q=" + Uri.EscapeDataString(no)));
         app.MapGet("/r/{no}", (string no) => Results.Redirect("/request.html?no=" + Uri.EscapeDataString(no)));
+        app.MapGet("/g/{no}", (string no) => Results.Redirect("/movement.html?no=" + Uri.EscapeDataString(no)));
         app.MapGet("/", (HttpContext ctx) => Asset(ctx, "index.html"));
         app.MapGet("/{file}", (HttpContext ctx, string file) => Asset(ctx, file));
     }

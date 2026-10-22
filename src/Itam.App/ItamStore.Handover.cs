@@ -73,42 +73,50 @@ public sealed partial class ItamStore
         if (a.Status != "InStore") throw new ArgumentException($"{a.No} is {ItamStatuses.Label(a.Status)}: only an asset In Store can be delivered.");
         if (await Scalar(c, tx, "SELECT delivery_no FROM itam_data.delivery WHERE asset_id=@a AND received_at_utc IS NULL", token, ("@a", a.Id)) is string open)
             throw new ArgumentException($"{a.No} is still on delivery note {open}: receive it back first.");
+        var today = DateOnly.FromDateTime(UtcNow.AddHours(3));
+        var on = x.DeliveredOn ?? today; if (on > today) throw new ArgumentException("The delivery date cannot be in the future.");
+        var owner = OwnerTypes.Contains(x.OwnerType) ? x.OwnerType! : throw new ArgumentException("Choose the owner type (Personal, Department, Temporary or Other).");
+        var (id, no) = await IssueDelivery(c, tx, s.Id, s.Name, a, x.EmployeeId ?? Guid.Empty, on, owner, x.ComputerName, Optional(x.Notes, "Notes", 1000), null, token);
+        await tx.CommitAsync(token);
+        return new { id, deliveryNo = no };
+    }
+
+    /// <summary>Issues a delivery note (Asset No.-n) for an asset to an active employee: the asset In Use with the employee,
+    /// waiting for the signed copy. Used by Deliver and by a branch transfer received by another person (custody change).</summary>
+    async Task<(int Id, string No)> IssueDelivery(DbConnection c, DbTransaction tx, Guid actor, string actorName, HandAsset a, Guid employee, DateOnly on, string owner,
+        string? computerName, string? notes, string? via, CancellationToken token)
+    {
         var emp = (await Rows(c, tx, "SELECT e.display_name,e.account,e.email,e.mobile,e.job_title,e.department,e.branch,e.company,e.hr_code,m.display_name,e.enabled " +
             "FROM itam_access.employee e LEFT JOIN itam_access.employee m ON m.employee_id=e.manager_id WHERE e.employee_id=@e",
             r => (Name: r.GetString(0), Account: r.GetString(1), Email: S(r, 2), Mobile: S(r, 3), Title: S(r, 4), Dept: S(r, 5), Branch: S(r, 6), Company: S(r, 7), Hr: S(r, 8), Manager: S(r, 9), Enabled: r.GetBoolean(10)),
-            token, ("@e", x.EmployeeId ?? Guid.Empty))).SingleOrDefault();
+            token, ("@e", employee))).SingleOrDefault();
         if (emp.Name is null) throw new ArgumentException("Choose the employee.");
         if (!emp.Enabled) throw new ArgumentException($"{emp.Name} is disabled in Active Directory: new deliveries go to active employees only.");
-        var owner = OwnerTypes.Contains(x.OwnerType) ? x.OwnerType! : throw new ArgumentException("Choose the owner type (Personal, Department, Temporary or Other).");
-        var today = DateOnly.FromDateTime(UtcNow.AddHours(3));
-        var on = x.DeliveredOn ?? today; if (on > today) throw new ArgumentException("The delivery date cannot be in the future.");
         string? computer = null;
         if (a.Type == "PC")
         {
             // Computer-name rule: required for computers; refused while it is on another open delivery; freed by the receipt.
-            computer = (x.ComputerName ?? "").Trim().ToUpperInvariant();
+            computer = (computerName ?? "").Trim().ToUpperInvariant();
             if (computer.Length == 0) throw new ArgumentException("Computer name is required for a computer.");
             if (!System.Text.RegularExpressions.Regex.IsMatch(computer, "^[A-Z0-9-]{1,15}$")) throw new ArgumentException("Computer name: up to 15 letters, numbers or dashes.");
             if (await Scalar(c, tx, "SELECT d.delivery_no FROM itam_data.delivery d WHERE d.computer_name=@n AND d.received_at_utc IS NULL", token, ("@n", computer)) is string other)
                 throw new ArgumentException($"Computer name {computer} is on delivery note {other}: choose another name.");
         }
-        var notes = Optional(x.Notes, "Notes", 1000);
         var no = $"{a.No}-{await Next(c, tx, "Delivery", token)}";
         var employeeRows = new List<NoteRow> { new("HR Code", "الكود الوظيفي", emp.Hr), new("Employee Name", "اسم الموظف", emp.Name), new("Employee Email", "البريد الالكتروني", emp.Email),
             new("Mobile", "رقم الجوال", emp.Mobile), new("Job Title", "المسمى الوظيفي", emp.Title), new("Branch Name", "اسم الفرع", emp.Branch), new("Department", "اسم القسم", emp.Dept),
             new("Company Name", "اسم الشركة", emp.Company), new("Direct Manager", "المدير المباشر", emp.Manager) };
-        var snapshot = new NoteSnapshot(employeeRows.Where(r => !string.IsNullOrWhiteSpace(r.Value)).ToList(), await ProductRows(c, tx, a, computer, token), emp.Name, s.Name);
+        var snapshot = new NoteSnapshot(employeeRows.Where(r => !string.IsNullOrWhiteSpace(r.Value)).ToList(), await ProductRows(c, tx, a, computer, token), emp.Name, actorName);
         var id = Convert.ToInt32(await Scalar(c, tx, "INSERT itam_data.delivery(delivery_no,asset_id,employee_id,delivered_on,owner_type,computer_name,notes,from_location_id,snapshot_json,issued_by) " +
             "OUTPUT inserted.delivery_id VALUES(@n,@a,@e,@d,@o,@c,@x,@l,@j,@b)", token,
-            ("@n", no), ("@a", a.Id), ("@e", x.EmployeeId), ("@d", DateParam(on)), ("@o", owner), ("@c", computer), ("@x", notes), ("@l", a.LocationId),
-            ("@j", JsonSerializer.Serialize(snapshot, Json)), ("@b", s.Id)));
+            ("@n", no), ("@a", a.Id), ("@e", employee), ("@d", DateParam(on)), ("@o", owner), ("@c", computer), ("@x", notes), ("@l", a.LocationId),
+            ("@j", JsonSerializer.Serialize(snapshot, Json)), ("@b", actor)));
         await Exec(c, tx, "UPDATE itam_data.asset SET status=N'InUse',stock_location=N'Employee' WHERE asset_id=@a", token, ("@a", a.Id));
         if (computer is not null)
             await Exec(c, tx, "DELETE itam_data.asset_attribute WHERE asset_id=@a AND attr_code=N'ComputerName'; INSERT itam_data.asset_attribute(asset_id,attr_code,value) VALUES(@a,N'ComputerName',@v)", token, ("@a", a.Id), ("@v", computer));
-        await Event(c, tx, a.Id, s.Id, "Delivered", $"Delivery note {no} to {emp.Name} ({owner}){(computer is null ? "" : ", computer name " + computer)}; waiting for the signed copy", token);
-        await Audit(c, tx, s.Id, "delivery", no, "Issue", null, new { asset = a.No, employee = emp.Account, on, owner, computer }, null, token);
-        await tx.CommitAsync(token);
-        return new { id, deliveryNo = no };
+        await Event(c, tx, a.Id, actor, "Delivered", $"Delivery note {no} to {emp.Name} ({owner}){(computer is null ? "" : ", computer name " + computer)}{(via is null ? "" : " (" + via + ")")}; waiting for the signed copy", token);
+        await Audit(c, tx, actor, "delivery", no, "Issue", null, new { asset = a.No, employee = emp.Account, on, owner, computer, via }, null, token);
+        return (id, no);
     }
 
     sealed record DeliveryRow(int Id, string No, int AssetId, string AssetNo, string Type, string Region, Guid EmployeeId, DateOnly On, string Owner, string? Computer, string? Notes,
@@ -339,6 +347,7 @@ public sealed partial class ItamStore
     {
         var (c, _, d) = await DocAccess(user, deliveryId, token); await using var _c = c;
         if (d.ReceivedAt is null) throw new ArgumentException("The asset is not received back yet.");
+        if (await Scalar(c, null, "SELECT closed_by_movement_id FROM itam_data.delivery WHERE delivery_id=@d", token, ("@d", d.Id)) is int) throw new ArgumentException("No receipt note: the custody passed to another employee on a branch transfer.");
         var names = await Names(c, null, token);
         return new($"Receipt note {d.No}-R.pdf", "application/pdf", NotePdf(NoteKind.Receipt, d, names.GetValueOrDefault(d.ReceivedBy ?? Guid.Empty), null));
     }

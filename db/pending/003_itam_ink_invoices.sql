@@ -131,3 +131,42 @@ CREATE TABLE itam_data.request_line(
  line_no int NOT NULL, item nvarchar(200) NOT NULL, specification nvarchar(300) NULL,
  quantity int NOT NULL CHECK(quantity BETWEEN 1 AND 1000), unit_cost decimal(18,2) NOT NULL CHECK(unit_cost>=0),
  CONSTRAINT UX_itam_request_line UNIQUE(request_id,line_no));
+
+-- Stock movements (plan v1.9 step 4). One engine for three kinds:
+--  Branch:    branch-to-branch transfer on a gate pass GP-n: the employee (own custody) or IT asks; the IT Helpdesk Team Leader
+--             (or backup; never their own) approves; the named sender dispatches within the dispatch validity (exit date + 3
+--             days); the named receiving employee confirms each asset; custody passes to the receiver with a new delivery note.
+--  Exit:      other building exits on a gate pass (customer site, work from home, repair outside...): returnable passes close on
+--             the confirmed return.
+--  Warehouse: IT warehouse-to-warehouse transfer WT-n: no approval (owner, 20 October 2026); source IT submits and the stock is
+--             reserved on an issued pass; partial dispatch and receipt; the named destination IT receiver confirms each asset.
+-- Discrepancies (missing, damaged, incorrect) are resolved per asset by the Team Leader (or backup) with evidence; a movement
+-- closes Completed, or Closed with Exceptions. Expiry of the dispatch validity never completes a dispatched movement.
+ALTER TABLE itam_data.delivery ADD closed_by_movement_id int NULL; -- custody passed on a branch transfer (no receipt note)
+CREATE TABLE itam_data.movement(
+ movement_id int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+ movement_no nvarchar(20) NOT NULL CONSTRAINT UX_itam_movement_no UNIQUE, -- GP-n (branch, exit) or WT-n (warehouse)
+ kind nvarchar(20) NOT NULL CHECK(kind IN(N'Branch',N'Exit',N'Warehouse')),
+ pass_no nvarchar(20) NOT NULL, pass_version int NOT NULL DEFAULT 1,
+ requested_by uniqueidentifier NOT NULL, requested_at_utc datetime2 NOT NULL DEFAULT SYSUTCDATETIME(), employee_id uniqueidentifier NULL,
+ purpose nvarchar(60) NOT NULL, purpose_details nvarchar(1000) NULL, pass_type nvarchar(20) NOT NULL CHECK(pass_type IN(N'Returnable',N'NonReturnable')),
+ from_location_id int NOT NULL REFERENCES itam_ref.location(location_id), to_location_id int NULL REFERENCES itam_ref.location(location_id), destination nvarchar(300) NULL,
+ exit_date date NOT NULL, valid_until date NOT NULL, expected_date date NULL,
+ carried_by nvarchar(20) NOT NULL CHECK(carried_by IN(N'Employee',N'Other')), carrier_name nvarchar(200) NULL, carrier_mobile nvarchar(30) NULL,
+ sender_id uniqueidentifier NULL, receiver_id uniqueidentifier NULL, maintenance_order_id int NULL REFERENCES itam_data.maintenance_order(order_id),
+ status nvarchar(30) NOT NULL CHECK(status IN(N'Submitted',N'Approved',N'Rejected',N'Cancelled',N'Expired',N'PartiallyDispatched',N'InTransit',N'Out',
+   N'PartiallyReceived',N'ReceiptDisputed',N'AwaitingCustody',N'Completed',N'ClosedWithExceptions')),
+ decided_by uniqueidentifier NULL, decided_at_utc datetime2 NULL, reject_reason nvarchar(500) NULL, cancelled_reason nvarchar(500) NULL,
+ dispatched_at_utc datetime2 NULL, dispatched_by uniqueidentifier NULL, completed_at_utc datetime2 NULL, version rowversion NOT NULL);
+CREATE INDEX IX_itam_movement_status ON itam_data.movement(status);
+CREATE TABLE itam_data.movement_line(
+ line_id int IDENTITY(1,1) NOT NULL PRIMARY KEY, movement_id int NOT NULL REFERENCES itam_data.movement(movement_id),
+ asset_id int NOT NULL REFERENCES itam_data.asset(asset_id), previous_status nvarchar(20) NOT NULL, holder_id uniqueidentifier NULL,
+ state nvarchar(20) NOT NULL CHECK(state IN(N'Pending',N'Dispatched',N'Received',N'Missing',N'Damaged',N'Incorrect',N'Returned',N'Lost',N'NeverDispatched',N'Cancelled')),
+ dispatched_at_utc datetime2 NULL, received_at_utc datetime2 NULL, received_by uniqueidentifier NULL, condition_note nvarchar(500) NULL,
+ issue_reported_by uniqueidentifier NULL, issue_reported_at_utc datetime2 NULL,
+ resolution nvarchar(30) NULL CHECK(resolution IN(N'ArrivedLater',N'NeverDispatched',N'ReturnedToSource',N'ConfirmedLost',N'AcceptedAtDestination')),
+ resolution_note nvarchar(1000) NULL, resolved_by uniqueidentifier NULL, resolved_at_utc datetime2 NULL, evidence_file_id bigint NULL REFERENCES itam_data.stored_file(file_id),
+ new_delivery_id int NULL REFERENCES itam_data.delivery(delivery_id));
+-- An asset is on one open movement at a time (lines still pending, dispatched or disputed).
+CREATE UNIQUE INDEX UX_itam_movement_line_open ON itam_data.movement_line(asset_id) WHERE state IN(N'Pending',N'Dispatched',N'Missing',N'Damaged',N'Incorrect');

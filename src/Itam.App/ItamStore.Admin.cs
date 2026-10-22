@@ -20,8 +20,8 @@ public sealed partial class ItamStore
         {
             id = s.Id, name = s.Name, roles,
             can = new { viewAssets = s.CanViewAny, register = s.CanRegisterAny, poView = s.PoView, poManage = s.PoManage, rolesManage = s.RolesManage, masterData = s.MasterData,
-                auditView = s.AuditView, backupsView = s.BackupsView, ownBackup = s.OwnBackup, keys = s.SysAdmin || s.Officer || s.Manager || s.Specialist, handover = s.HandoverView || s.AdTasks || s.CucmTasks, tasks = s.AdTasks || s.CucmTasks || s.TasksView, invoices = s.InvoicesView, suppliers = s.InvoicesView || s.SuppliersManage, maintenance = s.MaintenanceView || s.MaintenanceApproverRole, requests = s.Officer || s.ViewsAll || s.Specialist, admin = s.MasterData || s.RolesManage || s.AuditView },
-            lists = await Lists(c, token), regions = s.Regions, inkRegions = s.InkRegions, viewsAll = s.ViewsAll, openTasks = await OpenTaskCount(c, s, token), pendingApprovals = await PendingApprovals(c, s, token), maintenanceApprovals = await MaintenanceApprovalsCount(c, s, token), requestApprovals = await RequestApprovalsCount(c, s, token)
+                auditView = s.AuditView, backupsView = s.BackupsView, ownBackup = s.OwnBackup, keys = s.SysAdmin || s.Officer || s.Manager || s.Specialist, handover = s.HandoverView || s.AdTasks || s.CucmTasks, tasks = s.AdTasks || s.CucmTasks || s.TasksView, invoices = s.InvoicesView, suppliers = s.InvoicesView || s.SuppliersManage, maintenance = s.MaintenanceView || s.MaintenanceApproverRole, requests = s.Officer || s.ViewsAll || s.Specialist, movements = s.CanHandoverAny || s.ViewsAll, admin = s.MasterData || s.RolesManage || s.AuditView },
+            lists = await Lists(c, token), regions = s.Regions, inkRegions = s.InkRegions, viewsAll = s.ViewsAll, openTasks = await OpenTaskCount(c, s, token), pendingApprovals = await PendingApprovals(c, s, token), maintenanceApprovals = await MaintenanceApprovalsCount(c, s, token), requestApprovals = await RequestApprovalsCount(c, s, token), movementApprovals = await MovementApprovalsCount(c, s, token)
         };
     }
 
@@ -42,8 +42,8 @@ public sealed partial class ItamStore
     public async Task<object> Employees(ItamUser user, string? text, CancellationToken token)
     {
         await using var c = await Open(token);
-        var s = await Scope(c, null, user, token);
-        Require(s.HasItRole, "You cannot search employees.");
+        await Scope(c, null, user, token);
+        // Every employee may search names (to name the receiving colleague on a gate pass); the directory details only.
         var like = "%" + (text ?? "").Trim().Replace("[", "[[]").Replace("%", "[%]").Replace("_", "[_]") + "%";
         return await Rows(c, null, "SELECT TOP 30 employee_id,display_name,account,job_title,department,enabled FROM itam_access.employee WHERE display_name LIKE @q OR account LIKE @q OR email LIKE @q ORDER BY enabled DESC,display_name",
             r => new { id = r.GetGuid(0), name = r.GetString(1), account = r.GetString(2), title = S(r, 3), department = S(r, 4), enabled = r.GetBoolean(5) }, token, ("@q", like));

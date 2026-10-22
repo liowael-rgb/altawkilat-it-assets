@@ -154,6 +154,19 @@ static class DemoSeed
         await store.CreateRequest(Who(10), new(null, "New", null, "A second monitor for reports"), null, default);
         // PR-2's cost approval close to its 3-day deadline, to show the countdown (about 10 hours left).
         await using (var late = new SqlConnection(cs)) { await late.OpenAsync(); using var u = new SqlCommand("UPDATE itam_data.request SET priced_at_utc=DATEADD(hour,-62,SYSUTCDATETIME()) WHERE request_id=@i", late); u.Parameters.AddWithValue("@i", r2); await u.ExecuteNonQueryAsync(); }
+        // Movements (invented): a branch transfer waiting for the Team Leader, a warehouse transfer in transit, an exit pass ready.
+        var mvToday = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(3));
+        async Task<int> AssetId(string no) => await One($"SELECT asset_id FROM itam_data.asset WHERE asset_no=N'{no}'");
+        await store.CreateMovement(Who(10), new("Branch", null, [await AssetId("MON-4819")], "Move to another branch", null, null, await Loc("Abha Branch (demo)"), await Loc("Al Kharj Branch (demo)"), null,
+            mvToday, mvToday.AddDays(3), "Employee", null, null, null, G(11), null), default);
+        await Reg("MON", "Dell", "P2422H", "Riyadh IT Warehouse (demo)", "DEMOWT001"); await Reg("MON", "Dell", "P2422H", "Riyadh IT Warehouse (demo)", "DEMOWT002");
+        var wtAssets = new[] { await One("SELECT asset_id FROM itam_data.asset WHERE serial_no=N'DEMOWT001'"), await One("SELECT asset_id FROM itam_data.asset WHERE serial_no=N'DEMOWT002'") };
+        var wtId = DeliveryId(await store.CreateMovement(officer, new("Warehouse", null, wtAssets, "Monitors for the Jeddah branches", null, null, await Loc("Riyadh IT Warehouse (demo)"), await Loc("Jeddah IT Warehouse (demo)"), null,
+            mvToday, mvToday.AddDays(2), "Other", "Demo Transport Co.", "0550000099", null, G(4), null), default));
+        await store.DispatchMovement(officer, wtId, new(null), default);
+        var gpExit = DeliveryId(await store.CreateMovement(Who(11), new("Exit", null, [await AssetId("PC-4817")], "Work from home", "Two days of remote work", "Returnable", await Loc("Abha Branch (demo)"), null, "Home",
+            mvToday, mvToday.AddDays(2), "Employee", null, null, null, null, null), default));
+        await store.DecideMovement(Who(3), gpExit, new(true, null, null), default);
         Console.WriteLine("IT Assets demo data seeded.");
     }
 }

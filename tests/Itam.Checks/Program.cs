@@ -437,6 +437,70 @@ try
     await Exec($"UPDATE itam_data.request SET requested_at_utc=DATEADD(hour,-80,SYSUTCDATETIME()) WHERE request_id={fresh}");
     Check(await Throws<ArgumentException>(() => store.DecideRequest(U(12), fresh, new(true, null), default)) && await Scalar($"SELECT status FROM itam_data.request WHERE request_id={fresh}") as string == "Cancelled",
         "A late decision is refused: the request is cancelled first, even between timer runs");
+    // ---- Stock movements (step 4): branch transfer gate pass, warehouse transfer, exit pass ----------------------------------------
+    var mvDay = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(3));
+    Check(await Throws<ArgumentException>(() => store.CreateMovement(U(10), new("Branch", null, [rMon], "Move to another branch", null, null, 1, 1, null, mvDay, mvDay.AddDays(3), "Employee", null, null, null, G(12), null), default)),
+        "A branch transfer goes to another branch");
+    var gp = JsonSerializer.SerializeToElement(await store.CreateMovement(U(10), new("Branch", null, [rMon], "Move to another branch", null, null, 1, 2, null, mvDay, mvDay.AddDays(3), "Employee", null, null, null, G(12), null), default));
+    var gpId = gp.GetProperty("id").GetInt32();
+    Check(gp.GetProperty("movementNo").GetString()!.StartsWith("GP-") && await Throws<ArgumentException>(() => store.GatePassPdf(U(10), gpId, default))
+        && await Throws<ArgumentException>(() => store.CreateMovement(U(10), new("Exit", null, [rMon], "Work from home", null, "Returnable", 1, null, "Home", mvDay, mvDay.AddDays(2), "Employee", null, null, null, null, null), default)),
+        "Gate pass GP-n for the employee's own asset; no pass before approval; an asset is on one movement at a time");
+    Check(await Throws<ItamAccessDenied>(() => store.DecideMovement(U(10), gpId, new(true, null, null), default)) && await Throws<ArgumentException>(() => store.DispatchMovement(U(10), gpId, new(null), default)),
+        "Nobody approves their own pass; no dispatch before approval");
+    await store.DecideMovement(U(3), gpId, new(true, null, null), default);
+    Check(System.Text.Encoding.ASCII.GetString((await store.GatePassPdf(U(10), gpId, default)).Content, 0, 5) == "%PDF-" && await Throws<ItamAccessDenied>(() => store.DispatchMovement(U(12), gpId, new(null), default)),
+        "Approved by the Team Leader: the gate pass prints; only the named sender or IT dispatches");
+    await store.DispatchMovement(U(10), gpId, new(null), default);
+    Check(await Scalar($"SELECT status FROM itam_data.asset WHERE asset_id={rMon}") as string == "InTransit" && await Throws<ItamAccessDenied>(() => store.ReceiveMovement(U(4), gpId, new([new(0, "Received", null)]), default)),
+        "Dispatched: In Transit; only the named receiver confirms");
+    var gpLine = (int)(await Scalar($"SELECT line_id FROM itam_data.movement_line WHERE movement_id={gpId}"))!;
+    var oldDl = (int)(await Scalar($"SELECT delivery_id FROM itam_data.delivery WHERE asset_id={rMon} AND received_at_utc IS NULL"))!;
+    await store.ReceiveMovement(U(12), gpId, new([new(gpLine, "Received", null)]), default);
+    var newDl = (int)(await Scalar($"SELECT new_delivery_id FROM itam_data.movement_line WHERE line_id={gpLine}"))!;
+    Check(await Scalar($"SELECT employee_id FROM itam_data.delivery WHERE delivery_id={newDl}") is Guid nd && nd == G(12) && await Scalar($"SELECT location_id FROM itam_data.asset WHERE asset_id={rMon}") is 2
+        && await Scalar($"SELECT status FROM itam_data.movement WHERE movement_id={gpId}") as string == "AwaitingCustody" && await Throws<ArgumentException>(() => store.ReceiptNote(U(1), oldDl, default)),
+        "Received by another employee: the branch changes, custody passes with a new delivery note (no receipt note); waits for the signed copy");
+    await store.UploadSigned(U(1), newDl, scan, default);
+    Check(JsonSerializer.SerializeToElement(await store.Movement(U(10), gpId, default)).GetProperty("movement").GetProperty("status").GetString() == "Completed", "Completed once the new delivery note is signed");
+    // Warehouse transfer: no approval; partial dispatch; cancel the rest; a missing asset resolved by the Team Leader with evidence.
+    var w1 = JsonSerializer.SerializeToElement(await store.Register(U(1), A("MON", 1, 2, "WT-MON-1"), default)).GetProperty("id").GetInt32();
+    var w2 = JsonSerializer.SerializeToElement(await store.Register(U(1), A("MON", 1, 2, "WT-MON-2"), default)).GetProperty("id").GetInt32();
+    var w3 = JsonSerializer.SerializeToElement(await store.Register(U(1), A("MON", 1, 2, "WT-MON-3"), default)).GetProperty("id").GetInt32();
+    ItamMovementInput Wt(int[] ids, Guid receiver) => new("Warehouse", null, ids, "Stock for the West", null, null, 1, 2, null, mvDay, mvDay.AddDays(4), "Other", "Demo Driver", "0555555555", null, receiver, null);
+    Check(await Throws<ItamAccessDenied>(() => store.CreateMovement(U(4), Wt([w1], G(4)), default)) && await Throws<ArgumentException>(() => store.CreateMovement(U(9), Wt([w1], G(10)), default)),
+        "Only IT of the source region creates a warehouse transfer; the receiver is IT of the destination region");
+    var wt = JsonSerializer.SerializeToElement(await store.CreateMovement(U(9), Wt([w1, w2], G(4)), default)); var wtId = wt.GetProperty("id").GetInt32();
+    var wl0 = (int)(await Scalar($"SELECT MIN(line_id) FROM itam_data.movement_line WHERE movement_id={wtId}"))!;
+    await store.DispatchMovement(U(9), wtId, new([wl0]), default);
+    Check(wt.GetProperty("movementNo").GetString()!.StartsWith("WT-") && await Scalar($"SELECT status FROM itam_data.movement WHERE movement_id={wtId}") as string == "PartiallyDispatched"
+        && await Throws<ArgumentException>(() => store.CreateMovement(U(9), Wt([w2], G(4)), default)), "WT-n with no approval; partial dispatch keeps the rest reserved");
+    await store.CancelMovement(U(9), wtId, new("Second one stays"), default);
+    await store.ReceiveMovement(U(4), wtId, new([new(wl0, "Missing", "Not on the truck")]), default);
+    Check(await Scalar($"SELECT status FROM itam_data.movement WHERE movement_id={wtId}") as string == "ReceiptDisputed" && await Scalar($"SELECT status FROM itam_data.asset WHERE asset_id={w2}") as string == "InStore"
+        && await Throws<ItamAccessDenied>(() => store.ResolveMovement(U(9), wtId, new(wl0, "ConfirmedLost", "x"), scan, default)), "Missing asset: discrepancy pending; the cancelled one is free again; only the Team Leader resolves");
+    await store.ResolveMovement(U(3), wtId, new(wl0, "ConfirmedLost", "The driver confirmed it fell off"), scan, default);
+    Check(await Scalar($"SELECT status FROM itam_data.movement WHERE movement_id={wtId}") as string == "ClosedWithExceptions" && await Scalar($"SELECT status FROM itam_data.asset WHERE asset_id={w1}") as string == "Lost",
+        "Confirmed lost: the transfer closes with exceptions; the asset is Lost, never received");
+    var wt2 = JsonSerializer.SerializeToElement(await store.CreateMovement(U(9), Wt([w3], G(4)), default)).GetProperty("id").GetInt32();
+    await store.DispatchMovement(U(9), wt2, new(null), default);
+    var wl2 = (int)(await Scalar($"SELECT line_id FROM itam_data.movement_line WHERE movement_id={wt2}"))!;
+    await store.ReceiveMovement(U(4), wt2, new([new(wl2, "Received", null)]), default);
+    Check(await Scalar($"SELECT status FROM itam_data.movement WHERE movement_id={wt2}") as string == "Completed" && await Scalar($"SELECT CAST(location_id AS varchar(5))+status FROM itam_data.asset WHERE asset_id={w3}") as string == "2InStore"
+        && await Scalar($"SELECT COUNT(*) FROM itam_data.delivery WHERE asset_id={w3}") is 0, "Received: In Store at the destination warehouse, with no delivery note");
+    // Exit pass, returnable; and an approved pass not dispatched in time expires.
+    var exitAsset = JsonSerializer.SerializeToElement(await store.Register(U(1), A("MON", 1, 2, "EXIT-MON-1"), default)).GetProperty("id").GetInt32();
+    await store.Deliver(U(1), exitAsset, Dl(G(10), null), default);
+    var ex = JsonSerializer.SerializeToElement(await store.CreateMovement(U(10), new("Exit", null, [exitAsset], "Work from home", null, "Returnable", 1, null, "Home", mvDay, mvDay.AddDays(2), "Employee", null, null, null, null, null), default)).GetProperty("id").GetInt32();
+    await store.DecideMovement(U(3), ex, new(true, null, null), default); await store.DispatchMovement(U(10), ex, new(null), default);
+    Check(await Scalar($"SELECT status FROM itam_data.movement WHERE movement_id={ex}") as string == "Out", "Exit pass: out of the building until the return");
+    await store.ReturnMovement(U(10), ex, default);
+    var ex2 = JsonSerializer.SerializeToElement(await store.CreateMovement(U(10), new("Exit", null, [exitAsset], "Work from home", null, "Returnable", 1, null, "Home", mvDay, mvDay.AddDays(2), "Employee", null, null, null, null, null), default)).GetProperty("id").GetInt32();
+    await store.DecideMovement(U(3), ex2, new(true, null, null), default);
+    await Exec($"UPDATE itam_data.movement SET exit_date=DATEADD(day,-5,exit_date),valid_until=DATEADD(day,-1,CAST(SYSUTCDATETIME() AS date)) WHERE movement_id={ex2}");
+    Check(await Scalar($"SELECT status FROM itam_data.movement WHERE movement_id={ex}") as string == "Completed" && await store.ExpireMovements(default) == 1
+        && await Scalar($"SELECT status FROM itam_data.movement WHERE movement_id={ex2}") as string == "Expired" && await Throws<ArgumentException>(() => store.DispatchMovement(U(10), ex2, new(null), default)),
+        "Return confirmed closes the pass; an approved pass not dispatched within its validity expires and cannot be used");
     Console.WriteLine("PASS ink and invoices");
 
     // ---- My Backup ----------------------------------------------------------------------------------------------------------------

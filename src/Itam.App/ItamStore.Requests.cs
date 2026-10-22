@@ -405,7 +405,8 @@ public sealed partial class ItamStore
             team.Add(new { id = p.Id, name = p.Name, title = p.Title, assets = await Held(p.Id), requests = open, notSigned });
         }
         var notSignedMine = assets.Count(a => !((dynamic)a).signed);
-        return new { me = s.Id, assets, documents, requests = mine, waiting, team, notSigned = notSignedMine, inkApprovals = await PendingApprovals(c, s, token), approvalDays = ApprovalDays };
+        var movements = await Rows(c, null, MoveSelect + "WHERE m.requested_by=@e OR m.employee_id=@e OR m.sender_id=@e OR m.receiver_id=@e ORDER BY m.movement_id DESC", MapMove, token, ("@e", s.Id));
+        return new { me = s.Id, assets, documents, requests = mine, waiting, team, notSigned = notSignedMine, inkApprovals = await PendingApprovals(c, s, token), approvalDays = ApprovalDays, movements, purposes = MovementPurposes };
     }
 
     internal static async Task<int> RequestApprovalsCount(DbConnection c, ItamScope s, CancellationToken token)

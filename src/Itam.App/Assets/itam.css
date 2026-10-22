@@ -443,3 +443,6 @@
 .x .x-roles{display:flex;flex-wrap:wrap;gap:6px}
 .x .x-roles .tag{display:inline-flex;align-items:center;gap:4px}
 .x .x-tag-x{border:0;background:transparent;color:inherit;font-weight:800;cursor:pointer;padding:0 2px;line-height:1}
+.x .x-pick-list{display:flex;flex-direction:column;gap:6px;max-height:240px;overflow:auto;margin:6px 0 12px}
+.x .x-pick-list .x-pick{justify-content:flex-start;text-align:left;font-weight:500}
+.x .x-pick-list .x-pick{display:flex;width:100%;height:auto;min-height:38px;padding:8px 12px;white-space:normal;line-height:1.35;flex:0 0 auto}

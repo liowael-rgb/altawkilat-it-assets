@@ -29,6 +29,14 @@ async function load(note){
   parts.push(card('My requests','Device requests for you, or that you made for a member of your team. Ink requests are on the Ink page.',
     table(['Request','For','What','Status','Asked'],d.requests,r=>[el('span',r.no,'mono'),r.employeeId===d.me?'Me':r.employee,two(what(r),r.description),two(reqTag(r),r.rejectReason||r.cancelledReason||''),when(r.requestedAt)],
       null,{empty:'No requests yet. Use Ask for a device.',onRow:go})));
+  // My gate passes and transfers: request a pass for my own assets; follow, dispatch as sender, confirm receipt as receiver.
+  const mv=d.movements||[];
+  parts.push(card('My gate passes and transfers','Gate passes and transfers you asked for, carry or receive. Open one to confirm the dispatch (as the sender) or the receipt (as the named receiver).',
+    (()=>{const a=el('div',null,'actions');a.append(btn('Request a gate pass',()=>location.assign('/movement.html?new=gate'),'','movements'));return a;})(),
+    table(['No.','Purpose','From → to','My part','Status','Exit'],mv,x=>[el('span',x.no,'mono'),x.purpose,`${x.from} → ${x.to||x.destination||''}`,
+      x.receiverId===d.me?'Receiver':x.senderId===d.me?'Sender':x.employeeId===d.me?'My assets':'Requested',
+      (()=>{const s=el('span');s.append(el('span',x.statusLabel,'tag '+(x.status==='Completed'?'ok':['Rejected','Cancelled','Expired'].includes(x.status)?'off':['Submitted','ReceiptDisputed','AwaitingCustody'].includes(x.status)?'warn':'')));if(x.overdue)s.append(' ',el('span','Overdue','tag bad'));return s;})(),date(x.exitDate)],
+      null,{empty:'No gate passes or transfers.',onRow:x=>location.assign('/movement.html?id='+x.id)})));
   parts.push(card('My documents','Delivery and receipt notes, newest first.',
     table(['Document','Asset No.','Date'],d.documents.flatMap(x=>[...(x.receivedAt?[{...x,receipt:true}]:[]),x]),
       x=>[x.receipt?pdf(x.deliveryNo+'-R',`/api/deliveries/${x.deliveryId}/receipt.pdf`):pdf(x.deliveryNo,`/api/deliveries/${x.deliveryId}/note.pdf`),x.assetNo,x.receipt?when(x.receivedAt):date(x.deliveredOn)],
