@@ -14,7 +14,7 @@ CREATE TABLE itam_data.delivery(
  employee_id uniqueidentifier NOT NULL REFERENCES itam_access.employee(employee_id),
  delivered_on date NOT NULL,
  owner_type nvarchar(20) NOT NULL CHECK(owner_type IN(N'Personal',N'Department',N'Temporary',N'Other')),
- ticket_no nvarchar(40) NULL, computer_name nvarchar(64) NULL, notes nvarchar(1000) NULL,
+ computer_name nvarchar(64) NULL, notes nvarchar(1000) NULL,
  from_location_id int NOT NULL REFERENCES itam_ref.location(location_id),
  snapshot_json nvarchar(max) NOT NULL,
  issued_by uniqueidentifier NOT NULL, issued_at_utc datetime2 NOT NULL DEFAULT SYSUTCDATETIME(),

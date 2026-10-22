@@ -415,3 +415,14 @@
 .x .x-seg button:hover{background:#d7e6fd;color:var(--acc2)}
 .x .x-seg button[aria-pressed=true]{background:var(--acc);color:#fff;box-shadow:0 1px 2px #2563eb4d,0 4px 10px #2563eb33}
 .x .x-nav .x-count-hot{background:var(--bad);border-color:var(--bad);color:#fff}
+.x td input[type=checkbox]{width:18px;height:18px;min-width:0;padding:0;margin:0;box-shadow:none;accent-color:var(--acc);cursor:pointer}
+.x .x-ink-handle td:first-child{width:36px;text-align:center}
+.x td small.x-sub{display:block;color:var(--sub);font-size:12px}
+.x td.nowrap{white-space:nowrap}
+.x button.x-strong{font-weight:800}
+.x .x-ink-handle td.act{white-space:normal;width:150px}
+.x .x-ink-handle td.act button{display:block;margin:2px 0 2px auto}
+.x .x-ink-handle td:nth-child(3){min-width:150px}
+.x .x-row-actions{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:6px}
+.x .x-row-actions button.link{padding:2px 0}
+.x .x-state-cell{min-width:190px}

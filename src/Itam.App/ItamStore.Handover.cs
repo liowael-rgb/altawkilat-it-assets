@@ -7,7 +7,7 @@ using QRCoder;
 
 namespace Itam.App;
 
-public sealed record ItamDeliveryInput(Guid? EmployeeId, DateOnly? DeliveredOn, string? OwnerType, string? TicketNo, string? ComputerName, string? Notes);
+public sealed record ItamDeliveryInput(Guid? EmployeeId, DateOnly? DeliveredOn, string? OwnerType, string? ComputerName, string? Notes);
 public sealed record ItamReturnInput(DateTime? ReceivedAt, string? Condition, int? LocationId, string? Notes);
 public sealed record ItamAssessmentInput(string? Review, string? Recommendation);
 public sealed record ItamTaskDone(string? Note);
@@ -92,37 +92,37 @@ public sealed partial class ItamStore
             if (await Scalar(c, tx, "SELECT d.delivery_no FROM itam_data.delivery d WHERE d.computer_name=@n AND d.received_at_utc IS NULL", token, ("@n", computer)) is string other)
                 throw new ArgumentException($"Computer name {computer} is on delivery note {other}: choose another name.");
         }
-        var ticket = Optional(x.TicketNo, "Ticket number", 40); var notes = Optional(x.Notes, "Notes", 1000);
+        var notes = Optional(x.Notes, "Notes", 1000);
         var no = $"{a.No}-{await Next(c, tx, "Delivery", token)}";
         var employeeRows = new List<NoteRow> { new("HR Code", "الكود الوظيفي", emp.Hr), new("Employee Name", "اسم الموظف", emp.Name), new("Employee Email", "البريد الالكتروني", emp.Email),
             new("Mobile", "رقم الجوال", emp.Mobile), new("Job Title", "المسمى الوظيفي", emp.Title), new("Branch Name", "اسم الفرع", emp.Branch), new("Department", "اسم القسم", emp.Dept),
             new("Company Name", "اسم الشركة", emp.Company), new("Direct Manager", "المدير المباشر", emp.Manager) };
         var snapshot = new NoteSnapshot(employeeRows.Where(r => !string.IsNullOrWhiteSpace(r.Value)).ToList(), await ProductRows(c, tx, a, computer, token), emp.Name, s.Name);
-        var id = Convert.ToInt32(await Scalar(c, tx, "INSERT itam_data.delivery(delivery_no,asset_id,employee_id,delivered_on,owner_type,ticket_no,computer_name,notes,from_location_id,snapshot_json,issued_by) " +
-            "OUTPUT inserted.delivery_id VALUES(@n,@a,@e,@d,@o,@t,@c,@x,@l,@j,@b)", token,
-            ("@n", no), ("@a", a.Id), ("@e", x.EmployeeId), ("@d", DateParam(on)), ("@o", owner), ("@t", ticket), ("@c", computer), ("@x", notes), ("@l", a.LocationId),
+        var id = Convert.ToInt32(await Scalar(c, tx, "INSERT itam_data.delivery(delivery_no,asset_id,employee_id,delivered_on,owner_type,computer_name,notes,from_location_id,snapshot_json,issued_by) " +
+            "OUTPUT inserted.delivery_id VALUES(@n,@a,@e,@d,@o,@c,@x,@l,@j,@b)", token,
+            ("@n", no), ("@a", a.Id), ("@e", x.EmployeeId), ("@d", DateParam(on)), ("@o", owner), ("@c", computer), ("@x", notes), ("@l", a.LocationId),
             ("@j", JsonSerializer.Serialize(snapshot, Json)), ("@b", s.Id)));
         await Exec(c, tx, "UPDATE itam_data.asset SET status=N'InUse',stock_location=N'Employee' WHERE asset_id=@a", token, ("@a", a.Id));
         if (computer is not null)
             await Exec(c, tx, "DELETE itam_data.asset_attribute WHERE asset_id=@a AND attr_code=N'ComputerName'; INSERT itam_data.asset_attribute(asset_id,attr_code,value) VALUES(@a,N'ComputerName',@v)", token, ("@a", a.Id), ("@v", computer));
         await Event(c, tx, a.Id, s.Id, "Delivered", $"Delivery note {no} to {emp.Name} ({owner}){(computer is null ? "" : ", computer name " + computer)}; waiting for the signed copy", token);
-        await Audit(c, tx, s.Id, "delivery", no, "Issue", null, new { asset = a.No, employee = emp.Account, on, owner, ticket, computer }, null, token);
+        await Audit(c, tx, s.Id, "delivery", no, "Issue", null, new { asset = a.No, employee = emp.Account, on, owner, computer }, null, token);
         await tx.CommitAsync(token);
         return new { id, deliveryNo = no };
     }
 
-    sealed record DeliveryRow(int Id, string No, int AssetId, string AssetNo, string Type, string Region, Guid EmployeeId, DateOnly On, string Owner, string? Ticket, string? Computer, string? Notes,
+    sealed record DeliveryRow(int Id, string No, int AssetId, string AssetNo, string Type, string Region, Guid EmployeeId, DateOnly On, string Owner, string? Computer, string? Notes,
         string Snapshot, Guid IssuedBy, DateTime IssuedAt, long? SignedFile, Guid? SignedBy, DateTime? SignedAt, DateTime? ReceivedAt, Guid? ReceivedBy, string? Condition, int? ReceiptLocation,
         string? ReceiptLocationName, string? ReceiptNotes, string Version);
 
     static async Task<DeliveryRow> LoadDelivery(DbConnection c, DbTransaction? tx, int id, bool lockRow, CancellationToken token)
-        => (await Rows(c, tx, "SELECT d.delivery_id,d.delivery_no,a.asset_id,a.asset_no,a.type_code,g.region_code,d.employee_id,d.delivered_on,d.owner_type,d.ticket_no,d.computer_name,d.notes," +
+        => (await Rows(c, tx, "SELECT d.delivery_id,d.delivery_no,a.asset_id,a.asset_no,a.type_code,g.region_code,d.employee_id,d.delivered_on,d.owner_type,d.computer_name,d.notes," +
             "d.snapshot_json,d.issued_by,d.issued_at_utc,d.signed_file_id,d.signed_by,d.signed_at_utc,d.received_at_utc,d.received_by,d.receipt_condition,d.receipt_location_id,rl.name_en,d.receipt_notes," +
             $"CONVERT(varchar(30),CONVERT(varbinary(8),d.version),2) FROM itam_data.delivery d {(lockRow ? "WITH (UPDLOCK,HOLDLOCK) " : "")}JOIN itam_data.asset a ON a.asset_id=d.asset_id " +
             "JOIN itam_ref.location g ON g.location_id=a.location_id LEFT JOIN itam_ref.location rl ON rl.location_id=d.receipt_location_id WHERE d.delivery_id=@i",
-            r => new DeliveryRow(r.GetInt32(0), r.GetString(1), r.GetInt32(2), r.GetString(3), r.GetString(4), r.GetString(5), r.GetGuid(6), Day(r, 7)!.Value, r.GetString(8), S(r, 9), S(r, 10), S(r, 11),
-                r.GetString(12), r.GetGuid(13), Utc(r, 14), r.IsDBNull(15) ? null : r.GetInt64(15), r.IsDBNull(16) ? null : r.GetGuid(16), r.IsDBNull(17) ? null : Utc(r, 17),
-                r.IsDBNull(18) ? null : Utc(r, 18), r.IsDBNull(19) ? null : r.GetGuid(19), S(r, 20), I(r, 21), S(r, 22), S(r, 23), r.GetString(24)),
+            r => new DeliveryRow(r.GetInt32(0), r.GetString(1), r.GetInt32(2), r.GetString(3), r.GetString(4), r.GetString(5), r.GetGuid(6), Day(r, 7)!.Value, r.GetString(8), S(r, 9), S(r, 10),
+                r.GetString(11), r.GetGuid(12), Utc(r, 13), r.IsDBNull(14) ? null : r.GetInt64(14), r.IsDBNull(15) ? null : r.GetGuid(15), r.IsDBNull(16) ? null : Utc(r, 16),
+                r.IsDBNull(17) ? null : Utc(r, 17), r.IsDBNull(18) ? null : r.GetGuid(18), S(r, 19), I(r, 20), S(r, 21), S(r, 22), r.GetString(23)),
             token, ("@i", id))).SingleOrDefault() ?? throw new ArgumentException("The delivery note was not found.");
 
     /// <summary>Upload the delivery note the employee signed on paper himself (scan or photo). Kept unchanged once uploaded.</summary>
@@ -227,7 +227,7 @@ public sealed partial class ItamStore
                 r => new { no = r.GetString(0), recommendation = RecommendationLabel(r.GetString(1)), review = r.GetString(2), by = N(r.GetGuid(3)), at = Utc(r, 4), evidence = !r.IsDBNull(5) }, token, ("@d", id))).SingleOrDefault();
             list.Add(new
             {
-                d.Id, no = d.No, employee = names.GetValueOrDefault(d.EmployeeId), deliveredOn = d.On, ownerType = d.Owner, ticket = d.Ticket, computerName = d.Computer, notes = d.Notes,
+                d.Id, no = d.No, employee = names.GetValueOrDefault(d.EmployeeId), deliveredOn = d.On, ownerType = d.Owner, computerName = d.Computer, notes = d.Notes,
                 issuedBy = N(d.IssuedBy), issuedAt = d.IssuedAt, signedAt = d.SignedAt, signedBy = N(d.SignedBy), hasSigned = d.SignedFile is not null,
                 overdue = d.SignedFile is null && d.ReceivedAt is null && d.IssuedAt < UtcNow.AddDays(-SignedCopyDays),
                 receivedAt = d.ReceivedAt, receivedBy = N(d.ReceivedBy), condition = d.Condition, receivedAtLocation = d.ReceiptLocationName, receiptNotes = d.ReceiptNotes,
@@ -406,7 +406,7 @@ public sealed partial class ItamStore
         if (kind != NoteKind.Assessment || snap.Employee.Count > 0) Section("Employee Information", "بيانات الموظف", kind == NoteKind.Assessment ? snap.Employee.Where(r => r.En is "Employee Name" or "HR Code" or "Department" or "Branch Name") : snap.Employee);
         Section("Product Information", "معلومات المنتج", snap.Product);
         var extra = new List<NoteRow>();
-        if (kind == NoteKind.Delivery) { extra.Add(new("Owner Type", "نوع العهدة", d.Owner)); extra.Add(new("Ticket Number", "رقم التذكرة", d.Ticket)); extra.Add(new("Notes", "ملاحظات", d.Notes)); }
+        if (kind == NoteKind.Delivery) { extra.Add(new("Owner Type", "نوع العهدة", d.Owner)); extra.Add(new("Notes", "ملاحظات", d.Notes)); }
         if (kind == NoteKind.Receipt) { extra.Add(new("Delivery Note No.", "رقم سند التسليم", d.No)); extra.Add(new("Condition", "حالة الجهاز", d.Condition)); extra.Add(new("Received at", "مكان الاستلام", d.ReceiptLocationName)); extra.Add(new("Notes", "ملاحظات", d.ReceiptNotes)); }
         if (kind == NoteKind.Assessment) { extra.Add(new("Delivery Note No.", "رقم سند التسليم", d.No)); extra.Add(new("Recommendation", "التوصية", ta!.Value.Rec)); }
         if (extra.Any(r => !string.IsNullOrWhiteSpace(r.Value))) Section(kind == NoteKind.Delivery ? "Delivery Details" : kind == NoteKind.Receipt ? "Receipt Details" : "Assessment", kind == NoteKind.Delivery ? "تفاصيل التسليم" : kind == NoteKind.Receipt ? "تفاصيل الاستلام" : "التقييم", extra.Where(r => !string.IsNullOrWhiteSpace(r.Value)));

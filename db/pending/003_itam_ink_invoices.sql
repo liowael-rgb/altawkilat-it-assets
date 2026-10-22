@@ -4,16 +4,17 @@
 
 INSERT itam_data.counter(counter_code,next_value) VALUES(N'InkRequest',1),(N'SupplierOrder',1),(N'PaymentPack',1);
 
--- Ink request INK-n for an active printer; the employee's direct manager (or the manager's backup on leave) approves.
+-- Ink request INK-n for an active printer: the ink officer (IT of the region) sends it to the approving manager chosen by IT
+-- (a senior manager, not the Active Directory manager); that manager, or the manager's backup on leave, approves.
 CREATE TABLE itam_data.ink_request(
  request_id int IDENTITY(1,1) NOT NULL PRIMARY KEY,
  request_no nvarchar(20) NOT NULL CONSTRAINT UX_itam_ink_request_no UNIQUE,
  printer_asset_id int NOT NULL REFERENCES itam_data.asset(asset_id),
  employee_id uniqueidentifier NOT NULL REFERENCES itam_access.employee(employee_id),
  requested_by uniqueidentifier NOT NULL, requested_at_utc datetime2 NOT NULL DEFAULT SYSUTCDATETIME(),
- toner nvarchar(100) NOT NULL, quantity int NOT NULL CHECK(quantity BETWEEN 1 AND 50), note nvarchar(500) NULL, ticket_no nvarchar(40) NULL,
+ toner nvarchar(100) NOT NULL, quantity int NOT NULL CHECK(quantity BETWEEN 1 AND 50), note nvarchar(500) NULL,
  region_code nvarchar(20) NOT NULL REFERENCES itam_ref.region(region_code),
- status nvarchar(20) NOT NULL CHECK(status IN(N'WaitingApproval',N'Approved',N'Rejected',N'Ordered',N'Delivered',N'Cancelled')),
+ status nvarchar(20) NOT NULL CHECK(status IN(N'Submitted',N'WaitingApproval',N'Approved',N'Rejected',N'Ordered',N'Delivered',N'Cancelled')),
  manager_id uniqueidentifier NULL, decided_by uniqueidentifier NULL, decided_at_utc datetime2 NULL, reject_reason nvarchar(500) NULL,
  order_id int NULL, cancelled_reason nvarchar(500) NULL, version rowversion NOT NULL);
 CREATE INDEX IX_itam_ink_request_status ON itam_data.ink_request(status,region_code);

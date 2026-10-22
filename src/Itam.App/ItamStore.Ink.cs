@@ -5,17 +5,19 @@ using System.Text.Json;
 
 namespace Itam.App;
 
-public sealed record ItamInkRequestInput(int? PrinterId, Guid? EmployeeId, int? Quantity, string? Toner, string? Note, string? TicketNo);
+public sealed record ItamInkRequestInput(int? PrinterId, Guid? EmployeeId, int? Quantity, string? Toner, string? Note);
 public sealed record ItamDecision(bool Approve, string? Reason);
 public sealed record ItamOrderInput(int? SupplierId, int[]? RequestIds, string? Note);
 public sealed record ItamCancelInput(string? Reason);
 
 /// <summary>Build step 3a, ink (forms 10 Ink Request and 11 Ink Delivery, as the owner's toner process): the employee asks for
-/// ink for an active printer, the direct manager (or the manager's backup on leave) approves, IT delivers from the shelf or
-/// orders from a supplier; prices come from the supplier invoice. No toner stock list.</summary>
+/// ink for an active printer, the ink officer sends it to the approving manager, that manager (or the manager's backup on
+/// leave) approves, IT delivers from the shelf or
+/// orders from a supplier; prices come from the supplier invoice. No toner stock list. The ink officer chooses the approving
+/// manager (a senior manager, not the Active Directory manager; owner, 22 October 2026).</summary>
 public sealed partial class ItamStore
 {
-    static string InkStatusLabel(string s) => s switch { "WaitingApproval" => "Waiting manager approval", "Ordered" => "Ordered from supplier", _ => s };
+    static string InkStatusLabel(string s) => s switch { "Submitted" => "Waiting for IT to send for approval", "WaitingApproval" => "Waiting manager approval", "Ordered" => "Ordered from supplier", _ => s };
 
     /// <summary>Printers that can get ink: In Use, found by Asset No., serial number or toner code (typed or scanned from the label).</summary>
     public async Task<object> Printers(ItamUser user, string? q, CancellationToken token)
@@ -33,7 +35,7 @@ public sealed partial class ItamStore
     }
 
     /// <summary>Ask for ink (INK-n): for yourself, or for an employee by IT (or by the employee's manager). The request waits for
-    /// the employee's direct manager.</summary>
+    /// the ink officer, who sends it to the approving manager.</summary>
     public async Task<object> CreateInkRequest(ItamUser user, ItamInkRequestInput x, CancellationToken token)
     {
         await using var c = await Open(token);
@@ -44,7 +46,6 @@ public sealed partial class ItamStore
         if (emp.Name is null) throw new ArgumentException("Choose the employee.");
         if (who != s.Id) Require(s.CanHandoverAny || emp.Manager == s.Id, "You can ask for ink for yourself; IT and the employee's manager can ask for an employee.");
         if (!emp.Enabled) throw new ArgumentException($"{emp.Name} is disabled in Active Directory.");
-        if (emp.Manager is null) throw new ArgumentException($"{emp.Name} has no direct manager in Active Directory: ask IT to record the request.");
         var p = (await Rows(c, tx, "SELECT a.asset_no,a.type_code,a.status,g.region_code,(SELECT value FROM itam_data.asset_attribute WHERE asset_id=a.asset_id AND attr_code=N'TonerCode') FROM itam_data.asset a JOIN itam_ref.location g ON g.location_id=a.location_id WHERE a.asset_id=@a",
             r => (No: r.GetString(0), Type: r.GetString(1), Status: r.GetString(2), Region: r.GetString(3), Toner: S(r, 4)), token, ("@a", x.PrinterId ?? 0))).SingleOrDefault();
         if (p.No is null || p.Type != "PNT") throw new ArgumentException("Choose the printer (its Asset No. is on the label).");
@@ -52,12 +53,35 @@ public sealed partial class ItamStore
         var toner = Optional(x.Toner, "Toner", 100) ?? p.Toner ?? throw new ArgumentException("Type the toner code (it is printed on the cartridge).");
         var qty = x.Quantity is >= 1 and <= 50 ? x.Quantity.Value : throw new ArgumentException("Quantity: 1 to 50.");
         var no = $"INK-{await Next(c, tx, "InkRequest", token)}";
-        var id = Convert.ToInt32(await Scalar(c, tx, "INSERT itam_data.ink_request(request_no,printer_asset_id,employee_id,requested_by,toner,quantity,note,ticket_no,region_code,status,manager_id) " +
-            "OUTPUT inserted.request_id VALUES(@n,@p,@e,@b,@t,@q,@x,@k,@r,N'WaitingApproval',@m)", token,
-            ("@n", no), ("@p", x.PrinterId), ("@e", who), ("@b", s.Id), ("@t", toner), ("@q", qty), ("@x", Optional(x.Note, "Note", 500)), ("@k", Optional(x.TicketNo, "Ticket number", 40)), ("@r", p.Region), ("@m", emp.Manager)));
+        var id = Convert.ToInt32(await Scalar(c, tx, "INSERT itam_data.ink_request(request_no,printer_asset_id,employee_id,requested_by,toner,quantity,note,region_code,status,manager_id) " +
+            "OUTPUT inserted.request_id VALUES(@n,@p,@e,@b,@t,@q,@x,@r,N'Submitted',NULL)", token,
+            ("@n", no), ("@p", x.PrinterId), ("@e", who), ("@b", s.Id), ("@t", toner), ("@q", qty), ("@x", Optional(x.Note, "Note", 500)), ("@r", p.Region)));
         await Audit(c, tx, s.Id, "ink", no, "Request", null, new { printer = p.No, toner, qty, employee = who }, null, token);
         await tx.CommitAsync(token);
         return new { id, requestNo = no };
+    }
+
+    public sealed record ItamSendForApproval(Guid? ApproverId);
+
+    /// <summary>The ink officer (IT of the printer's region) sends the request to the manager who approves it: a senior manager
+    /// chosen by IT, not the Active Directory manager (owner, 22 October 2026). Can be re-sent to another manager while it waits.</summary>
+    public async Task SendInkForApproval(ItamUser user, int requestId, ItamSendForApproval x, CancellationToken token)
+    {
+        await using var c = await Open(token);
+        await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
+        var s = await Scope(c, tx, user, token);
+        var r = (await Rows(c, tx, "SELECT request_no,status,region_code,employee_id FROM itam_data.ink_request WITH (UPDLOCK) WHERE request_id=@i",
+            q => (No: q.GetString(0), Status: q.GetString(1), Region: q.GetString(2), Employee: q.GetGuid(3)), token, ("@i", requestId))).SingleOrDefault();
+        if (r.No is null) throw new ArgumentException("The ink request was not found.");
+        Require(s.CanHandover(r.Region), "Only the ink officer of the printer's region sends requests for approval.");
+        if (r.Status is not ("Submitted" or "WaitingApproval")) throw new ArgumentException($"{r.No} is {InkStatusLabel(r.Status)}.");
+        var a = (await Rows(c, tx, "SELECT display_name,enabled FROM itam_access.employee WHERE employee_id=@e", q => (Name: q.GetString(0), Enabled: q.GetBoolean(1)), token, ("@e", x.ApproverId ?? Guid.Empty))).SingleOrDefault();
+        if (a.Name is null) throw new ArgumentException("Choose the manager who approves.");
+        if (!a.Enabled) throw new ArgumentException($"{a.Name} is disabled in Active Directory.");
+        if (x.ApproverId == r.Employee) throw new ArgumentException("The employee cannot approve their own request.");
+        await Exec(c, tx, "UPDATE itam_data.ink_request SET status=N'WaitingApproval',manager_id=@m WHERE request_id=@i", token, ("@m", x.ApproverId), ("@i", requestId));
+        await Audit(c, tx, s.Id, "ink", r.No, "Send for approval", null, new { approver = a.Name }, null, token);
+        await tx.CommitAsync(token);
     }
 
     /// <summary>The direct manager, or the manager's backup during leave, approves or rejects (a rejection needs a reason);
@@ -70,7 +94,7 @@ public sealed partial class ItamStore
         var r = (await Rows(c, tx, "SELECT request_no,status,manager_id,employee_id FROM itam_data.ink_request WITH (UPDLOCK) WHERE request_id=@i",
             q => (No: q.GetString(0), Status: q.GetString(1), Manager: q.IsDBNull(2) ? (Guid?)null : q.GetGuid(2), Employee: q.GetGuid(3)), token, ("@i", requestId))).SingleOrDefault();
         if (r.No is null) throw new ArgumentException("The ink request was not found.");
-        Require(r.Manager is Guid m && await ActsFor(c, tx, s.Id, m, token), "Only the employee's direct manager, or the manager's backup during leave, decides this request.");
+        Require(r.Manager is Guid m && await ActsFor(c, tx, s.Id, m, token), "Only the manager the request was sent to, or that manager's backup during leave, decides this request.");
         Require(r.Employee != s.Id, "You cannot approve your own request.");
         if (r.Status != "WaitingApproval") throw new ArgumentException($"{r.No} is already {InkStatusLabel(r.Status)}.");
         var reason = x.Approve ? null : Text(x.Reason, "Reason for the rejection", 500);
@@ -99,7 +123,7 @@ public sealed partial class ItamStore
         var r = (await Rows(c, tx, "SELECT request_no,status,requested_by,employee_id,region_code FROM itam_data.ink_request WITH (UPDLOCK) WHERE request_id=@i",
             q => (No: q.GetString(0), Status: q.GetString(1), By: q.GetGuid(2), Employee: q.GetGuid(3), Region: q.GetString(4)), token, ("@i", requestId))).SingleOrDefault();
         if (r.No is null) throw new ArgumentException("The ink request was not found.");
-        var own = (r.By == s.Id || r.Employee == s.Id) && r.Status == "WaitingApproval";
+        var own = (r.By == s.Id || r.Employee == s.Id) && r.Status is "Submitted" or "WaitingApproval";
         Require(own || s.CanHandover(r.Region), "You cannot cancel this request.");
         if (r.Status is "Delivered" or "Rejected" or "Cancelled") throw new ArgumentException($"{r.No} is {InkStatusLabel(r.Status)}.");
         await Exec(c, tx, "UPDATE itam_data.ink_request SET status=N'Cancelled',cancelled_reason=@r,order_id=NULL WHERE request_id=@i", token, ("@r", Optional(x.Reason, "Reason", 500)), ("@i", requestId));
@@ -132,20 +156,20 @@ public sealed partial class ItamStore
         return new { id = order, orderNo = no };
     }
 
-    sealed record InkRow(int id, string no, int printerId, string printer, string? printerModel, string? printerLocation, string toner, int quantity, string? note, string? ticket, string region,
+    sealed record InkRow(int id, string no, int printerId, string printer, string? printerModel, string? printerLocation, string toner, int quantity, string? note, string region,
         string status, string statusLabel, Guid employeeId, string employee, string? department, string? branch, Guid? managerId, string? manager, DateTime requestedAt, string? requestedBy,
         DateTime? decidedAt, string? decidedBy, string? rejectReason, int? orderId, string? orderNo, string? supplier, int? deliveryId, string? deliveryNo, bool signed, decimal? unitCost);
 
-    const string InkSelect = "SELECT r.request_id,r.request_no,a.asset_id,a.asset_no,CONCAT(m.name_en,' ',mo.name_en),pl.value,r.toner,r.quantity,r.note,r.ticket_no,r.region_code,r.status," +
+    const string InkSelect = "SELECT r.request_id,r.request_no,a.asset_id,a.asset_no,CONCAT(m.name_en,' ',mo.name_en),pl.value,r.toner,r.quantity,r.note,r.region_code,r.status," +
         "r.employee_id,e.display_name,e.department,e.branch,r.manager_id,mg.display_name,r.requested_at_utc,rb.display_name,r.decided_at_utc,db.display_name,r.reject_reason," +
         "r.order_id,o.order_no,su.name_en,d.ink_delivery_id,d.delivery_no,CASE WHEN d.signed_file_id IS NULL THEN 0 ELSE 1 END,d.unit_cost " +
         "FROM itam_data.ink_request r JOIN itam_data.asset a ON a.asset_id=r.printer_asset_id LEFT JOIN itam_ref.manufacturer m ON m.manufacturer_id=a.manufacturer_id LEFT JOIN itam_ref.model mo ON mo.model_id=a.model_id " +
         "LEFT JOIN itam_data.asset_attribute pl ON pl.asset_id=a.asset_id AND pl.attr_code=N'PrinterLocation' JOIN itam_access.employee e ON e.employee_id=r.employee_id " +
         "LEFT JOIN itam_access.employee mg ON mg.employee_id=r.manager_id LEFT JOIN itam_access.employee rb ON rb.employee_id=r.requested_by LEFT JOIN itam_access.employee db ON db.employee_id=r.decided_by " +
         "LEFT JOIN itam_data.supplier_order o ON o.order_id=r.order_id LEFT JOIN itam_ref.supplier su ON su.supplier_id=o.supplier_id LEFT JOIN itam_data.ink_delivery d ON d.request_id=r.request_id ";
-    static InkRow MapInk(DbDataReader r) => new(r.GetInt32(0), r.GetString(1), r.GetInt32(2), r.GetString(3), S(r, 4)?.Trim(), S(r, 5), r.GetString(6), r.GetInt32(7), S(r, 8), S(r, 9), r.GetString(10),
-        r.GetString(11), InkStatusLabel(r.GetString(11)), r.GetGuid(12), r.GetString(13), S(r, 14), S(r, 15), r.IsDBNull(16) ? null : r.GetGuid(16), S(r, 17), Utc(r, 18), S(r, 19),
-        r.IsDBNull(20) ? null : Utc(r, 20), S(r, 21), S(r, 22), I(r, 23), S(r, 24), S(r, 25), I(r, 26), S(r, 27), r.GetInt32(28) == 1, D(r, 29));
+    static InkRow MapInk(DbDataReader r) => new(r.GetInt32(0), r.GetString(1), r.GetInt32(2), r.GetString(3), S(r, 4)?.Trim(), S(r, 5), r.GetString(6), r.GetInt32(7), S(r, 8), r.GetString(9),
+        r.GetString(10), InkStatusLabel(r.GetString(10)), r.GetGuid(11), r.GetString(12), S(r, 13), S(r, 14), r.IsDBNull(15) ? null : r.GetGuid(15), S(r, 16), Utc(r, 17), S(r, 18),
+        r.IsDBNull(19) ? null : Utc(r, 19), S(r, 20), S(r, 21), I(r, 22), S(r, 23), S(r, 24), I(r, 25), S(r, 26), r.GetInt32(27) == 1, D(r, 28));
 
     /// <summary>The Ink page: my requests, the requests waiting for my approval (as manager or backup), and, for IT, the
     /// requests of my regions to order and deliver, with the open supplier orders.</summary>
@@ -160,7 +184,7 @@ public sealed partial class ItamStore
         var approvals = (await Rows(c, null, InkSelect + "WHERE r.status=N'WaitingApproval' OR (r.decided_by=@me AND r.decided_at_utc>DATEADD(day,-30,SYSUTCDATETIME())) ORDER BY r.request_id DESC", MapInk, token, ("@me", s.Id)))
             .Where(r => r.status != "WaitingApproval" || (r.managerId is Guid m && actFor.Contains(m) && r.employeeId != s.Id)).ToList();
         var handle = s.CanHandoverAny || s.ViewsAll
-            ? (await Rows(c, null, InkSelect + "WHERE r.status IN(N'Approved',N'Ordered') OR r.requested_at_utc>DATEADD(day,-60,SYSUTCDATETIME()) ORDER BY r.request_id DESC", MapInk, token)).Where(r => s.CanHandover(r.region) || s.ViewsAll).ToList()
+            ? (await Rows(c, null, InkSelect + "WHERE r.status IN(N'Submitted',N'WaitingApproval',N'Approved',N'Ordered') OR r.requested_at_utc>DATEADD(day,-60,SYSUTCDATETIME()) ORDER BY r.request_id DESC", MapInk, token)).Where(r => s.CanHandover(r.region) || s.ViewsAll).ToList()
             : [];
         var orders = s.CanHandoverAny || s.ViewsAll
             ? (await Rows(c, null, "SELECT o.order_id,o.order_no,su.name_en,o.region_code,o.created_at_utc,e.display_name,(SELECT COUNT(*) FROM itam_data.ink_request r WHERE r.order_id=o.order_id)," +
@@ -173,7 +197,11 @@ public sealed partial class ItamStore
         var inkLines = s.CanHandoverAny ? await Rows(c, null, "SELECT l.line_id,i.invoice_no,su.name_en,l.description,l.quantity-ISNULL((SELECT SUM(q.quantity) FROM itam_data.ink_delivery d JOIN itam_data.ink_request q ON q.request_id=d.request_id WHERE d.invoice_line_id=l.line_id),0) " +
             "FROM itam_data.invoice_line l JOIN itam_data.invoice i ON i.invoice_id=l.invoice_id JOIN itam_ref.supplier su ON su.supplier_id=i.supplier_id WHERE i.category=N'Toners' ORDER BY i.invoice_date DESC,l.line_no",
             r => new { id = r.GetInt32(0), invoice = r.GetString(1), supplier = r.GetString(2), description = r.GetString(3), remaining = r.GetInt32(4) }, token) : [];
-        return new { me = s.Id, mine, approvals, handle, orders, inkLines = inkLines.Where(l => l.remaining > 0), canHandle = s.CanHandoverAny, signedCopyDays = SignedCopyDays };
+        // The manager last chosen for each department, suggested when the ink officer sends a request for approval.
+        var lastApprover = s.CanHandoverAny ? (await Rows(c, null, "SELECT e.department,r.manager_id,m.display_name,m.account FROM itam_data.ink_request r JOIN itam_access.employee e ON e.employee_id=r.employee_id JOIN itam_access.employee m ON m.employee_id=r.manager_id " +
+            "WHERE r.manager_id IS NOT NULL AND e.department IS NOT NULL ORDER BY r.request_id DESC", q => (Dept: q.GetString(0), Id: q.GetGuid(1), Label: $"{q.GetString(2)} ({q.GetString(3)})"), token))
+            .GroupBy(x => x.Dept).ToDictionary(g => g.Key, g => new { id = g.First().Id, label = g.First().Label }) : [];
+        return new { me = s.Id, lastApprover, mine, approvals, handle, orders, inkLines = inkLines.Where(l => l.remaining > 0), canHandle = s.CanHandoverAny, signedCopyDays = SignedCopyDays };
     }
 
     /// <summary>The order sheet sent to the supplier (and printed in the payment pack): one line per request, no prices.</summary>

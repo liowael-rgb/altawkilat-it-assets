@@ -173,9 +173,10 @@ To confirm:
 
 ## Step 3a (ink and invoices) — built 22 October 2026
 
-Owner decisions (22 October 2026): the direct manager approves the ink request (as the owner's toner process; prices come
+Owner decisions (22 October 2026): the ink officer (IT of the region) sends each ink request to the approving manager he
+chooses (a senior manager, not the Active Directory manager), who approves (prices come
 from the supplier invoice, no per-request cost step); no toner stock list; ink and invoices before the requests part.
-Computers have a service tag only (no serial number).
+Computers have a service tag only (no serial number). No ServiceDesk ticket numbers in IT Assets.
 
 Built as a local demo with checks: ink request INK-n for an In Use printer (toner code from the printer), approval by the
 direct manager or the manager's backup on leave (no self-approval, rejection needs a reason), supplier order ORD-n (PDF and

@@ -171,7 +171,7 @@ try
     var hpc = JsonSerializer.SerializeToElement(await store.Register(U(1), A("PC", 1, 1, "SN-H01", "TAGH01", null, hpcAttrs), default)).GetProperty("id").GetInt32();
     var hpc2 = JsonSerializer.SerializeToElement(await store.Register(U(1), A("PC", 1, 1, "SN-H02", "TAGH02", null, hpcAttrs), default)).GetProperty("id").GetInt32();
     var handDay = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(3));
-    ItamDeliveryInput Dl(Guid? who, string? computer) => new(who, handDay, "Personal", "SD-1", computer, null);
+    ItamDeliveryInput Dl(Guid? who, string? computer) => new(who, handDay, "Personal", computer, null);
     Check(await Throws<ItamAccessDenied>(() => store.Deliver(U(4), hpc, Dl(G(9), "ATWK-H01"), default)) && await Throws<ItamAccessDenied>(() => store.Deliver(U(8), hpc, Dl(G(9), "ATWK-H01"), default)),
         "Specialists deliver in their regions only; the Auditor cannot deliver");
     Check(await Throws<ArgumentException>(() => store.Deliver(U(1), hpc, Dl(G(11), "ATWK-H01"), default)), "Deliveries go to active employees only");
@@ -243,20 +243,27 @@ try
     await Exec($"INSERT itam_ref.model(manufacturer_id,type_code,name_en) VALUES(1,'PNT',N'LaserJet'); UPDATE itam_access.employee SET manager_id='{G(12)}' WHERE employee_id='{G(10)}';");
     var pntModel = (int)(await Scalar("SELECT model_id FROM itam_ref.model WHERE type_code='PNT'"))!;
     var printer = JsonSerializer.SerializeToElement(await store.Register(U(1), A("PNT", 1, pntModel, "PR-001", at: new() { ["PrinterType"] = "Network", ["TonerCode"] = "W2210A" }), default)).GetProperty("id").GetInt32();
-    Check(await Throws<ArgumentException>(() => store.CreateInkRequest(U(10), new(printer, null, 1, null, null, null), default)), "Ink only for an active printer (In Use)");
-    await store.Deliver(U(1), printer, new(G(10), handDay, "Department", null, null, null), default);
-    ItamInkRequestInput Ink(int qty) => new(printer, null, qty, null, null, null);
+    Check(await Throws<ArgumentException>(() => store.CreateInkRequest(U(10), new(printer, null, 1, null, null), default)), "Ink only for an active printer (In Use)");
+    await store.Deliver(U(1), printer, new(G(10), handDay, "Department", null, null), default);
+    ItamInkRequestInput Ink(int qty) => new(printer, null, qty, null, null);
     var ink1 = JsonSerializer.SerializeToElement(await store.CreateInkRequest(U(10), Ink(2), default)).GetProperty("id").GetInt32();
-    Check(await Scalar($"SELECT toner+'|'+status+'|'+request_no FROM itam_data.ink_request WHERE request_id={ink1}") as string == "W2210A|WaitingApproval|INK-1"
-        && JsonSerializer.SerializeToElement(await store.Me(U(12), default)).GetProperty("pendingApprovals").GetInt32() == 1, "Ink request INK-1 with the printer toner, waiting for the direct manager");
-    Check(await Throws<ArgumentException>(() => store.CreateInkRequest(U(9), Ink(1), default)), "No direct manager in Active Directory: the request is refused");
+    Check(await Scalar($"SELECT toner+'|'+status+'|'+request_no FROM itam_data.ink_request WHERE request_id={ink1}") as string == "W2210A|Submitted|INK-1"
+        && await Throws<ItamAccessDenied>(() => store.DecideInk(U(12), ink1, new(true, null), default)), "Ink request INK-1 with the printer toner, waiting for the ink officer");
+    // The ink officer (IT of the printer's region) chooses the approving manager: a senior manager, not the AD manager.
+    Check(await Throws<ItamAccessDenied>(() => store.SendInkForApproval(U(4), ink1, new(G(12)), default)) && await Throws<ArgumentException>(() => store.SendInkForApproval(U(9), ink1, new(G(10)), default))
+        && await Throws<ArgumentException>(() => store.SendInkForApproval(U(9), ink1, new(G(11)), default)), "Only the region's ink officer sends; the approver is an active employee other than the requester");
+    await store.SendInkForApproval(U(9), ink1, new(G(12)), default);
+    Check(JsonSerializer.SerializeToElement(await store.Me(U(12), default)).GetProperty("pendingApprovals").GetInt32() == 1
+        && await Throws<ArgumentException>(() => store.SendInkForApproval(U(9), ink1, new(G(12)), default)) is false, "The chosen manager sees the request; it can be re-sent while it waits");
     Check(await Throws<ItamAccessDenied>(() => store.DecideInk(U(10), ink1, new(true, null), default)) && await Throws<ItamAccessDenied>(() => store.DecideInk(U(9), ink1, new(true, null), default)),
-        "Only the direct manager (or backup) decides; nobody approves their own request");
+        "Only the chosen manager (or backup) decides; nobody approves their own request");
     await store.DecideInk(U(12), ink1, new(true, null), default);
     var ink2 = JsonSerializer.SerializeToElement(await store.CreateInkRequest(U(10), Ink(2), default)).GetProperty("id").GetInt32();
+    await store.SendInkForApproval(U(9), ink2, new(G(12)), default);
     await Exec($"INSERT itam_access.leave_backup(person_id,backup_employee_id,leave_from,leave_to,set_by) VALUES('{G(12)}','{G(3)}',CAST(DATEADD(day,-1,SYSUTCDATETIME()) AS date),CAST(DATEADD(day,3,SYSUTCDATETIME()) AS date),'{G(12)}')");
     await store.DecideInk(U(3), ink2, new(true, null), default);
     var ink3 = JsonSerializer.SerializeToElement(await store.CreateInkRequest(U(10), Ink(1), default)).GetProperty("id").GetInt32();
+    await store.SendInkForApproval(U(9), ink3, new(G(12)), default);
     Check(await Throws<ArgumentException>(() => store.DecideInk(U(12), ink3, new(false, null), default)), "A rejection needs a reason");
     await store.DecideInk(U(12), ink3, new(false, "Use the shared printer"), default);
     Check(await Scalar($"SELECT status FROM itam_data.ink_request WHERE request_id={ink2}") as string == "Approved" && await Scalar($"SELECT status FROM itam_data.ink_request WHERE request_id={ink3}") as string == "Rejected"

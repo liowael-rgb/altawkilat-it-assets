@@ -1,8 +1,8 @@
 // Ink page (build step 3a): ask for ink, approve as the direct manager, and (IT) order from the supplier and deliver with
 // the ink delivery note the employee signs on paper.
 import {$,el,api,shell,fail,message,date,when,card,table,edit,people,form,option,svg} from '/itam.js';
-let m,d,filter='Approved';
-const FILTERS=[['Approved','To order or deliver'],['Ordered','Ordered'],['Delivered','Delivered'],['all','All']];
+let m,d,filter=new URLSearchParams(location.search).get('filter')||'Submitted';
+const FILTERS=[['Submitted','To send for approval'],['WaitingApproval','Waiting approval'],['Approved','To order or deliver'],['Ordered','Ordered'],['Delivered','Delivered'],['all','All']];
 const stTag=r=>el('span',r.statusLabel,'tag '+(r.status==='Delivered'?'ok':r.status==='Rejected'||r.status==='Cancelled'?'off':r.status==='WaitingApproval'?'warn':''));
 const open=href=>window.open(href,'_blank');
 const btn=(text,fn,cls)=>{const b=el('button',text,cls||'');b.type='button';b.onclick=fn;return b;};
@@ -14,12 +14,12 @@ async function load(note){
   d=await api('/ink');
   const parts=[];
   const waiting=d.approvals.filter(r=>r.status==='WaitingApproval');
-  if(d.approvals.length)parts.push(card('Waiting for your approval',"You approve as the employee's direct manager, or as a manager's backup during leave. A rejection needs a reason.",
+  if(d.approvals.length)parts.push(card('Waiting for your approval',"The ink officer sent these to you to approve (or to the manager you stand in for during leave). A rejection needs a reason.",
     table(['Request','Employee','Printer','Toner','Qty','Note','Asked','State'],d.approvals,r=>[r.no,r.employee,r.printer,r.toner,String(r.quantity),r.note||'',when(r.requestedAt),stTag(r)],
       r=>r.status==='WaitingApproval'?[['Approve',()=>decide(r,true)],['Reject',()=>decide(r,false)]]:[],{empty:'Nothing waiting for you.'})));
   parts.push(card('My ink requests','Requests for you, or that you asked for someone.',
     table(['Request','Printer','Toner','Qty','Asked','State','Ink delivery note'],d.mine,r=>[r.no,`${r.printer}${r.printerLocation?' · '+r.printerLocation:''}`,r.toner,String(r.quantity),when(r.requestedAt),stTag(r),noteCell(r)],
-      r=>r.status==='WaitingApproval'&&(r.employeeId===d.me)?[['Cancel',()=>cancel(r)]]:[],{empty:'No ink requests yet. Use Ask for ink.'})));
+      r=>(r.status==='Submitted'||r.status==='WaitingApproval')&&(r.employeeId===d.me)?[['Cancel',()=>cancel(r)]]:[],{empty:'No ink requests yet. Use Ask for ink.'})));
   if(d.canHandle){parts.push(handleCard());parts.push(ordersCard());}
   $('view').replaceChildren(...parts);
   if(note)message(note);
@@ -34,20 +34,23 @@ function handleCard(){
   const picked=new Set();
   const orderBtn=btn('Put the ticked requests in a supplier order',()=>order([...picked]),'primary');orderBtn.disabled=true;
   if(filter==='Approved')bar.append(orderBtn);
-  const wrap=el('div',null,'table-wrap');const t=el('table');const hr=el('tr');
-  for(const h of ['','Request','Employee','Branch','Printer','Toner','Qty','Region','State','Order','Ink delivery note',''])hr.append(el('th',h));
+  const wrap=el('div',null,'table-wrap x-ink-handle');const t=el('table');const hr=el('tr');
+  for(const h of ['','Request','Employee','Printer','Toner','Qty','State','Approver / order','Ink delivery note'])hr.append(el('th',h));
   const th=el('thead');th.append(hr);const tb=el('tbody');
+  const two=(a,b)=>{const s=el('span');s.append(el('span',a));if(b)s.append(el('small',b,'x-sub'));return s;};
   for(const r of list){
     const tr=el('tr');const cb=document.createElement('input');cb.type='checkbox';cb.disabled=r.status!=='Approved';cb.onchange=()=>{cb.checked?picked.add(r.id):picked.delete(r.id);orderBtn.disabled=!picked.size;};
-    const td=x=>{const c=el('td');c.append(x??'');tr.append(c);};
-    td(cb);td(r.no);td(r.employee);td(r.branch||'');td(`${r.printer}${r.printerModel?' · '+r.printerModel:''}`);td(r.toner);td(String(r.quantity));td(r.region);td(stTag(r));td(r.orderNo?`${r.orderNo} · ${r.supplier}`:'');td(noteCell(r));
-    const act=el('td',null,'act');
+    const td=x=>{const c=el('td');c.append(x??'');tr.append(c);return c;};
+    td(r.status==='Approved'?cb:'');td(r.no).className='nowrap';td(two(r.employee,r.branch));td(two(r.printer,r.printerModel)).className='nowrap';td(r.toner);td(String(r.quantity));const stCell=td(stTag(r));stCell.className='x-state-cell';
+    td(r.orderNo?two(r.orderNo,r.supplier):r.manager?two(r.manager,r.status==='WaitingApproval'?'approver':'approved by'):'');td(noteCell(r));
+    const act=el('div',null,'x-row-actions');
+    if(r.status==='Submitted'||r.status==='WaitingApproval')act.append(btn(r.status==='Submitted'?'Send for approval':'Change approver',()=>send(r),r.status==='Submitted'?'link x-strong':'link'),btn('Cancel',()=>cancel(r),'link'));
     if(r.status==='Approved'||r.status==='Ordered'){act.append(btn('Deliver',()=>deliver(r),'link'),btn('Cancel',()=>cancel(r),'link'));}
     if(r.deliveryId&&!r.signed)act.append(btn('Upload signed copy',()=>signed(r),'link'));
     if(r.deliveryId&&r.signed)act.append(btn('Signed copy',()=>open(`/api/ink-notes/${r.deliveryId}/signed`),'link'));
-    tr.append(act);tb.append(tr);
+    if(act.children.length)stCell.append(act);tb.append(tr);
   }
-  if(!list.length){const tr=el('tr');const c=el('td','Nothing here.','empty');c.colSpan=12;tr.append(c);tb.append(tr);}
+  if(!list.length){const tr=el('tr');const c=el('td','Nothing here.','empty');c.colSpan=9;tr.append(c);tb.append(tr);}
   t.append(th,tb);wrap.append(t);box.append(bar,wrap);
   return card('Requests to handle (IT)','Approved requests of your regions. Deliver from the shelf, or tick several and put them in one supplier order (today\'s order email); when the toner arrives with the invoice, deliver from the invoice line.',box);
 }
@@ -77,9 +80,9 @@ async function details(list,isIt){
     {key:'toner',label:'Toner',required:true,max:100,hint:'Filled from the printer; change it if needed (for example which colour).'},
     {key:'qty',label:'Quantity',type:'number',value:1,required:true},
     ...(isIt?[{key:'employee',label:'For employee (IT only)',type:'person',hint:'Leave empty to ask for yourself.'}]:[]),
-    {key:'ticket',label:'ServiceDesk ticket',max:40},{key:'note',label:'Note',type:'textarea',wide:true,max:500,hint:'For example which colour is empty.'}],
-    async x=>{const r=await api('/ink',{method:'POST',json:{printerId:Number(x.printer),toner:x.toner,quantity:Math.round(x.qty||0),employeeId:x.employee||null,ticketNo:x.ticket,note:x.note}});
-      await load(`${r.requestNo} sent to the direct manager for approval.`);},{reason:false,button:'Send the request'});
+    {key:'note',label:'Note',type:'textarea',wide:true,max:500,hint:'For example which colour is empty.'}],
+    async x=>{const r=await api('/ink',{method:'POST',json:{printerId:Number(x.printer),toner:x.toner,quantity:Math.round(x.qty||0),employeeId:x.employee||null,note:x.note}});
+      await load(`${r.requestNo} sent to the ink officer, who sends it for approval.`);},{reason:false,button:'Send the request'});
   const t=document.querySelector('#dialog-body input[maxlength="100"]');if(t)t.addEventListener('input',()=>{t.dataset.typed='1';});
 }
 
@@ -114,3 +117,14 @@ function signed(r){
 }
 
 try{m=await shell('ink');$('new-request').onclick=()=>ask().catch(fail);await load();}catch(e){fail(e);}
+
+// The ink officer sends the request to the manager who approves it: a senior manager chosen by IT (not the Active
+// Directory manager). The manager last chosen for the same department is suggested.
+async function send(r){
+  const last=r.department?d.lastApprover[r.department]:null;
+  await people(last?last.label.replace(/^.*\((.*)\)$/,'$1'):'');
+  edit(`${r.status==='Submitted'?'Send':'Re-send'} ${r.no} for approval`,[{key:'approver',label:'Approving manager',type:'person',required:true,wide:true,value:last?.label,
+    hint:'A senior manager (for example the Head of Department). Type part of the name, then choose.'}],
+    x=>api(`/ink/${r.id}/send`,{method:'POST',json:{approverId:x.approver}}),
+    {reason:false,button:'Send for approval',hint:`${r.employee}${r.department?' ('+r.department+')':''} asks for ${r.quantity} × ${r.toner} for printer ${r.printer}.`,done:()=>load(`${r.no} sent for approval.`)});
+}

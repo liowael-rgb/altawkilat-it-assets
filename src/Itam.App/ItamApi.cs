@@ -107,6 +107,7 @@ public static class ItamApi
         api.MapGet("/printers", (HttpContext ctx, ItamStore store, string? q) => Guard(ctx, async u => Results.Ok(await store.Printers(u, q, ctx.RequestAborted))));
         api.MapGet("/ink", (HttpContext ctx, ItamStore store) => Guard(ctx, async u => Results.Ok(await store.Ink(u, ctx.RequestAborted))));
         api.MapPost("/ink", (HttpContext ctx, ItamStore store, ItamInkRequestInput input) => Guard(ctx, async u => Results.Ok(await store.CreateInkRequest(u, input, ctx.RequestAborted))));
+        api.MapPost("/ink/{id:int}/send", (HttpContext ctx, ItamStore store, int id, ItamStore.ItamSendForApproval input) => Guard(ctx, async u => { await store.SendInkForApproval(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
         api.MapPost("/ink/{id:int}/decision", (HttpContext ctx, ItamStore store, int id, ItamDecision input) => Guard(ctx, async u => { await store.DecideInk(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
         api.MapPost("/ink/{id:int}/cancel", (HttpContext ctx, ItamStore store, int id, ItamCancelInput input) => Guard(ctx, async u => { await store.CancelInk(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
         api.MapPost("/ink/{id:int}/deliver", (HttpContext ctx, ItamStore store, int id, ItamInkDeliverInput input) => Guard(ctx, async u => Results.Ok(await store.DeliverInk(u, id, input, ctx.RequestAborted))));

@@ -33,7 +33,7 @@ function row(m,asset,h,d,reload){
   const top=el('div',null,'x-dn-top');const no=el('b',d.no,'mono');top.append(no,tag(state(d)));box.append(top);
   const facts=el('dl',null,'kv');
   const add=(k,v)=>{if(v===null||v===undefined||v==='')return;facts.append(el('dt',k));const dd=el('dd');dd.append(v instanceof Node?v:document.createTextNode(String(v)));facts.append(dd);};
-  add('Employee',d.employee);add('Delivered on',date(d.deliveredOn));add('Owner type',d.ownerType);add('Computer name',d.computerName);add('Ticket',d.ticket);
+  add('Employee',d.employee);add('Delivered on',date(d.deliveredOn));add('Owner type',d.ownerType);add('Computer name',d.computerName);
   add('Issued by',`${d.issuedBy||''} · ${when(d.issuedAt)}`);add('Signed copy',d.hasSigned?`Uploaded ${when(d.signedAt)} by ${d.signedBy||''}`:null);add('Notes',d.notes);
   if(d.receivedAt){add('Receipt note',d.receiptNo);add('Received back',`${when(d.receivedAt)} by ${d.receivedBy||''}`);add('Condition',d.condition);add('Received at',d.receivedAtLocation);add('Receipt notes',d.receiptNotes);}
   if(d.assessment){add('Technical assessment',`${d.assessment.no}: ${d.assessment.recommendation}`);add('Assessed',`${when(d.assessment.at)} by ${d.assessment.by||''}`);}
@@ -57,8 +57,8 @@ async function deliver(m,asset,h,reload){
     {key:'on',label:'Delivery date',type:'date',value:today,required:true},
     {key:'owner',label:'Owner type',type:'select',options:h.ownerTypes.map(o=>[o,o]),value:'Personal',hint:'Other = a computer that is not a member of the domain.'},
     ...(h.needsComputerName?[{key:'computer',label:'Computer name',required:true,max:15,hint:'Up to 15 letters, numbers or dashes; not used on another open delivery.'}]:[]),
-    {key:'ticket',label:'ServiceDesk ticket',max:40},{key:'notes',label:'Notes',type:'textarea',wide:true,max:1000}],
-    async x=>{const r=await api(`/assets/${asset.id}/deliver`,{method:'POST',json:{employeeId:x.employee,deliveredOn:x.on,ownerType:x.owner,computerName:x.computer||null,ticketNo:x.ticket,notes:x.notes}});
+    {key:'notes',label:'Notes',type:'textarea',wide:true,max:1000}],
+    async x=>{const r=await api(`/assets/${asset.id}/deliver`,{method:'POST',json:{employeeId:x.employee,deliveredOn:x.on,ownerType:x.owner,computerName:x.computer||null,notes:x.notes}});
       window.open(`/api/deliveries/${r.id}/note.pdf`,'_blank');reload(`Delivered on ${r.deliveryNo}. Print the delivery note for the employee to sign, then upload the signed copy.`);},
     {reason:false,button:'Deliver and print the note',hint:'The asset goes In Use with the employee. The delivery note opens to print.'});
 }
