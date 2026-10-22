@@ -274,14 +274,18 @@ public sealed partial class ItamStore
         await using var c = await Open(token);
         var s = await Scope(c, null, user, token);
         Require(CanSeeInvoices(s), "You cannot see payment packs.");
-        var p = (await Rows(c, null, "SELECT pk.pack_no,su.name_en,pk.category,pk.created_at_utc,e.display_name FROM itam_data.payment_pack pk JOIN itam_ref.supplier su ON su.supplier_id=pk.supplier_id LEFT JOIN itam_access.employee e ON e.employee_id=pk.created_by WHERE pk.pack_id=@p",
-            r => (No: r.GetString(0), Supplier: r.GetString(1), Category: r.GetString(2), At: Utc(r, 3), By: S(r, 4)), token, ("@p", packId))).SingleOrDefault();
+        var p = (await Rows(c, null, "SELECT pk.pack_no,su.name_en,pk.category,pk.created_at_utc,e.display_name,su.name_ar FROM itam_data.payment_pack pk JOIN itam_ref.supplier su ON su.supplier_id=pk.supplier_id LEFT JOIN itam_access.employee e ON e.employee_id=pk.created_by WHERE pk.pack_id=@p",
+            r => (No: r.GetString(0), Supplier: r.GetString(1), Category: r.GetString(2), At: Utc(r, 3), By: S(r, 4), SupplierAr: S(r, 5)), token, ("@p", packId))).SingleOrDefault();
         if (p.No is null) throw new ArgumentException("The payment pack was not found.");
         var invoices = await Rows(c, null, "SELECT i.invoice_id,i.invoice_no,i.invoice_date,i.total,i.file_id,i.order_id FROM itam_data.invoice i WHERE i.pack_id=@p ORDER BY i.invoice_date,i.invoice_id",
             r => (Id: r.GetInt32(0), No: r.GetString(1), Date: Day(r, 2)!.Value, Total: r.GetDecimal(3), File: r.GetInt64(4), Order: I(r, 5)), token, ("@p", packId));
         var pack = new PdfDocument();
         void Append(byte[] bytes) { using var ms = new MemoryStream(bytes); using var input = PdfReader.Open(ms, PdfDocumentOpenMode.Import); foreach (var page in input.Pages) pack.AddPage(page); }
-        Append(Cover(p.No, p.Supplier, p.Category, invoices.Select(i => (i.Date, i.No, i.Total)).ToList(), p.By));
+        // The memo is from the IT Manager (as on the owner's templates) and checked by whoever prepared the pack.
+        var from = await Scalar(c, null, "SELECT TOP 1 e.display_name FROM itam_access.role_assignment r JOIN itam_access.employee e ON e.employee_id=r.employee_id WHERE r.role_code=N'ItManager' AND e.enabled=1 ORDER BY r.assignment_id", token) as string ?? p.By;
+        var categories = await Rows(c, null, "SELECT DISTINCT category FROM itam_data.invoice WHERE pack_id=@p", r => r.GetString(0), token, ("@p", packId));
+        var heading = string.Join(" & ", categories.Select(k => k == "PartsMaintenance" ? "Parts & Maintenance" : CategoryLabel(k)).Order());
+        Append(Cover(p.No, p.Supplier, p.SupplierAr, heading, p.At, invoices.Select(i => (i.Date, i.No, i.Total)).ToList(), from, p.By));
         foreach (var inv in invoices)
         {
             if (await LoadFile(c, null, inv.File, token) is { } f) { try { Append(f.Content); } catch (Exception ex) when (ex is PdfReaderException or InvalidOperationException or NotSupportedException) { } }
@@ -295,26 +299,81 @@ public sealed partial class ItamStore
         return new($"Payment pack {p.No}.pdf", "application/pdf", output.ToArray());
     }
 
-    byte[] Cover(string no, string supplier, string category, List<(DateOnly Date, string No, decimal Total)> invoices, string? by)
+    /// <summary>The payment pack cover in the layout of the owner's Inter-Office Memorandum templates: a left column with the
+    /// memo fields and Status / Action boxes, and on the right the invoices table with the total, "Please arrange to pay the
+    /// supplier", and the received-by, IT Department and Account Department signature blocks.</summary>
+    byte[] Cover(string no, string supplier, string? supplierAr, string heading, DateTime at, List<(DateOnly Date, string No, decimal Total)> invoices, string? from, string? checkedBy)
     {
         var pdf = Pdf ?? throw new InvalidOperationException("The PDF font is not configured.");
-        var d = pdf.Start(); const double M = ItamPdf.Doc.M, W = ItamPdf.Doc.W; const string muted = "0.35 0.35 0.35", ink = "0 0 0";
-        d.Logo(M, d.Y + 10, 110); d.Text("IT Department", W - M, d.Y, 10, true, muted); d.Text("قسم تقنية المعلومات", W - M, d.Y - 14, 10, true, muted); d.Y -= 44;
-        d.Text("INTER-OFFICE MEMORANDUM", M, d.Y, 20, false, ink); d.Text("مذكرة داخلية", W - M, d.Y, 18, true, ink); d.Y -= 12; d.Box(M, d.Y, W - 2 * M, 2, "0 0 0"); d.Y -= 24;
-        foreach (var (k, v) in new[] { ("Date", DateTime.UtcNow.AddHours(3).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)), ("To", "Accounts Department"), ("From", "IT Department"),
-            ("Subject", category == "Mixed" ? $"Payment of invoices — {supplier}" : $"Payment of {CategoryLabel(category).ToLowerInvariant()} invoices — {supplier}"), ("Reference", no) })
-        { d.Text(k + ":", M, d.Y, 10.5, false, muted); d.Fit(v, M + 80, d.Y, 10.5, W - 2 * M - 80, ink); d.Y -= 17; }
-        d.Y -= 10;
-        d.Fit($"Attached please find {invoices.Count} invoice{(invoices.Count == 1 ? "" : "s")} from {supplier} which {(invoices.Count == 1 ? "is" : "are")} due for payment.", M, d.Y, 11, W - 2 * M, ink); d.Y -= 24;
-        double[] col = [M, M + 150, M + 340];
-        d.Box(M, d.Y - 6, W - 2 * M, 20, "0.93 0.93 0.93"); d.Text("Date", col[0] + 6, d.Y, 9.5, false, muted); d.Text("Invoice No.", col[1] + 6, d.Y, 9.5, false, muted); d.Text("Amount (SAR, incl. VAT)", col[2] + 6, d.Y, 9.5, false, muted); d.Y -= 22;
+        var d = pdf.Start(); const double W = ItamPdf.Doc.W, H = ItamPdf.Doc.H; const string ink = "0 0 0", gray = "0.45 0.45 0.45";
+        var inv = CultureInfo.InvariantCulture; var local = at.AddHours(3);
+        string DayText(DateOnly x) => x.ToString("d/M/yyyy", inv);
+        string Amount(decimal x) => x.ToString("#,##0.00", inv);
+        // Left column: logo, memo fields, Status and Action boxes, pages and print time.
+        const double lx = 40, sep = 182, rx = 198, rr = W - 40;
+        d.Logo(lx + 4, H - 48, 104);
+        d.Line(sep, H - 48, sep, 92, gray);
+        var y = H - 128;
+        void Label(string text) { d.Text(text, lx, y, 9.5, false, ink); d.Line(lx, y - 1.5, lx + pdf.Width(text, 9.5), y - 1.5, ink); y -= 14; }
+        void Field(string label, string? value, double after = 22) { Label(label); if (!string.IsNullOrEmpty(value)) { d.Fit(value, lx + 6, y, 9.5, sep - lx - 12, ink); y -= 14; } y -= after - 14; }
+        void Box(string text) { d.Line(lx, y - 1, lx + 7, y - 1, ink); d.Line(lx, y + 6, lx + 7, y + 6, ink); d.Line(lx, y - 1, lx, y + 6, ink); d.Line(lx + 7, y - 1, lx + 7, y + 6, ink); d.Text(text, lx + 11, y, 8.5, false, ink); y -= 13; }
+        Field("Subject:", "Invoices for payment");
+        Field("To:", "Accounts Department");
+        Field("Accounts Dep", "-");
+        Field("From:", from);
+        Field("Date:", local.ToString("d/M/yyyy", inv), 18);
+        Field("Reference #:", no);
+        Field("CC:", null);
+        Field("Attachment:", $"{invoices.Count} invoice{(invoices.Count == 1 ? "" : "s")}");
+        Label("Status"); foreach (var t in new[] { "CONFIDENTIAL", "URGENT", "NORMAL" }) Box(t); y -= 10;
+        Label("Action:"); foreach (var t in new[] { "HANDLE", "COMMENTS", "REVIEW", "APPROVAL", "SIGNATURE", "INFORMATION", "COORDINATION", "FOLLOW-UP" }) Box(t); y -= 8;
+        foreach (var t in new[] { "B/F", "FILE" }) Box(t); y -= 10;
+        Label("Pages:"); d.Text("01 of 01", lx, y, 9.5, false, ink); y -= 18;
+        d.Text(local.ToString("dd/MM/yy - hh:mm tt", inv), lx, y, 8, false, gray);
+
+        // Right column.
+        y = H - 62;
+        d.Text($"ALTAWKILAT   {local.Year}", rr, y, 20, true, ink, strong: true); y -= 38;
+        d.Text("INTER-OFFICE MEMORANDUM", rx, y, 13.5, false, ink, strong: true); y -= 7; d.Line(rx, y, rr, y, ink); y -= 24;
+        d.Text("INVOICES", rx, y, 11, false, ink, strong: true); y -= 24;
+        // "Attached please find N invoices from <supplier> which are due for payment", wrapped, supplier in bold.
+        var words = new List<(string Text, bool Strong)>();
+        foreach (var w in $"Attached please find {invoices.Count} invoice{(invoices.Count == 1 ? "" : "s")} from".Split(' ')) words.Add((w, false));
+        foreach (var w in supplier.Split(' ', StringSplitOptions.RemoveEmptyEntries)) words.Add((w, true));
+        foreach (var w in $"which {(invoices.Count == 1 ? "is" : "are")} due for payment.".Split(' ')) words.Add((w, false));
+        var x = rx; const double size = 11, space = 3;
+        foreach (var (text, strong) in words)
+        {
+            var wd = pdf.Width(text, size, strong);
+            if (x + wd > rr && x > rx) { x = rx; y -= 15; }
+            d.Text(text, x, y, size, false, ink, strong); x += wd + space;
+        }
+        if (!string.IsNullOrEmpty(supplierAr)) { y -= 17; d.Text(supplierAr, rr, y, 12, true, ink); }
+        y -= 30;
+        d.Text(heading, rx, y, 15, false, ink, strong: true); d.Line(rx, y - 2.5, rx + pdf.Width(heading, 15, true), y - 2.5, ink); y -= 18;
+        // Invoices table: Date | Invoice no. | Amount, with the total.
+        double[] col = [rx, rx + 100, rx + 230, rr]; var row = invoices.Count > 14 ? 15.0 : 20.0;
+        void Grid(double top, double bottom) { foreach (var cx in col) d.Line(cx, top, cx, bottom, ink); }
+        var top = y; d.Line(rx, y, rr, y, ink); y -= row;
+        d.Text("Date", col[0] + 5, y + 6, 10, false, ink, strong: true); d.Text("Invoice no.", col[1] + 5, y + 6, 10, false, ink, strong: true); d.Text("Amount", col[2] + 5, y + 6, 10, false, ink, strong: true);
+        d.Line(rx, y, rr, y, ink);
         foreach (var i in invoices)
-        { d.Text(i.Date.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture), col[0] + 6, d.Y, 10.5, false, ink); d.Fit(i.No, col[1] + 6, d.Y, 10.5, 180, ink); d.Text(i.Total.ToString("#,##0.00", CultureInfo.InvariantCulture), col[2] + 6, d.Y, 10.5, false, ink); d.Y -= 6; d.Line(M, d.Y, W - M, d.Y); d.Y -= 14; }
-        d.Text("Total (SAR)", col[1] + 6, d.Y, 11, false, ink); d.Text(invoices.Sum(i => i.Total).ToString("#,##0.00", CultureInfo.InvariantCulture), col[2] + 6, d.Y, 11.5, false, ink); d.Y -= 44;
-        var w = (W - 2 * M - 40) / 3;
-        foreach (var (k, i) in new[] { "Checked by (IT)", "Approved by (Head of Department)", "Accountant" }.Select((k, i) => (k, i)))
-        { var x = M + i * (w + 20); d.Text(k, x, d.Y, 9.5, false, muted); if (i == 0 && by is not null) d.Fit(by, x, d.Y - 16, 10, w, ink); d.Line(x, d.Y - 56, x + w, d.Y - 56, "0.45 0.45 0.45"); d.Text("Signature and date", x, d.Y - 68, 8, false, muted); }
-        d.Text($"IT Assets · {no}", M, M - 10, 7.5, false, muted);
+        {
+            y -= row; d.Text(DayText(i.Date), col[0] + 5, y + 6, 10, false, ink); d.Fit(i.No, col[1] + 5, y + 6, 10, col[2] - col[1] - 10, ink); d.Text(Amount(i.Total), col[3] - 5, y + 6, 10, true, ink);
+            d.Line(rx, y, rr, y, ink);
+        }
+        y -= row; d.Text("Total:", col[0] + 5, y + 6, 10, false, ink, strong: true); d.Text($"{Amount(invoices.Sum(i => i.Total))}  SAR", col[3] - 5, y + 6, 10, true, ink, strong: true);
+        d.Line(rx, y, rr, y, ink); Grid(top, y); y -= 28;
+        d.Text("Please arrange to pay the supplier.", rx, y, 11, false, ink); y -= 26;
+        d.Text("Regards,", rx, y, 11, false, ink); y -= 17;
+        if (!string.IsNullOrEmpty(from)) d.Text(from, rx, y, 11, false, ink, strong: true);
+        y -= 30;
+        void Blank(string label, double width = 170) { d.Text(label, rx, y, 11, false, ink); var lw = pdf.Width(label, 11) + 4; d.Line(rx + lw, y - 2, rx + lw + width, y - 2, ink); y -= 26; }
+        Blank("Invoices received by:"); Blank("Name:", 200); Blank("Signature:"); Blank("Date:", 200);
+        y -= 4; d.Text("IT DEPARTMENT", rx, y, 11, false, ink, strong: true); y -= 22;
+        d.Text($"Checked from: {checkedBy}", rx, y, 11, false, ink); y -= 26; Blank("Signature:");
+        y -= 4; d.Text("ACCOUNT DEPARTMENT", rx, y, 11, false, ink, strong: true); y -= 22;
+        Blank("Checked from:"); Blank("Signature:");
         return d.Build();
     }
 

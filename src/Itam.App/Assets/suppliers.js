@@ -9,7 +9,8 @@ const btn=(text,fn,cls,icon)=>{const b=el('button',null,cls||'');b.type='button'
 const mail=e=>{if(!e)return '';const a=el('a',e);a.href='mailto:'+e;return a;};
 
 const FIELDS=s=>[
-  {key:'name',label:'Supplier name',required:true,max:200,wide:true,value:s?.name,hint:'As on the supplier\'s tax invoice.'},
+  {key:'name',label:'Supplier name (English)',required:true,max:200,value:s?.name,hint:'As on the supplier\'s tax invoice.'},
+  {key:'nameAr',label:'Supplier name (Arabic)',max:200,value:s?.nameAr,hint:'As on the tax invoice, in Arabic.'},
   {key:'vat',label:'VAT number',max:20,value:s?.vat,hint:'15 digits, on the tax invoice.'},
   {key:'cr',label:'CR number',max:20,value:s?.cr,hint:'Commercial registration.'},
   {key:'contact',label:'Contact person',max:200,value:s?.contact},
@@ -20,7 +21,7 @@ const FIELDS=s=>[
   ...(s?[{key:'active',label:'Active (can be chosen on new invoices, orders and POs)',type:'checkbox',value:s.active}]:[])];
 function save(s){
   edit(s?`Change ${s.name}`:'Add a supplier',FIELDS(s),
-    async x=>{const r=await api(s?`/suppliers/${s.id}`:'/suppliers',{method:'POST',json:{name:x.name,vatNo:x.vat,crNo:x.cr,contactName:x.contact,phone:x.phone,email:x.email,address:x.address,notes:x.notes,active:s?!!x.active:true}});
+    async x=>{const r=await api(s?`/suppliers/${s.id}`:'/suppliers',{method:'POST',json:{name:x.name,nameAr:x.nameAr,vatNo:x.vat,crNo:x.cr,contactName:x.contact,phone:x.phone,email:x.email,address:x.address,notes:x.notes,active:s?!!x.active:true}});
       if(s)await detail('Saved.');else location.assign('/suppliers.html?id='+r.id+'&added=1');},{reason:false,button:s?'Save':'Add the supplier'});
 }
 
@@ -37,7 +38,7 @@ async function list(note){
   const draw=()=>{const t=q.trim().toLowerCase();
     const rows=d.suppliers.filter(s=>(show==='all'||(show==='active'?s.active:s.waiting>0))&&(!t||[s.name,s.vat,s.contact].some(v=>(v||'').toLowerCase().includes(t))));
     box.replaceChildren(table(['Supplier','VAT number','Contact','Phone','Invoices','Waiting for a pack','Unpaid packs'],rows,
-      s=>[(()=>{const x=el('span');x.append(el('strong',s.name));if(!s.active)x.append(' ',el('span','Inactive','tag off'));return x;})(),s.vat||'',s.contact||'',call(s.phone),String(s.invoices),
+      s=>[(()=>{const x=el('span');x.append(el('strong',s.name));if(!s.active)x.append(' ',el('span','Inactive','tag off'));if(s.nameAr){const a=el('small',s.nameAr,'x-sub');a.dir='rtl';x.append(a);}return x;})(),s.vat||'',s.contact||'',call(s.phone),String(s.invoices),
         s.waiting?el('span',`${s.waiting} · ${money(s.waitingTotal)}`,'tag warn'):'',s.unpaidPacks?String(s.unpaidPacks):''],null,
       {empty:'No supplier found.',onRow:s=>location.assign('/suppliers.html?id='+s.id)}));};
   draw();
@@ -48,11 +49,11 @@ async function list(note){
 async function detail(note){
   d=await api('/suppliers/'+id);const s=d.supplier;
   document.title='IT Assets · '+s.name;$('title').textContent=s.name;
-  $('subtitle').textContent=`Supplier${s.active?'':' (inactive)'} · added ${when(s.createdAt)}${s.createdBy?' by '+s.createdBy:''}`;
+  $('subtitle').textContent=`${s.nameAr?s.nameAr+' · ':''}Supplier${s.active?'':' (inactive)'} · added ${when(s.createdAt)}${s.createdBy?' by '+s.createdBy:''}`;
   const back=btn('All suppliers',()=>location.assign('/suppliers.html'));
   $('head-actions').replaceChildren(...(d.canManage?[btn('Change',()=>save(s),'','edit')]:[]),back);
   const info=el('dl',null,'kv');
-  for(const [k,v] of [['VAT number',s.vat],['CR number',s.cr],['Contact person',s.contact],['Phone',call(s.phone)],['Email',mail(s.email)],['Address',s.address],['Notes',s.notes]]){
+  for(const [k,v] of [['Name in Arabic',s.nameAr],['VAT number',s.vat],['CR number',s.cr],['Contact person',s.contact],['Phone',call(s.phone)],['Email',mail(s.email)],['Address',s.address],['Notes',s.notes]]){
     if(!v)continue;info.append(el('dt',k));const dd=el('dd');dd.append(v);info.append(dd);}
   const parts=[card('Details',null,info)];
   if(d.canPack){

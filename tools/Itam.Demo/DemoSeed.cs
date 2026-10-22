@@ -31,9 +31,9 @@ static class DemoSeed
                  (N'Riyadh IT Warehouse (demo)','ITWarehouse','Central',N'Riyadh'),(N'Jeddah IT Warehouse (demo)','ITWarehouse','West',N'Jeddah'),
                  (N'Dammam IT Warehouse (demo)','ITWarehouse','East',N'Dammam'),(N'Abha Branch (demo)','Branch','South',N'Abha'),
                  (N'Al Kharj Branch (demo)','Branch','Central',N'Al Kharj'),(N'Dubai Office (demo)','Branch','UAE',N'Dubai');
-                INSERT itam_ref.supplier(name_en,vat_no,cr_no,contact_name,phone,email,address) VALUES(N'Demo Computers Co.','300000000000003','1010000001',N'Demo Sales Desk','0110000001','sales@computers.example.invalid',N'Riyadh'),
-                 (N'Demo Network Supplies',NULL,NULL,NULL,NULL,NULL,NULL),(N'Demo Office Equipment',NULL,NULL,NULL,NULL,NULL,NULL),
-                 (N'Demo Toner Trading (A)','300000000000011','4030000002',N'Demo Toner Desk','0120000002','orders@toner-a.example.invalid',N'Jeddah'),(N'Demo Toner Trading (B)','300000000000029',NULL,N'Demo Contact B','0130000003',NULL,N'Dammam');
+                INSERT itam_ref.supplier(name_en,name_ar,vat_no,cr_no,contact_name,phone,email,address) VALUES(N'Demo Computers Co.',N'شركة الحاسبات التجريبية','300000000000003','1010000001',N'Demo Sales Desk','0110000001','sales@computers.example.invalid',N'Riyadh'),
+                 (N'Demo Network Supplies',NULL,NULL,NULL,NULL,NULL,NULL,NULL),(N'Demo Office Equipment',NULL,NULL,NULL,NULL,NULL,NULL,NULL),
+                 (N'Demo Toner Trading (A)',N'مؤسسة الأحبار التجريبية (أ)','300000000000011','4030000002',N'Demo Toner Desk','0120000002','orders@toner-a.example.invalid',N'Jeddah'),(N'Demo Toner Trading (B)',N'مؤسسة الأحبار التجريبية (ب)','300000000000029',NULL,N'Demo Contact B','0130000003',NULL,N'Dammam');
                 INSERT itam_ref.manufacturer(name_en) VALUES(N'Dell'),(N'HP'),(N'Lenovo'),(N'Cisco'),(N'Canon'),(N'Epson'),(N'Samsung'),(N'Microsoft');
                 INSERT itam_ref.model(manufacturer_id,type_code,name_en) SELECT m.manufacturer_id,v.t,v.n FROM (VALUES
                  (N'Dell','PC',N'Latitude 5440'),(N'Dell','PC',N'OptiPlex 7010'),(N'HP','PC',N'EliteBook 840 G10'),(N'Lenovo','PC',N'ThinkPad T14'),

@@ -23,7 +23,7 @@ try
     await using (var c = new SqlConnection(cs)) Check(await ItamSchemaInstaller.Apply(c, name) == ItamSchemaInstaller.Count, "Migrations applied");
     await using (var c = new SqlConnection(cs)) Check(await ItamSchemaInstaller.Apply(c, name) == 0, "Second run applies nothing");
     var font = File.ReadAllBytes(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "arial.ttf"));
-    var pdf = new ItamPdf(font, File.ReadAllBytes(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "calibri.ttf")));
+    var pdf = new ItamPdf(font, File.ReadAllBytes(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "calibri.ttf")), File.ReadAllBytes(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "calibrib.ttf")));
     var store = new ItamStore(() => new SqlConnection(cs), new FakeSecrets()) { Pdf = pdf };
     Guid G(int n) => new($"00000000-0000-0000-0000-{n:000000000000}");
     ItamUser U(int n) => new(G(n), "u" + n);

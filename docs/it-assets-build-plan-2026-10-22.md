@@ -245,3 +245,8 @@ suppliers (audited). Tick any of the supplier's invoices waiting for a pack and 
 invoices of one supplier, of one category or several together (Mixed), and the person needs the right for each category.
 Invoices, the PO page and the PO list show where each stands with Accounting: not in a pack, in a pack not yet sent, sent
 to Accounting (date), or paid (date); the PO list and page show whether the PO pack was sent to Accounting.
+The payment pack cover follows the owner's Inter-Office Memorandum templates (Toners / Parts & Maintenance covers): left
+column with Subject, To (Accounts Department), From (the IT Manager), Date, Reference # (PAY-n), Attachment, Status and
+Action boxes and Pages; on the right "ALTAWKILAT <year>", the invoices table (Date | Invoice no. | Amount, Total SAR),
+"Please arrange to pay the supplier", Regards, the received-by block, IT Department (checked by whoever prepared the pack)
+and Account Department signatures. Suppliers have an Arabic name too (shown on the list, the page and the cover).

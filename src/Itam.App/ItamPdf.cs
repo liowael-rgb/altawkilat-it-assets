@@ -117,15 +117,18 @@ public sealed class ItamPdf
         static void W32(byte[] b, int p, uint v) { b[p] = (byte)(v >> 24); b[p + 1] = (byte)(v >> 16); b[p + 2] = (byte)(v >> 8); b[p + 3] = (byte)v; }
     }
 
-    readonly Face arabic, latin;
+    readonly Face arabic, latin, bold;
+    Face[] Faces => [arabic, latin, bold];
 
     /// <param name="ttf">A font with Arabic presentation forms (Windows Arial).</param>
     /// <param name="latinTtf">The font for English text (Windows Calibri); Arial when not given.</param>
-    public ItamPdf(byte[] ttf, byte[]? latinTtf = null)
+    /// <param name="latinBoldTtf">Bold English text (Windows Calibri Bold); the regular English font when not given.</param>
+    public ItamPdf(byte[] ttf, byte[]? latinTtf = null, byte[]? latinBoldTtf = null)
     {
         arabic = new Face(ttf, "Arial");
         if (!arabic.Has(0xFE8D)) throw new InvalidOperationException("The PDF font has no Arabic presentation forms.");
         latin = latinTtf is null ? arabic : new Face(latinTtf, "Calibri");
+        bold = latinBoldTtf is null ? latin : new Face(latinBoldTtf, "CalibriBold");
     }
 
     static readonly Dictionary<char, int[]> Forms = new()
@@ -201,26 +204,26 @@ public sealed class ItamPdf
         return string.Concat(output);
     }
 
-    Face FaceFor(string visual) => visual.Any(IsArabic) ? arabic : latin;
-    public double Width(string text, double size) { var v = Visual(text); var f = FaceFor(v); return v.Sum(c => f.Advance[f.Glyph(c)]) * size / f.UnitsPerEm; }
+    Face FaceFor(string visual, bool strong = false) => visual.Any(IsArabic) ? arabic : strong ? bold : latin;
+    public double Width(string text, double size, bool strong = false) { var v = Visual(text); var f = FaceFor(v, strong); return v.Sum(c => f.Advance[f.Glyph(c)]) * size / f.UnitsPerEm; }
 
     /// <summary>One document being written: pages, text, lines and filled boxes; A4 portrait unless a page size is given
     /// (labels: 63.5 x 38.1 mm).</summary>
     public sealed class Doc(ItamPdf pdf, double pageW = Doc.W, double pageH = Doc.H)
     {
         public const double W = 595.28, H = 841.89, M = 40;
-        readonly List<StringBuilder> pages = []; readonly SortedSet<ushort> usedArabic = [], usedLatin = []; readonly List<Picture> pictures = [];
+        readonly List<StringBuilder> pages = []; readonly SortedSet<ushort>[] used = [[], [], []]; readonly List<Picture> pictures = [];
         StringBuilder page = null!;
         public double Y;
         public int Pages => pages.Count;
         public double PageW => pageW; public double PageH => pageH;
         public void NewPage() { page = new StringBuilder(); pages.Add(page); Y = pageH - M; }
-        string Hex(string visual, Face face) { var used = face == pdf.arabic ? usedArabic : usedLatin; var sb = new StringBuilder("<"); foreach (var c in visual) { var g = face.Glyph(c); used.Add(g); sb.Append(g.ToString("X4", CultureInfo.InvariantCulture)); } return sb.Append('>').ToString(); }
-        public void Text(string? text, double x, double y, double size, bool right = false, string color = "0 0 0")
+        string Hex(string visual, int f) { var face = pdf.Faces[f]; var sb = new StringBuilder("<"); foreach (var c in visual) { var g = face.Glyph(c); used[f].Add(g); sb.Append(g.ToString("X4", CultureInfo.InvariantCulture)); } return sb.Append('>').ToString(); }
+        public void Text(string? text, double x, double y, double size, bool right = false, string color = "0 0 0", bool strong = false)
         {
             if (string.IsNullOrEmpty(text)) return;
-            var v = Visual(text); var face = pdf.FaceFor(v); var tx = right ? x - v.Sum(c => face.Advance[face.Glyph(c)]) * size / face.UnitsPerEm : x;
-            page.Append(CultureInfo.InvariantCulture, $"BT {color} rg /{(face == pdf.arabic ? "F1" : "F2")} {size:0.##} Tf {tx:0.##} {y:0.##} Td {Hex(v, face)} Tj ET\n");
+            var v = Visual(text); var face = pdf.FaceFor(v, strong); var f = Array.IndexOf(pdf.Faces, face); var tx = right ? x - v.Sum(c => face.Advance[face.Glyph(c)]) * size / face.UnitsPerEm : x;
+            page.Append(CultureInfo.InvariantCulture, $"BT {color} rg /F{f + 1} {size:0.##} Tf {tx:0.##} {y:0.##} Td {Hex(v, f)} Tj ET\n");
         }
         /// <summary>Text cut with "…" to fit a width.</summary>
         public void Fit(string? text, double x, double y, double size, double width, string color = "0.1 0.1 0.1")
@@ -241,7 +244,7 @@ public sealed class ItamPdf
         /// <summary>The company logo with its top at <paramref name="top"/>; returns its height.</summary>
         public double Logo(double x, double top, double width) { var h = width * Logo_.Height / Logo_.Width; Image(Logo_, x, top - h, width); return h; }
         static Picture Logo_ => ItamPdf.Logo;
-        public byte[] Build() => pdf.Build(pages, usedArabic, usedLatin, pictures, pageW, pageH);
+        public byte[] Build() => pdf.Build(pages, used, pictures, pageW, pageH);
     }
     public Doc Start() { var d = new Doc(this); d.NewPage(); return d; }
     public Doc Start(double width, double height) { var d = new Doc(this, width, height); d.NewPage(); return d; }
@@ -306,7 +309,7 @@ public sealed class ItamPdf
         return new(w, h, gray);
     }
 
-    byte[] Build(List<StringBuilder> pages, SortedSet<ushort> usedArabic, SortedSet<ushort> usedLatin, List<Picture> pictures, double pageW, double pageH)
+    byte[] Build(List<StringBuilder> pages, SortedSet<ushort>[] used, List<Picture> pictures, double pageW, double pageH)
     {
         var objects = new List<byte[]>();
         int Add(byte[] content) { objects.Add(content); return objects.Count; }
@@ -314,7 +317,7 @@ public sealed class ItamPdf
         static byte[] Stream(string dict, byte[] data) { using var ms = new MemoryStream(); var head = Ascii($"<< {dict} /Length {data.Length} >>\nstream\n"); ms.Write(head); ms.Write(data); ms.Write(Ascii("\nendstream")); return ms.ToArray(); }
         static byte[] Deflate(byte[] data) { using var ms = new MemoryStream(); using (var z = new ZLibStream(ms, CompressionLevel.Optimal, true)) z.Write(data); return ms.ToArray(); }
         var inv = CultureInfo.InvariantCulture;
-        // Each font is embedded as a subset of the glyphs this document uses (F1 Arabic, F2 English).
+        // Each font is embedded as a subset of the glyphs this document uses (F1 Arabic, F2 English, F3 English bold).
         int Font(Face face, SortedSet<ushort> used, string tag)
         {
             var name = $"{tag}+{face.Name}"; var data = face.Subset(used);
@@ -325,8 +328,8 @@ public sealed class ItamPdf
             return Add(Ascii($"<< /Type /Font /Subtype /Type0 /BaseFont /{name} /Encoding /Identity-H /DescendantFonts [{cid} 0 R] >>"));
         }
         var fonts = new List<string>();
-        if (usedArabic.Count > 0) fonts.Add($"/F1 {Font(arabic, usedArabic, "ITAMAR")} 0 R");
-        if (usedLatin.Count > 0) fonts.Add($"/F2 {Font(latin, usedLatin, "ITAMEN")} 0 R");
+        string[] tags = ["ITAMAR", "ITAMEN", "ITAMBD"];
+        for (var i = 0; i < used.Length; i++) if (used[i].Count > 0) fonts.Add($"/F{i + 1} {Font(Faces[i], used[i], tags[i])} 0 R");
         var fontDict = fonts.Count == 0 ? "" : $"/Font << {string.Join(" ", fonts)} >>";
         var images = pictures.Select(p => Add(Stream($"/Type /XObject /Subtype /Image /Width {p.Width} /Height {p.Height} /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode", Deflate(p.Gray)))).ToList();
         var xobjects = images.Count == 0 ? "" : $" /XObject << {string.Join(" ", images.Select((id, i) => $"/Im{i} {id} 0 R"))} >>";

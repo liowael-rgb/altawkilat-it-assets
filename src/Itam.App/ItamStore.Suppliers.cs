@@ -2,7 +2,7 @@ using System.Data;
 
 namespace Itam.App;
 
-public sealed record ItamSupplierInput(string? Name, string? VatNo, string? CrNo, string? ContactName, string? Phone, string? Email, string? Address, string? Notes, bool Active = true);
+public sealed record ItamSupplierInput(string? Name, string? VatNo, string? CrNo, string? ContactName, string? Phone, string? Email, string? Address, string? Notes, bool Active = true, string? NameAr = null);
 
 /// <summary>Supplier module (owner, 22 October 2026): suppliers with their contact details, invoices, payment packs, toner
 /// orders and POs. The Ink Officer, the IT Assets Officer and the IT Administrator add and edit suppliers; invoices of one
@@ -18,10 +18,10 @@ public sealed partial class ItamStore
             "(SELECT COUNT(*) FROM itam_data.invoice i WHERE i.supplier_id=su.supplier_id)," +
             "(SELECT COUNT(*) FROM itam_data.invoice i WHERE i.supplier_id=su.supplier_id AND i.pack_id IS NULL)," +
             "(SELECT SUM(i.total) FROM itam_data.invoice i WHERE i.supplier_id=su.supplier_id AND i.pack_id IS NULL)," +
-            "(SELECT COUNT(*) FROM itam_data.payment_pack pk WHERE pk.supplier_id=su.supplier_id AND pk.paid_on IS NULL) " +
+            "(SELECT COUNT(*) FROM itam_data.payment_pack pk WHERE pk.supplier_id=su.supplier_id AND pk.paid_on IS NULL),su.name_ar " +
             "FROM itam_ref.supplier su ORDER BY su.active DESC,su.name_en",
             r => new { id = r.GetInt32(0), name = r.GetString(1), vat = S(r, 2), contact = S(r, 3), phone = S(r, 4), email = S(r, 5), active = r.GetBoolean(6),
-                invoices = r.GetInt32(7), waiting = r.GetInt32(8), waitingTotal = r.IsDBNull(9) ? 0 : r.GetDecimal(9), unpaidPacks = r.GetInt32(10) }, token);
+                invoices = r.GetInt32(7), waiting = r.GetInt32(8), waitingTotal = r.IsDBNull(9) ? 0 : r.GetDecimal(9), unpaidPacks = r.GetInt32(10), nameAr = S(r, 11) }, token);
         return new { suppliers = list, canManage = s.SuppliersManage };
     }
 
@@ -31,10 +31,10 @@ public sealed partial class ItamStore
         await using var c = await Open(token);
         var s = await Scope(c, null, user, token);
         Require(CanSeeInvoices(s) || s.SuppliersManage, "You cannot see suppliers.");
-        var su = (await Rows(c, null, "SELECT su.supplier_id,su.name_en,su.vat_no,su.cr_no,su.contact_name,su.phone,su.email,su.address,su.notes,su.active,su.created_at_utc,e.display_name " +
+        var su = (await Rows(c, null, "SELECT su.supplier_id,su.name_en,su.vat_no,su.cr_no,su.contact_name,su.phone,su.email,su.address,su.notes,su.active,su.created_at_utc,e.display_name,su.name_ar " +
             "FROM itam_ref.supplier su LEFT JOIN itam_access.employee e ON e.employee_id=su.created_by WHERE su.supplier_id=@s",
             r => new { id = r.GetInt32(0), name = r.GetString(1), vat = S(r, 2), cr = S(r, 3), contact = S(r, 4), phone = S(r, 5), email = S(r, 6), address = S(r, 7), notes = S(r, 8),
-                active = r.GetBoolean(9), createdAt = Utc(r, 10), createdBy = S(r, 11) }, token, ("@s", id))).SingleOrDefault() ?? throw new ArgumentException("The supplier was not found.");
+                active = r.GetBoolean(9), createdAt = Utc(r, 10), createdBy = S(r, 11), nameAr = S(r, 12) }, token, ("@s", id))).SingleOrDefault() ?? throw new ArgumentException("The supplier was not found.");
         var invoices = CanSeeInvoices(s) ? await Rows(c, null, "SELECT i.invoice_id,i.invoice_no,i.invoice_date,i.category,i.total,o.order_no,p.po_number,pk.pack_no,i.pack_id,pk.paid_on,pk.sent_on " +
             "FROM itam_data.invoice i LEFT JOIN itam_data.supplier_order o ON o.order_id=i.order_id LEFT JOIN itam_data.po p ON p.po_id=i.po_id LEFT JOIN itam_data.payment_pack pk ON pk.pack_id=i.pack_id " +
             "WHERE i.supplier_id=@s ORDER BY i.invoice_date DESC,i.invoice_id DESC",
@@ -68,17 +68,18 @@ public sealed partial class ItamStore
         var email = Optional(x.Email, "Email", 200);
         if (email is not null && !System.Net.Mail.MailAddress.TryCreate(email, out _)) throw new ArgumentException("Email: not a valid address.");
         if (await Scalar(c, tx, "SELECT 1 FROM itam_ref.supplier WHERE name_en=@n AND supplier_id<>@i", token, ("@n", name), ("@i", id ?? 0)) is not null) throw new ArgumentException($"{name} is already a supplier.");
-        (string, object?)[] v = [("@n", name), ("@v", vat), ("@cr", cr), ("@cn", Optional(x.ContactName, "Contact person", 200)), ("@p", phone), ("@e", email),
+        var nameAr = Optional(x.NameAr, "Supplier name in Arabic", 200);
+        (string, object?)[] v = [("@n", name), ("@na", nameAr), ("@v", vat), ("@cr", cr), ("@cn", Optional(x.ContactName, "Contact person", 200)), ("@p", phone), ("@e", email),
             ("@ad", Optional(x.Address, "Address", 300)), ("@nt", Optional(x.Notes, "Notes", 500)), ("@a", x.Active), ("@b", s.Id), ("@i", id ?? 0)];
         int saved;
         if (id is int existing)
         {
             if (await Scalar(c, tx, "SELECT 1 FROM itam_ref.supplier WHERE supplier_id=@i", token, ("@i", existing)) is null) throw new ArgumentException("The supplier was not found.");
-            await Exec(c, tx, "UPDATE itam_ref.supplier SET name_en=@n,vat_no=@v,cr_no=@cr,contact_name=@cn,phone=@p,email=@e,address=@ad,notes=@nt,active=@a WHERE supplier_id=@i", token, v);
+            await Exec(c, tx, "UPDATE itam_ref.supplier SET name_en=@n,name_ar=@na,vat_no=@v,cr_no=@cr,contact_name=@cn,phone=@p,email=@e,address=@ad,notes=@nt,active=@a WHERE supplier_id=@i", token, v);
             saved = existing;
         }
-        else saved = Convert.ToInt32(await Scalar(c, tx, "INSERT itam_ref.supplier(name_en,vat_no,cr_no,contact_name,phone,email,address,notes,active,created_by) OUTPUT inserted.supplier_id VALUES(@n,@v,@cr,@cn,@p,@e,@ad,@nt,@a,@b)", token, v));
-        await Audit(c, tx, s.Id, "supplier", name, id is null ? "Add" : "Change", null, new { name, vat, cr, phone, email, x.Active }, null, token);
+        else saved = Convert.ToInt32(await Scalar(c, tx, "INSERT itam_ref.supplier(name_en,name_ar,vat_no,cr_no,contact_name,phone,email,address,notes,active,created_by) OUTPUT inserted.supplier_id VALUES(@n,@na,@v,@cr,@cn,@p,@e,@ad,@nt,@a,@b)", token, v));
+        await Audit(c, tx, s.Id, "supplier", name, id is null ? "Add" : "Change", null, new { name, nameAr, vat, cr, phone, email, x.Active }, null, token);
         await tx.CommitAsync(token);
         return new { id = saved };
     }
