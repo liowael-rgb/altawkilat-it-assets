@@ -26,13 +26,14 @@ public sealed partial class ItamStore
         "NotInAd" => "On a delivery note, not in AD", "NeedsCheck" => "Matched, needs a check", _ => r };
     static readonly string[] AdResults = ["NoDelivery", "RemovalWaiting", "NotInAd", "NeedsCheck", "Matched"];
 
-    public async Task<object> RunAdComparison(ItamUser user, IItamComputerDirectory directory, CancellationToken token)
+    /// <summary>Compare now (a person with the right), or the scheduled daily run of the production host (user null).</summary>
+    public async Task<object> RunAdComparison(ItamUser? user, IItamComputerDirectory directory, CancellationToken token)
     {
         var computers = await directory.Computers(token);
         await using var c = await Open(token);
         await using var tx = await c.BeginTransactionAsync(IsolationLevel.Serializable, token);
-        var s = await Scope(c, tx, user, token);
-        Require(s.AdCompareRun, "Only the System Administrator, the IT Assets Officer and the IT Manager run the AD comparison.");
+        var s = user is null ? null : await Scope(c, tx, user, token);
+        if (s is not null) Require(s.AdCompareRun, "Only the System Administrator, the IT Assets Officer and the IT Manager run the AD comparison.");
         var deliveries = await Rows(c, tx, "SELECT d.delivery_id,d.computer_name,a.asset_id,g.region_code FROM itam_data.delivery d JOIN itam_data.asset a ON a.asset_id=d.asset_id JOIN itam_ref.location g ON g.location_id=a.location_id " +
             "WHERE d.received_at_utc IS NULL AND d.computer_name IS NOT NULL AND d.owner_type<>N'Other'", r => (Id: r.GetInt32(0), Name: r.GetString(1), Asset: r.GetInt32(2), Region: r.GetString(3)), token);
         var waiting = await Rows(c, tx, "SELECT d.delivery_id,d.computer_name,a.asset_id,g.region_code FROM itam_data.task k JOIN itam_data.delivery d ON d.delivery_id=k.delivery_id JOIN itam_data.asset a ON a.asset_id=k.asset_id " +
@@ -53,7 +54,7 @@ public sealed partial class ItamStore
         foreach (var (key, d) in byName.Where(x => !inScope.ContainsKey(x.Key))) lines.Add(("NotInAd", d.Name, elsewhere.GetValueOrDefault(key), d.Id, d.Asset, d.Region));
         string Print(string result, string name, ItamAdComputer? ad, int? delivery) => $"{AdKey(name)}|{ad?.Ou}|{ad?.Enabled}|{delivery}";
         var runId = Convert.ToInt32(await Scalar(c, tx, "INSERT itam_data.ad_run(run_by,ous,inactive_days,computers,matched,no_delivery,removal_waiting,not_in_ad,needs_check,reviewed) OUTPUT inserted.run_id " +
-            "VALUES(@b,@o,@d,@c,@m,@n,@w,@x,@k,@r)", token, ("@b", s.Id), ("@o", directory.ComparedOus), ("@d", AdInactiveDays), ("@c", inScope.Count),
+            "VALUES(@b,@o,@d,@c,@m,@n,@w,@x,@k,@r)", token, ("@b", s?.Id), ("@o", directory.ComparedOus), ("@d", AdInactiveDays), ("@c", inScope.Count),
             ("@m", lines.Count(l => l.Result == "Matched")), ("@n", lines.Count(l => l.Result == "NoDelivery")), ("@w", lines.Count(l => l.Result == "RemovalWaiting")),
             ("@x", lines.Count(l => l.Result == "NotInAd")), ("@k", lines.Count(l => l.Result == "NeedsCheck")),
             ("@r", lines.Count(l => l.Result != "Matched" && reviews.Contains((AdKey(l.Name), l.Result, Print(l.Result, l.Name, l.Ad, l.Delivery)))))));
@@ -62,7 +63,7 @@ public sealed partial class ItamStore
                 "VALUES(@r,@t,@n,@o,@e,@l,@c,@s,@f,@d,@a,@g,@v)", token, ("@r", runId), ("@t", l.Result), ("@n", l.Name), ("@o", l.Ad?.Ou), ("@e", l.Ad?.Enabled), ("@l", l.Ad?.LastLogonUtc),
                 ("@c", l.Ad?.CreatedUtc), ("@s", l.Ad?.Os), ("@f", Print(l.Result, l.Name, l.Ad, l.Delivery)), ("@d", l.Delivery), ("@a", l.Asset), ("@g", l.Region),
                 ("@v", l.Result != "Matched" && reviews.Contains((AdKey(l.Name), l.Result, Print(l.Result, l.Name, l.Ad, l.Delivery)))));
-        await Audit(c, tx, s.Id, "adcompare", runId.ToString(), "Run", null, new { computers = inScope.Count, lines = lines.Count }, null, token);
+        await Audit(c, tx, s?.Id ?? Guid.Empty, "adcompare", runId.ToString(), s is null ? "Scheduled run" : "Run", null, new { computers = inScope.Count, lines = lines.Count }, null, token);
         await tx.CommitAsync(token);
         return new { runId };
     }

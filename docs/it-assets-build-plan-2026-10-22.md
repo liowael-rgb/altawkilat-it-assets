@@ -480,3 +480,28 @@ Emails and the weekly summary (IT-EM-12, IT-EM-61) will use the same list when t
 - **Review pack** (22 October 2026): IT Assets\Email Templates - Review (22-10-2026): the Excel sheet of every email with
   its condition, recipients, Reply-To, subject, buttons and timing, an index page, and an example of each email made by the
   system with invented data (`ITAM_MAIL_SAMPLES=<folder>` makes the checks write the examples).
+
+## Step 7a: production host — built 22 October 2026 (local; nothing installed on a server)
+
+- New project `src/Itam.Host` (its own IIS site, .NET 10, Windows only). Settings in `appsettings.Production.json`
+  (section ItamHost; template in the package) with **no password**: SQL Server (Windows authentication, encrypted
+  connection), AD over LDAPS and the mail relay use the IIS application pool identity. The site refuses wrong settings
+  (database other than ITAM_Test / ITAM_Production, http address, relative keys folder).
+- **Windows sign-in**: IIS Windows authentication (anonymous off, in web.config); the enabled employee with the same
+  account is let in; disabled or unknown accounts are not.
+- **Active Directory** (read only, as VTMS: LDAPS 636, Negotiate, paged): the users OU every hour into the employee copy
+  (a read that would disable more than half of the enabled employees is refused), the AD computer comparison every day at
+  the configured hour. Attributes as the build plan; the national ID is never read.
+- **Email**: SMTP through the company relay (as CMS): HTML with the embedded logo, plain-text copy, To/CC, Reply-To;
+  sent only when Mail:Enabled; Mail:TestRecipient redirects every email during the test phase.
+- **Keys**: ASP.NET data protection keys in their own folder, protected by DPAPI for the server; backed up with the
+  database.
+- **Database**: `Itam.Host.exe --install-database` (by an administrator) applies the scripts; the site refuses to start
+  while a script is pending. The site's own identity gets the `itam_runtime` role only (deploy\sql\Grant-ItamRuntime.sql).
+  The checks now run the store with that role only: two missing rights were found and granted (deleting PO lines and
+  request cost lines). `/health` answers OK for monitoring.
+- **Deploy**: `deploy\Build-ItamPackage.ps1` (checks, then the zip), `deploy\Install-ItamSite.ps1` (on the server: offline
+  page, backup, copy, optional database install, health check), `deploy\README.md` (what IT and the DBA prepare).
+- Tested locally against a throwaway ITAM_Test LocalDB database: refused before install, install 5/5 then 0/5, /health
+  OK, the API refuses a request without Windows sign-in. AD and SMTP are tested with the checks (mapping, .eml output);
+  the real AD, relay and IIS are tested on the test site.

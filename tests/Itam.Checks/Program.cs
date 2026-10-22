@@ -24,7 +24,18 @@ try
     await using (var c = new SqlConnection(cs)) Check(await ItamSchemaInstaller.Apply(c, name) == 0, "Second run applies nothing");
     var font = File.ReadAllBytes(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "arial.ttf"));
     var pdf = new ItamPdf(font, File.ReadAllBytes(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "calibri.ttf")), File.ReadAllBytes(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "calibrib.ttf")));
-    var store = new ItamStore(() => new SqlConnection(cs), new FakeSecrets()) { Pdf = pdf };
+    // The store runs with the rights of the production site only (role itam_runtime, as the IIS application pool identity),
+    // so a statement the site may not run fails here, not in production.
+    await using (var c = new SqlConnection(cs)) { await c.OpenAsync(); using var q = new SqlCommand("CREATE USER itam_check_runtime WITHOUT LOGIN; ALTER ROLE itam_runtime ADD MEMBER itam_check_runtime; GRANT SELECT ON dbo.itam_schema_migration TO itam_check_runtime;", c); await q.ExecuteNonQueryAsync(); }
+    SqlConnection Runtime()
+    {
+        // No pooling: the impersonation must not survive into a reused connection.
+        var rc = new SqlConnection(new SqlConnectionStringBuilder(cs) { Pooling = false }.ConnectionString);
+        rc.StateChange += (_, e) => { if (e.CurrentState == System.Data.ConnectionState.Open) { using var q = rc.CreateCommand(); q.CommandText = "EXECUTE AS USER=N'itam_check_runtime'"; q.ExecuteNonQuery(); } };
+        return rc;
+    }
+    await using (var rc = Runtime()) { await rc.OpenAsync(); using var q = rc.CreateCommand(); q.CommandText = "SELECT USER_NAME()"; Check(await q.ExecuteScalarAsync() as string == "itam_check_runtime", "The store runs as the site's runtime role in the checks"); }
+    var store = new ItamStore(Runtime, new FakeSecrets()) { Pdf = pdf };
     Guid G(int n) => new($"00000000-0000-0000-0000-{n:000000000000}");
     ItamUser U(int n) => new(G(n), "u" + n);
 
@@ -714,6 +725,36 @@ try
         && (await Scalar("SELECT TOP 1 body_html FROM itam_data.mail_outbox WHERE template=N'IT-EM-12'") as string)!.Contains("please don't reply") && await store.RunMailJobs(sunday.AddHours(7), default) == 0,
         "Weekly summary to the IT Manager (IT-EM-12) and the reminders are written once per period");
     Console.WriteLine("PASS emails");
+
+    // ---- Production host pieces: Windows sign-in, AD mapping, SMTP email, install check -------------------------------------------
+    await using (var c = new SqlConnection(cs)) Check(await ItamSchemaInstaller.Pending(c) == 0, "No database script is pending after the install");
+    async Task<ItamUser?> SignIn(string name) { var ctx = new Microsoft.AspNetCore.Http.DefaultHttpContext { User = new System.Security.Claims.ClaimsPrincipal(new System.Security.Principal.GenericIdentity(name, "Negotiate")) }; return await new ItamWindowsSession(store).Current(ctx, default); }
+    Check(ItamWindowsSession.Account(@"ALTAWKILAT\U10") == "u10" && ItamWindowsSession.Account("u10@altawkilat.com") == "u10" && (await SignIn(@"ALTAWKILAT\u10"))?.Id == G(10)
+        && await SignIn(@"ALTAWKILAT\u11") is null && await SignIn(@"ALTAWKILAT\nobody") is null && await new ItamWindowsSession(store).Current(new Microsoft.AspNetCore.Http.DefaultHttpContext(), default) is null,
+        "Windows sign-in: the enabled employee with the same account; a disabled or unknown account is not let in");
+    var adUser = new Dictionary<string, string?> { ["sAMAccountName"] = "Ahmed.Ali", ["displayName"] = "Ahmed Ali", ["mail"] = "ahmed.ali@example.invalid", ["description"] = "Accountant", ["department"] = "Finance",
+        ["company"] = "Demo Co", ["physicalDeliveryOfficeName"] = "Head Office", ["postalCode"] = "Central", ["postOfficeBox"] = "HR-1", ["streetAddress"] = "SAP-9", ["mobile"] = "0500000000", ["ipPhone"] = "4100",
+        ["manager"] = "CN=Boss,OU=Users,DC=x", ["userAccountControl"] = "514", ["extensionAttribute6"] = "1234567890" };
+    var adBoss = Guid.NewGuid(); var adEmp = ItamDirectoryMapping.Employee(Guid.NewGuid(), k => adUser.GetValueOrDefault(k), dn => dn == "CN=Boss,OU=Users,DC=x" ? adBoss : null)!;
+    Check(adEmp.Account == "ahmed.ali" && adEmp.ManagerId == adBoss && !adEmp.Enabled && adEmp.Region == "Central" && adEmp.SapId == "SAP-9" && adEmp.IpPhone == "4100" && adEmp.HrCode == "HR-1"
+        && !ItamDirectoryMapping.UserAttributes.Contains("extensionAttribute6") && ItamDirectoryMapping.Employee(Guid.NewGuid(), _ => null, _ => null) is null,
+        "AD user to employee: the VTMS attributes, the manager by DN, disabled accounts; the national ID is never read");
+    List<(string, bool)> ous = [("OU=Computers,OU=ATWK,DC=x", true), ("CN=Computers,DC=x", false)];
+    ItamAdComputer? Pc(string dn, string uac = "4096") => ItamDirectoryMapping.Computer(k => k switch { "name" => dn[3..dn.IndexOf(',')], "distinguishedName" => dn, "userAccountControl" => uac, "lastLogonTimestamp" => "133000000000000000", "whenCreated" => "20240115083000.0Z", _ => null }, ous, [new System.Text.RegularExpressions.Regex("^SRV")]);
+    Check(Pc("CN=PC1,OU=Sales,OU=Computers,OU=ATWK,DC=x")!.InComparedOus && Pc("CN=PC2,CN=Computers,DC=x")!.InComparedOus && !Pc("CN=PC3,OU=Old,DC=x")!.InComparedOus && Pc("CN=SRV1,CN=Computers,DC=x") is null
+        && !Pc("CN=PC4,CN=Computers,DC=x", "4098")!.Enabled && Pc("CN=PC1,OU=Sales,OU=Computers,OU=ATWK,DC=x")!.LastLogonUtc?.Year == 2022 && Pc("CN=PC1,OU=Sales,OU=Computers,OU=ATWK,DC=x")!.CreatedUtc?.Year == 2024,
+        "AD computer: compared OUs with or without sub-OUs, left-out names, disabled, last sign-in and creation dates");
+    var pickup = Path.Combine(Path.GetTempPath(), "itam-mail-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(pickup);
+    try
+    {
+        await new ItamSmtpMailer(new ItamSmtpSettings("relay.invalid", 25, false, "itassets@example.invalid", "IT Assets", PickupDirectory: pickup))
+            .Send(new ItamMailMessage(["a@example.invalid"], ["b@example.invalid"], "[IT Assets] Test", "<p>Dear <b>Ahmed</b></p><img src=\"cid:logo\">", [new ItamMailImage("logo", "logo.png", "image/png", [137, 80, 78, 71])], "it.person@example.invalid"), default);
+        var eml = await File.ReadAllTextAsync(Directory.GetFiles(pickup).Single());
+        Check(eml.Contains("Reply-To: it.person@example.invalid") && eml.Contains("Content-ID: <logo>") && eml.Contains("To: a@example.invalid") && eml.Contains("Cc: b@example.invalid") && eml.Contains("text/plain"),
+            "SMTP email: To, CC, Reply-To (the person who acted), the logo embedded and a plain-text copy");
+    }
+    finally { Directory.Delete(pickup, true); }
+    Console.WriteLine("PASS production host");
 
     // ---- My Backup ----------------------------------------------------------------------------------------------------------------
     var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(3));

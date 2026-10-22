@@ -149,6 +149,25 @@ public static class ItamSchemaInstaller
         using var reader = new StreamReader(typeof(ItamSchemaInstaller).Assembly.GetManifestResourceStream(resource)!, Encoding.UTF8);
         return reader.ReadToEnd();
     }
+    /// <summary>How many migrations of this package are not applied yet (the production host refuses to start until they are
+    /// installed with --install-database). A changed applied migration is an error.</summary>
+    public static async Task<int> Pending(DbConnection connection, CancellationToken token = default)
+    {
+        if (connection.State != ConnectionState.Open) await connection.OpenAsync(token);
+        await using var q = connection.CreateCommand();
+        // Dynamic SQL: the ledger table does not exist before the first install.
+        q.CommandText = "DECLARE @l nvarchar(max); IF OBJECT_ID(N'dbo.itam_schema_migration',N'U') IS NOT NULL EXEC sp_executesql N'SELECT @l=STRING_AGG(name+N''=''+sha256,N'';'') FROM dbo.itam_schema_migration',N'@l nvarchar(max) OUTPUT',@l=@l OUTPUT; SELECT @l";
+        var ledger = (await q.ExecuteScalarAsync(token) as string ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Split('=')).ToDictionary(x => x[0], x => x[1]);
+        var pending = 0;
+        foreach (var name in Names)
+        {
+            var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Read(name))));
+            if (!ledger.TryGetValue(name, out var applied)) pending++;
+            else if (applied != hash) throw new InvalidOperationException($"The applied migration {name} differs from this package.");
+        }
+        return pending;
+    }
+
     public static async Task<int> Apply(DbConnection connection, string database, CancellationToken token = default)
     {
         RequireTarget(database);

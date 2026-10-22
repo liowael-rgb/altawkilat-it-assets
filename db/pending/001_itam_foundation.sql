@@ -170,5 +170,6 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON SCHEMA::itam_ref TO itam_runtime;
 GRANT SELECT,INSERT,UPDATE ON SCHEMA::itam_data TO itam_runtime;
 GRANT DELETE ON itam_data.asset_attribute TO itam_runtime;
 GRANT DELETE ON itam_data.asset_secret TO itam_runtime;
+GRANT DELETE ON itam_data.po_line TO itam_runtime;
 DENY UPDATE,DELETE ON itam_data.asset_event TO itam_runtime;
 COMMIT TRANSACTION;

@@ -170,3 +170,6 @@ CREATE TABLE itam_data.movement_line(
  new_delivery_id int NULL REFERENCES itam_data.delivery(delivery_id));
 -- An asset is on one open movement at a time (lines still pending, dispatched or disputed).
 CREATE UNIQUE INDEX UX_itam_movement_line_open ON itam_data.movement_line(asset_id) WHERE state IN(N'Pending',N'Dispatched',N'Missing',N'Damaged',N'Incorrect');
+
+-- The cost table of a request is replaced as a whole when IT edits it.
+GRANT DELETE ON itam_data.request_line TO itam_runtime;
