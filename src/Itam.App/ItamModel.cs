@@ -21,13 +21,16 @@ public sealed class ItamConflict(string message) : Exception(message);
 public static class ItamRoles
 {
     public const string SupportSpecialist = "SupportSpecialist", TeamLeader = "TeamLeader", SystemAdministrator = "SystemAdministrator",
-        VoiceAdministrator = "VoiceAdministrator", AssetsOfficer = "AssetsOfficer", ItManager = "ItManager", ItAdministrator = "ItAdministrator", Auditor = "Auditor";
-    public static readonly string[] All = [SupportSpecialist, TeamLeader, SystemAdministrator, VoiceAdministrator, AssetsOfficer, ItManager, ItAdministrator, Auditor];
+        VoiceAdministrator = "VoiceAdministrator", AssetsOfficer = "AssetsOfficer", ItManager = "ItManager", ItAdministrator = "ItAdministrator", Auditor = "Auditor",
+        InkOfficer = "InkOfficer";
+    public static readonly string[] All = [SupportSpecialist, TeamLeader, SystemAdministrator, VoiceAdministrator, AssetsOfficer, ItManager, ItAdministrator, Auditor, InkOfficer];
+    /// <summary>Roles given per region (one row per region).</summary>
+    public static bool PerRegion(string role) => role is SupportSpecialist or InkOfficer;
     public static string Label(string code) => code switch
     {
         SupportSpecialist => "IT Support Specialist", TeamLeader => "IT Helpdesk Team Leader", SystemAdministrator => "System Administrator",
         VoiceAdministrator => "Voice Administrator", AssetsOfficer => "IT Assets Officer", ItManager => "IT Manager",
-        ItAdministrator => "IT Administrator", Auditor => "Auditor", _ => code
+        ItAdministrator => "IT Administrator", Auditor => "Auditor", InkOfficer => "Ink Officer", _ => code
     };
 }
 
@@ -73,7 +76,7 @@ public static class ItamTypeFields
 }
 
 /// <summary>What the signed-in person may do, from their IT roles (Role Permissions workbook; blank cells grant nothing).</summary>
-public sealed record ItamScope(Guid Id, string Name, string[] Roles, string[] Regions)
+public sealed record ItamScope(Guid Id, string Name, string[] Roles, string[] Regions, string[] InkRegions)
 {
     bool Has(string role) => Roles.Contains(role);
     public bool Specialist => Has(ItamRoles.SupportSpecialist);
@@ -114,6 +117,10 @@ public sealed record ItamScope(Guid Id, string Name, string[] Roles, string[] Re
     /// from CUCM (row 39): Voice Administrator.</summary>
     public bool AdTasks => SysAdmin;
     public bool CucmTasks => Voice;
+    /// <summary>Ink (owner, 22 October 2026): the Ink Officer of the printer's region sends requests for approval, orders, delivers
+    /// and records toner invoices; the IT Assets Officer covers all regions.</summary>
+    public bool CanInk(string region) => Officer || InkRegions.Contains(region);
+    public bool CanInkAny => Officer || InkRegions.Length > 0;
     public bool RolesManage => Manager || ItAdmin;
     public bool MasterData => ItAdmin;
     public bool AuditView => Manager || ItAdmin || Auditor;

@@ -9,8 +9,8 @@ static class DemoSeed
     public static async Task Run(string cs, ItamStore store, ItamPdf pdf)
     {
         // Invented directory details (no real people): mobile, branch, company and HR code as printed on the delivery note.
-        await store.SyncEmployees([.. DemoPeople.All.Select((p, i) => new ItamEmployee(p.Id, p.Account, p.Name, p.Account + "@example.invalid", p.Role, i >= 9 ? "Sales (demo)" : "IT (demo)", p.Id == G(2) ? null : G(2), true,
-            $"050000{i + 1:0000}", i >= 9 ? "Riyadh Showroom (demo)" : "Head Office (demo)", "ALTAWKILAT (demo)", $"DEMO-{i + 1:000}"))], default);
+        await store.SyncEmployees([.. DemoPeople.All.Select((p, i) => new ItamEmployee(p.Id, p.Account, p.Name, p.Account + "@example.invalid", p.Role, i is >= 9 and <= 11 ? "Sales (demo)" : "IT (demo)", p.Id == G(2) ? null : G(2), true,
+            $"050000{i + 1:0000}", i is >= 9 and <= 11 ? "Riyadh Showroom (demo)" : "Head Office (demo)", "ALTAWKILAT (demo)", $"DEMO-{i + 1:000}"))], default);
         await using (var c = new SqlConnection(cs))
         {
             await c.OpenAsync();
@@ -25,7 +25,8 @@ static class DemoSeed
                  ('00000000-0000-0000-0000-000000000006','SystemAdministrator',NULL,'00000000-0000-0000-0000-000000000002'),
                  ('00000000-0000-0000-0000-000000000007','VoiceAdministrator',NULL,'00000000-0000-0000-0000-000000000002'),
                  ('00000000-0000-0000-0000-000000000008','ItAdministrator',NULL,'00000000-0000-0000-0000-000000000002'),
-                 ('00000000-0000-0000-0000-000000000009','Auditor',NULL,'00000000-0000-0000-0000-000000000002');
+                 ('00000000-0000-0000-0000-000000000009','Auditor',NULL,'00000000-0000-0000-0000-000000000002'),
+                 ('00000000-0000-0000-0000-000000000013','InkOfficer','South','00000000-0000-0000-0000-000000000002');
                 INSERT itam_ref.location(name_en,kind,region_code,city) VALUES
                  (N'Riyadh IT Warehouse (demo)','ITWarehouse','Central',N'Riyadh'),(N'Jeddah IT Warehouse (demo)','ITWarehouse','West',N'Jeddah'),
                  (N'Dammam IT Warehouse (demo)','ITWarehouse','East',N'Dammam'),(N'Abha Branch (demo)','Branch','South',N'Abha'),
@@ -95,24 +96,24 @@ static class DemoSeed
         async Task<int> One(string sql) { await using var c = new SqlConnection(cs); await c.OpenAsync(); using var q = new SqlCommand(sql, c); return (int)(await q.ExecuteScalarAsync())!; }
         var supplierA = await One("SELECT supplier_id FROM itam_ref.supplier WHERE name_en=N'Demo Toner Trading (A)'");
         var k1 = DeliveryId(await store.CreateInkRequest(Who(10), new(printer, null, 2, null, "Black is empty"), default));
-        await store.SendInkForApproval(officer, k1, new(G(2)), default); await store.DecideInk(Who(2), k1, new(true, null), default);
+        await store.SendInkForApproval(Who(13), k1, new(G(2)), default); await store.DecideInk(Who(2), k1, new(true, null), default);
         var k2 = DeliveryId(await store.CreateInkRequest(Who(11), new(printer, null, 1, null, null), default));
-        await store.SendInkForApproval(officer, k2, new(G(2)), default); await store.DecideInk(Who(2), k2, new(true, null), default);
+        await store.SendInkForApproval(Who(13), k2, new(G(2)), default); await store.DecideInk(Who(2), k2, new(true, null), default);
         var k3 = DeliveryId(await store.CreateInkRequest(Who(12), new(printer, null, 1, null, null), default));
-        await store.SendInkForApproval(officer, k3, new(G(2)), default); await store.DecideInk(Who(2), k3, new(true, null), default);
-        var ord = DeliveryId(await store.CreateOrder(officer, new(supplierA, [k1, k2], "Deliver to Abha branch"), default));
+        await store.SendInkForApproval(Who(13), k3, new(G(2)), default); await store.DecideInk(Who(2), k3, new(true, null), default);
+        var ord = DeliveryId(await store.CreateOrder(Who(13), new(supplierA, [k1, k2], "Deliver to Abha branch"), default));
         var invDoc = pdf.Start(); invDoc.Text("Tax invoice T-5001 (demo, invented) - Demo Toner Trading (A)", ItamPdf.Doc.M, invDoc.Y, 13); invDoc.Y -= 18;
         invDoc.Text("HP 59A CF259A Black x 4 @ 290.00 SAR", ItamPdf.Doc.M, invDoc.Y, 11);
-        var inv = DeliveryId(await store.CreateInvoice(officer, new(supplierA, "T-5001", today.AddDays(-3), "Toners", ord, null, null, null, [new("HP 59A CF259A Black", 4, 290m)]), new ItamUpload("T-5001.pdf", "application/pdf", invDoc.Build()), default));
+        var inv = DeliveryId(await store.CreateInvoice(Who(13), new(supplierA, "T-5001", today.AddDays(-3), "Toners", ord, null, null, null, [new("HP 59A CF259A Black", 4, 290m)]), new ItamUpload("T-5001.pdf", "application/pdf", invDoc.Build()), default));
         var line = await One($"SELECT line_id FROM itam_data.invoice_line WHERE invoice_id={inv}");
-        await store.DeliverInk(officer, k1, new(today, "Invoice", line), default);
-        await store.DeliverInk(officer, k3, new(today, "Shelf", null), default);
+        await store.DeliverInk(Who(13), k1, new(today, "Invoice", line), default);
+        await store.DeliverInk(Who(13), k3, new(today, "Shelf", null), default);
         await store.CreateInkRequest(Who(10), new(printer, null, 1, null, "Second cartridge for the week"), default);
         var k5 = DeliveryId(await store.CreateInkRequest(Who(11), new(printer, null, 3, null, null), default));
-        await store.SendInkForApproval(officer, k5, new(G(2)), default); await store.DecideInk(Who(2), k5, new(false, "Three is too many; ask for one at a time."), default);
+        await store.SendInkForApproval(Who(13), k5, new(G(2)), default); await store.DecideInk(Who(2), k5, new(false, "Three is too many; ask for one at a time."), default);
         var k6 = DeliveryId(await store.CreateInkRequest(Who(12), new(printer, null, 1, null, "Cyan for the colour printer"), default));
-        await store.SendInkForApproval(officer, k6, new(G(2)), default);
-        await store.CreatePack(officer, new(supplierA, "Toners", [inv]), default);
+        await store.SendInkForApproval(Who(13), k6, new(G(2)), default);
+        await store.CreatePack(Who(13), new(supplierA, "Toners", [inv]), default);
         var devDoc = pdf.Start(); devDoc.Text("Tax invoice D-7001 (demo, invented) - Demo Computers Co.", ItamPdf.Doc.M, devDoc.Y, 13);
         var rec = await One($"SELECT TOP 1 receipt_id FROM itam_data.po_receipt WHERE po_id={poId} ORDER BY receipt_id");
         await store.CreateInvoice(officer, new(1, "D-7001", today.AddDays(-5), "Devices", null, poId, [rec], null, [new("Dell Latitude 5440", 3, 4200m)]), new ItamUpload("D-7001.pdf", "application/pdf", devDoc.Build()), default);

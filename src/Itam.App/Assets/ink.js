@@ -50,7 +50,7 @@ function handleCard(){
   }
   if(!list.length){const tr=el('tr');const c=el('td','Nothing here.','empty');c.colSpan=9;tr.append(c);tb.append(tr);}
   t.append(th,tb);wrap.append(t);box.append(bar,wrap);
-  return card('Requests to handle (IT)','Approved requests of your regions. Deliver from the shelf, or tick several and put them in one supplier order (today\'s order email); when the toner arrives with the invoice, deliver from the invoice line.',box);
+  return card('Requests to handle (Ink Officer)','Ink requests of your regions. Deliver from the shelf, or tick several and put them in one supplier order (today\'s order email); when the toner arrives with the invoice, deliver from the invoice line.',box);
 }
 
 function ordersCard(){

@@ -90,7 +90,8 @@ static class DemoPeople
         new(G(8), "demo.itadmin", "Demo IT Administrator", "IT Administrator", "Master data, roles, settings; sees keys", "/admin.html"),
         new(G(9), "demo.auditor", "Demo Auditor", "Auditor", "Reads everything, changes nothing"),
         new(G(10), "demo.employee", "Demo Employee", "Employee (no IT role)", "No IT role: sees no assets yet (My IT Assets comes in step 3)"),
-        new(G(11), "demo.employee2", "Demo Employee Two", "Employee", null), new(G(12), "demo.employee3", "Demo Employee Three", "Employee", null)
+        new(G(11), "demo.employee2", "Demo Employee Two", "Employee", null), new(G(12), "demo.employee3", "Demo Employee Three", "Employee", null),
+        new(G(13), "demo.ink", "Demo Ink Officer", "Ink Officer (South)", "Sends ink requests for approval, orders and delivers ink, records toner invoices", "/ink.html")
     ];
     public static DemoPerson? Find(string? id) => Guid.TryParse(id, out var g) ? All.FirstOrDefault(p => p.Id == g) : null;
 }

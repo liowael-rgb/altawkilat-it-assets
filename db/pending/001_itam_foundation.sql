@@ -19,10 +19,10 @@ CREATE TABLE itam_access.role_assignment(
  assignment_id int IDENTITY(1,1) NOT NULL PRIMARY KEY,
  employee_id uniqueidentifier NOT NULL REFERENCES itam_access.employee(employee_id),
  role_code nvarchar(40) NOT NULL CHECK(role_code IN(N'SupportSpecialist',N'TeamLeader',N'SystemAdministrator',N'VoiceAdministrator',
-   N'AssetsOfficer',N'ItManager',N'ItAdministrator',N'Auditor')),
+   N'AssetsOfficer',N'ItManager',N'ItAdministrator',N'Auditor',N'InkOfficer')),
  region_code nvarchar(20) NULL,
  created_by uniqueidentifier NOT NULL, created_at_utc datetime2 NOT NULL DEFAULT SYSUTCDATETIME(),
- CONSTRAINT CK_itam_role_region CHECK((role_code=N'SupportSpecialist' AND region_code IS NOT NULL) OR (role_code<>N'SupportSpecialist' AND region_code IS NULL)));
+ CONSTRAINT CK_itam_role_region CHECK((role_code IN(N'SupportSpecialist',N'InkOfficer') AND region_code IS NOT NULL) OR (role_code NOT IN(N'SupportSpecialist',N'InkOfficer') AND region_code IS NULL)));
 CREATE UNIQUE INDEX UX_itam_role ON itam_access.role_assignment(employee_id,role_code,region_code);
 
 -- Backups during leave (My Backup).

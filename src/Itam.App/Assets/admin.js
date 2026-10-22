@@ -11,9 +11,9 @@ const kindLabel=k=>k==='ITWarehouse'?'IT warehouse':'Branch';
 const render={
   roles:()=>{const form=()=>edit('Give a role',[{key:'employee',label:'Person',type:'person',required:true,hint:'Type part of the name, then choose.'},
       {key:'role',label:'Role',type:'select',options:d.roleCodes.map(r=>[r.code,r.label])},
-      {key:'region',label:'Region (IT Support Specialist only)',type:'select',options:[['',''],...L().regions.filter(r=>r.active).map(r=>[r.code,r.name])],hint:'An IT Support Specialist gets one row per region.'}],
+      {key:'region',label:'Region (IT Support Specialist and Ink Officer)',type:'select',options:[['',''],...L().regions.filter(r=>r.active).map(r=>[r.code,r.name])],hint:'An IT Support Specialist or Ink Officer gets one row per region.'}],
       (x,r)=>change('role',{employee:x.employee,role:x.role,region:x.region},r),{done:reload('Role given.')});
-    return [card('Roles','IT roles and the regions of each IT Support Specialist. A person can hold several roles; their rights add up. Employees come from Active Directory.',
+    return [card('Roles','IT roles and the regions of each IT Support Specialist and Ink Officer. A person can hold several roles; their rights add up. Employees come from Active Directory.',
       table(['Person','Role','Region','Since'],d.roles,x=>[x.name+(x.enabled?'':' (disabled in AD)'),x.roleLabel,x.region||'All',when(x.since)],d.can.roles?x=>[['Remove',()=>edit(`Remove ${x.roleLabel} from ${x.name}?`,[],(y,r)=>change('role',{id:x.id},r,'delete'),{button:'Remove',done:reload('Role removed.')})]]:null),
       d.can.roles&&add('Give a role',async()=>{await people('');form();}))];},
   types:()=>[card('Asset types','The short code starts every Asset No. (PC-822); it never changes.',

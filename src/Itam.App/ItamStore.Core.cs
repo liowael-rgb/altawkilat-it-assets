@@ -63,7 +63,8 @@ public sealed partial class ItamStore(Func<DbConnection> connections, IItamSecre
         var who = (await Rows(c, tx, "SELECT display_name,enabled FROM itam_access.employee WHERE employee_id=@id", r => (Name: r.GetString(0), Enabled: r.GetBoolean(1)), token, ("@id", user.Id))).SingleOrDefault();
         if (who.Name is null || !who.Enabled) throw new ItamAccessDenied("Your account is not an active employee in IT Assets.");
         var roles = await Rows(c, tx, "SELECT role_code,region_code FROM itam_access.role_assignment WHERE employee_id=@id", r => (Role: r.GetString(0), Region: S(r, 1)), token, ("@id", user.Id));
-        return new(user.Id, who.Name, [.. roles.Select(r => r.Role).Distinct()], [.. roles.Where(r => r.Region is not null).Select(r => r.Region!).Distinct()]);
+        return new(user.Id, who.Name, [.. roles.Select(r => r.Role).Distinct()], [.. roles.Where(r => r.Role == ItamRoles.SupportSpecialist && r.Region is not null).Select(r => r.Region!).Distinct()],
+            [.. roles.Where(r => r.Role == ItamRoles.InkOfficer && r.Region is not null).Select(r => r.Region!).Distinct()]);
     }
     internal static void Require(bool allowed, string message) { if (!allowed) throw new ItamAccessDenied(message); }
 

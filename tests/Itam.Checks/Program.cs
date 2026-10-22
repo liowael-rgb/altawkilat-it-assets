@@ -54,6 +54,8 @@ try
     Check(await Throws<ArgumentException>(() => store.Change(U(2), new("role", "save", E(new { employee = G(9), role = "SupportSpecialist" }), null), default)), "An IT Support Specialist needs a region");
     await store.Change(U(2), new("role", "save", E(new { employee = G(9), role = "SupportSpecialist", region = "Central" }), null), default);
     Check(await Throws<ArgumentException>(() => store.Change(U(2), new("role", "save", E(new { employee = G(9), role = "SupportSpecialist", region = "Central" }), null), default)), "The same role twice is refused");
+    Check(await Throws<ArgumentException>(() => store.Change(U(2), new("role", "save", E(new { employee = G(9), role = "InkOfficer" }), null), default)), "An Ink Officer needs a region");
+    await store.Change(U(2), new("role", "save", E(new { employee = G(9), role = "InkOfficer", region = "Central" }), null), default);
     Check(await Throws<ItamAccessDenied>(() => store.Change(U(1), new("role", "save", E(new { employee = G(10), role = "Auditor" }), null), default)), "Only the IT Manager and IT Administrator give roles");
     Console.WriteLine("PASS roles and master data");
 
@@ -250,8 +252,9 @@ try
     Check(await Scalar($"SELECT toner+'|'+status+'|'+request_no FROM itam_data.ink_request WHERE request_id={ink1}") as string == "W2210A|Submitted|INK-1"
         && await Throws<ItamAccessDenied>(() => store.DecideInk(U(12), ink1, new(true, null), default)), "Ink request INK-1 with the printer toner, waiting for the ink officer");
     // The ink officer (IT of the printer's region) chooses the approving manager: a senior manager, not the AD manager.
-    Check(await Throws<ItamAccessDenied>(() => store.SendInkForApproval(U(4), ink1, new(G(12)), default)) && await Throws<ArgumentException>(() => store.SendInkForApproval(U(9), ink1, new(G(10)), default))
-        && await Throws<ArgumentException>(() => store.SendInkForApproval(U(9), ink1, new(G(11)), default)), "Only the region's ink officer sends; the approver is an active employee other than the requester");
+    Check(await Throws<ItamAccessDenied>(() => store.SendInkForApproval(U(4), ink1, new(G(12)), default)) && await Throws<ItamAccessDenied>(() => store.SendInkForApproval(U(3), ink1, new(G(12)), default))
+        && await Throws<ArgumentException>(() => store.SendInkForApproval(U(9), ink1, new(G(10)), default))
+        && await Throws<ArgumentException>(() => store.SendInkForApproval(U(9), ink1, new(G(11)), default)), "Only the region's Ink Officer sends (not a specialist or the Team Leader); the approver is an active employee other than the requester");
     await store.SendInkForApproval(U(9), ink1, new(G(12)), default);
     Check(JsonSerializer.SerializeToElement(await store.Me(U(12), default)).GetProperty("pendingApprovals").GetInt32() == 1
         && await Throws<ArgumentException>(() => store.SendInkForApproval(U(9), ink1, new(G(12)), default)) is false, "The chosen manager sees the request; it can be re-sent while it waits");

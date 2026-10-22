@@ -175,7 +175,8 @@ To confirm:
 
 ## Step 3a (ink and invoices) — built 22 October 2026
 
-Owner decisions (22 October 2026): the ink officer (IT of the region) sends each ink request to the approving manager he
+Owner decisions (22 October 2026): the Ink Officer (a new role given per region in Administration → Roles;
+the IT Assets Officer covers all regions; specialists and the Team Leader do not handle ink) sends each ink request to the approving manager he
 chooses (a senior manager, not the Active Directory manager), who approves (prices come
 from the supplier invoice, no per-request cost step); no toner stock list; ink and invoices before the requests part.
 Computers have a service tag only (no serial number). No ServiceDesk ticket numbers in IT Assets.
