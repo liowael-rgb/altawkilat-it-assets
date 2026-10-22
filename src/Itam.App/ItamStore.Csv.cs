@@ -24,7 +24,7 @@ public sealed partial class ItamStore
         ("types", "Asset types", ["Code", "Name", "Order", "Active"], true),
         ("regions", "Regions", ["Code", "Name", "Order", "Active"], true),
         ("locations", "IT warehouses and branches", ["Name", "Kind", "Region", "City", "Active"], true),
-        ("suppliers", "Suppliers", ["Name", "VAT number", "Active"], true),
+        ("suppliers", "Suppliers", ["Name", "Arabic name", "VAT number", "Active"], true),
         ("manufacturers", "Manufacturers", ["Name", "Active"], true),
         ("models", "Models", ["Manufacturer", "Type", "Model", "Active"], true),
         ("values", "Value lists", ["List", "Code", "Name", "Order", "Active"], true),
@@ -59,7 +59,7 @@ public sealed partial class ItamStore
             "types" => await Rows(c, null, "SELECT type_code,name_en,sort_order,active FROM itam_ref.asset_type ORDER BY sort_order,type_code", r => new string?[] { r.GetString(0), r.GetString(1), r.GetInt32(2).ToString(), Yes(r.GetBoolean(3)) }, token),
             "regions" => await Rows(c, null, "SELECT region_code,name_en,sort_order,active FROM itam_ref.region ORDER BY sort_order,region_code", r => new string?[] { r.GetString(0), r.GetString(1), r.GetInt32(2).ToString(), Yes(r.GetBoolean(3)) }, token),
             "locations" => await Rows(c, null, "SELECT name_en,kind,region_code,city,active FROM itam_ref.location ORDER BY region_code,name_en", r => new string?[] { r.GetString(0), r.GetString(1) == "ITWarehouse" ? "IT warehouse" : "Branch", r.GetString(2), S(r, 3), Yes(r.GetBoolean(4)) }, token),
-            "suppliers" => await Rows(c, null, "SELECT name_en,vat_no,active FROM itam_ref.supplier ORDER BY name_en", r => new string?[] { r.GetString(0), S(r, 1), Yes(r.GetBoolean(2)) }, token),
+            "suppliers" => await Rows(c, null, "SELECT name_en,name_ar,vat_no,active FROM itam_ref.supplier ORDER BY name_en", r => new string?[] { r.GetString(0), S(r, 1), S(r, 2), Yes(r.GetBoolean(3)) }, token),
             "manufacturers" => await Rows(c, null, "SELECT name_en,active FROM itam_ref.manufacturer ORDER BY name_en", r => new string?[] { r.GetString(0), Yes(r.GetBoolean(1)) }, token),
             "models" => await Rows(c, null, "SELECT m.name_en,t.name_en,o.name_en,o.active FROM itam_ref.model o JOIN itam_ref.manufacturer m ON m.manufacturer_id=o.manufacturer_id JOIN itam_ref.asset_type t ON t.type_code=o.type_code ORDER BY m.name_en,t.sort_order,o.name_en",
                 r => new string?[] { r.GetString(0), r.GetString(1), r.GetString(2), Yes(r.GetBoolean(3)) }, token),
@@ -86,7 +86,7 @@ public sealed partial class ItamStore
         if (table.Count == 0) throw new ArgumentException("The file is empty.");
         var header = table[0].Select(h => h.Trim()).ToArray();
         int Col(string name) => Array.FindIndex(header, h => string.Equals(h, name, StringComparison.OrdinalIgnoreCase));
-        var required = key == "roles" ? ["Username", "Role"] : list.Columns.Where(n => n is not ("Order" or "Active" or "City" or "VAT number")).ToArray();
+        var required = key == "roles" ? ["Username", "Role"] : list.Columns.Where(n => n is not ("Order" or "Active" or "City" or "VAT number" or "Arabic name")).ToArray();
         if (required.FirstOrDefault(n => Col(n) < 0) is { } missing)
             throw new ArgumentException($"The column \"{missing}\" is missing. The first row must be the column names: {string.Join(", ", list.Columns)} (export the list to get the right file).");
         var data = table.Skip(1).Select((cells, i) => (Row: i + 2, Cells: cells)).Where(x => x.Cells.Any(v => !string.IsNullOrWhiteSpace(v))).ToList();
@@ -106,7 +106,7 @@ public sealed partial class ItamStore
             await tx.SaveAsync("row", token);
             try
             {
-                var (area, data1, isNew, same) = await CsvRow(c, tx, key, V, token);
+                var (area, data1, isNew, same) = await CsvRow(c, tx, key, V, n => Col(n) >= 0, token);
                 if (same) { unchanged++; continue; }
                 await ApplyChange(c, tx, s, new ItamAdminChange(area, "save", JsonSerializer.SerializeToElement(data1, Json), reason), token);
                 if (isNew) added++; else changed++;
@@ -133,7 +133,7 @@ public sealed partial class ItamStore
     static int Order(string? v) => string.IsNullOrWhiteSpace(v) ? 0 : int.TryParse(v.Trim(), out var n) && n is >= 0 and <= 100000 ? n : throw new ArgumentException($"Order: a whole number (not \"{v}\").");
 
     /// <summary>One CSV row to the form's change: the area, its data, whether it is new, and whether it is already the same.</summary>
-    async Task<(string Area, object Data, bool IsNew, bool Same)> CsvRow(DbConnection c, DbTransaction tx, string key, Func<string, string?> v, CancellationToken token)
+    async Task<(string Area, object Data, bool IsNew, bool Same)> CsvRow(DbConnection c, DbTransaction tx, string key, Func<string, string?> v, Func<string, bool> inFile, CancellationToken token)
     {
         static bool Eq(string? a, string? b) => string.Equals(a ?? "", b ?? "", StringComparison.Ordinal);
         switch (key)
@@ -158,9 +158,11 @@ public sealed partial class ItamStore
             }
             case "suppliers":
             {
-                var name = v("Name"); var vat = v("VAT number"); var active = Active(v("Active"));
-                var old = (await Rows(c, tx, "SELECT supplier_id,vat_no,active FROM itam_ref.supplier WHERE name_en=@n", r => (Id: r.GetInt32(0), V: S(r, 1), A: r.GetBoolean(2)), token, ("@n", name ?? ""))).Cast<(int Id, string? V, bool A)?>().SingleOrDefault();
-                return ("supplier", new { id = old?.Id, name, vat, active }, old is null, old is { } o && Eq(o.V, vat) && o.A == active);
+                var name = v("Name"); var active = Active(v("Active"));
+                var old = (await Rows(c, tx, "SELECT supplier_id,vat_no,active,name_ar FROM itam_ref.supplier WHERE name_en=@n", r => (Id: r.GetInt32(0), V: S(r, 1), A: r.GetBoolean(2), Ar: S(r, 3)), token, ("@n", name ?? ""))).Cast<(int Id, string? V, bool A, string? Ar)?>().SingleOrDefault();
+                // A column left out of the file keeps what the supplier has (an empty cell clears it).
+                var vat = inFile("VAT number") ? v("VAT number") : old?.V; var nameAr = inFile("Arabic name") ? v("Arabic name") : old?.Ar;
+                return ("supplier", new { id = old?.Id, name, nameAr, vat, active }, old is null, old is { } o && Eq(o.V, vat) && Eq(o.Ar, nameAr) && o.A == active);
             }
             case "manufacturers":
             {

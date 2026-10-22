@@ -33,7 +33,7 @@ public sealed partial class ItamStore
             mac = ItamTypeFields.MacUsed(r.GetString(0)), macRequired = ItamTypeFields.MacRequired(r.GetString(0)), ip = ItamTypeFields.IpUsed(r.GetString(0)), key = ItamTypeFields.KeyUsed(r.GetString(0)) }, token),
         regions = await Rows(c, null, "SELECT region_code,name_en,sort_order,active FROM itam_ref.region ORDER BY sort_order", r => new { code = r.GetString(0), name = r.GetString(1), sort = r.GetInt32(2), active = r.GetBoolean(3) }, token),
         locations = await Rows(c, null, "SELECT location_id,name_en,kind,region_code,city,active FROM itam_ref.location ORDER BY region_code,name_en", r => new { id = r.GetInt32(0), name = r.GetString(1), kind = r.GetString(2), region = r.GetString(3), city = S(r, 4), active = r.GetBoolean(5) }, token),
-        suppliers = await Rows(c, null, "SELECT supplier_id,name_en,vat_no,active FROM itam_ref.supplier ORDER BY name_en", r => new { id = r.GetInt32(0), name = r.GetString(1), vat = S(r, 2), active = r.GetBoolean(3) }, token),
+        suppliers = await Rows(c, null, "SELECT supplier_id,name_en,vat_no,active,name_ar FROM itam_ref.supplier ORDER BY name_en", r => new { id = r.GetInt32(0), name = r.GetString(1), vat = S(r, 2), active = r.GetBoolean(3), nameAr = S(r, 4) }, token),
         manufacturers = await Rows(c, null, "SELECT manufacturer_id,name_en,active FROM itam_ref.manufacturer ORDER BY name_en", r => new { id = r.GetInt32(0), name = r.GetString(1), active = r.GetBoolean(2) }, token),
         models = await Rows(c, null, "SELECT model_id,manufacturer_id,type_code,name_en,active FROM itam_ref.model ORDER BY name_en", r => new { id = r.GetInt32(0), manufacturer = r.GetInt32(1), type = r.GetString(2), name = r.GetString(3), active = r.GetBoolean(4) }, token),
         values = await Rows(c, null, "SELECT list_code,item_code,name_en,sort_order,active FROM itam_ref.value_item ORDER BY list_code,sort_order", r => new { list = r.GetString(0), code = r.GetString(1), name = r.GetString(2), sort = r.GetInt32(3), active = r.GetBoolean(4) }, token),
@@ -73,7 +73,7 @@ public sealed partial class ItamStore
         };
     }
 
-    sealed record RefIn(int? Id, string? Code, string? Name, string? Kind, string? Region, string? City, string? Vat, int? Manufacturer, string? Type, string? List, int? Sort, bool Active);
+    sealed record RefIn(int? Id, string? Code, string? Name, string? NameAr, string? Kind, string? Region, string? City, string? Vat, int? Manufacturer, string? Type, string? List, int? Sort, bool Active);
     sealed record RoleIn(int? Id, Guid? Employee, string? Role, string? Region);
 
     public async Task Change(ItamUser user, ItamAdminChange change, CancellationToken token)
@@ -151,11 +151,12 @@ public sealed partial class ItamStore
             case "supplier":
             {
                 var vat = Optional(d.Vat, "VAT number", 20);
+                var nameAr = Optional(d.NameAr, "Arabic name", 200);
                 if (vat is not null && (vat.Length != 15 || vat.Any(ch => !char.IsAsciiDigit(ch)))) throw new ArgumentException("VAT number: 15 digits.");
                 if (await Scalar(c, tx, "SELECT 1 FROM itam_ref.supplier WHERE name_en=@n AND supplier_id<>@i", token, ("@n", name), ("@i", d.Id ?? 0)) is not null) throw new ArgumentException($"{name} is already in the list.");
-                if (d.Id is > 0) await Exec(c, tx, "UPDATE itam_ref.supplier SET name_en=@n,vat_no=@v,active=@a WHERE supplier_id=@i", token, ("@i", d.Id), ("@n", name), ("@v", vat), ("@a", d.Active));
-                else await Exec(c, tx, "INSERT itam_ref.supplier(name_en,vat_no,active) VALUES(@n,@v,@a)", token, ("@n", name), ("@v", vat), ("@a", d.Active));
-                await Log(name, "Save", new { name, vat, d.Active }); break;
+                if (d.Id is > 0) await Exec(c, tx, "UPDATE itam_ref.supplier SET name_en=@n,name_ar=@na,vat_no=@v,active=@a WHERE supplier_id=@i", token, ("@i", d.Id), ("@n", name), ("@na", nameAr), ("@v", vat), ("@a", d.Active));
+                else await Exec(c, tx, "INSERT itam_ref.supplier(name_en,name_ar,vat_no,active,created_by) VALUES(@n,@na,@v,@a,@b)", token, ("@n", name), ("@na", nameAr), ("@v", vat), ("@a", d.Active), ("@b", s.Id));
+                await Log(name, "Save", new { name, nameAr, vat, d.Active }); break;
             }
             case "manufacturer":
             {

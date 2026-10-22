@@ -51,9 +51,9 @@ const render={
       (v,r)=>change('location',{id:x?.id,...v},r),{done:reload()});
     return [card('IT warehouses and branches','Where assets are kept. Stock can be kept at a branch in cities without an IT warehouse.',
       table(['Name','Kind','Region','City','Active'],L().locations,x=>[x.name,kindLabel(x.kind),x.region,x.city||'',yes(x.active)],d.can.masterData?x=>[['Edit',()=>form(x)]]:null),d.can.masterData&&add('Add',()=>form(null)))];},
-  suppliers:()=>{const form=x=>edit(x?x.name:'Add a supplier',[{key:'name',label:'Name',value:x?.name,required:true},{key:'vat',label:'VAT number (15 digits)',value:x?.vat},{key:'active',label:'Active',type:'checkbox',value:x?x.active:true}],
+  suppliers:()=>{const form=x=>edit(x?x.name:'Add a supplier',[{key:'name',label:'Name (English)',value:x?.name,required:true},{key:'nameAr',label:'Name (Arabic)',max:200,dir:'rtl',value:x?.nameAr,hint:'As on the tax invoice.'},{key:'vat',label:'VAT number (15 digits)',value:x?.vat},{key:'active',label:'Active',type:'checkbox',value:x?x.active:true}],
       (v,r)=>change('supplier',{id:x?.id,...v},r),{done:reload()});
-    return [card('Suppliers',null,table(['Supplier','VAT number','Active'],L().suppliers,x=>[x.name,x.vat||'',yes(x.active)],d.can.masterData?x=>[['Edit',()=>form(x)]]:null),d.can.masterData&&add('Add a supplier',()=>form(null)))];},
+    return [card('Suppliers',null,table(['Supplier','Arabic name','VAT number','Active'],L().suppliers,x=>[x.name,(()=>{const a=el('span',x.nameAr||'');a.dir='rtl';return a;})(),x.vat||'',yes(x.active)],d.can.masterData?x=>[['Edit',()=>form(x)]]:null),d.can.masterData&&add('Add a supplier',()=>form(null)))];},
   manufacturers:()=>{const mf=x=>edit(x?x.name:'Add a manufacturer',[{key:'name',label:'Name',value:x?.name,required:true},{key:'active',label:'Active',type:'checkbox',value:x?x.active:true}],(v,r)=>change('manufacturer',{id:x?.id,...v},r),{done:reload()});
     const mo=x=>edit(x?x.name:'Add a model',[{key:'manufacturer',label:'Manufacturer',type:'select',options:L().manufacturers.map(m=>[m.id,m.name]),value:x?.manufacturer},
       {key:'type',label:'Product type',type:'select',options:L().types.map(t=>[t.code,t.name]),value:x?.type},{key:'name',label:'Model',value:x?.name,required:true},{key:'active',label:'Active',type:'checkbox',value:x?x.active:true}],

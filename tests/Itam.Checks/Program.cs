@@ -818,8 +818,19 @@ try
     ItamUpload CsvFile(string text, string name = "lists.csv") => new(name, "text/csv", System.Text.Encoding.UTF8.GetBytes(text));
     string CsvText(ItamUpload f) => System.Text.Encoding.UTF8.GetString(f.Content);
     var supCsv = await store.ExportCsv(U(2), "suppliers", default);
-    Check(supCsv.Content[0] == 0xEF && CsvText(supCsv).Contains("Name,VAT number,Active\r\n") && CsvText(supCsv).Contains("Supplier Two,300000000000003,Yes") && supCsv.FileName.EndsWith(".csv"),
+    Check(supCsv.Content[0] == 0xEF && CsvText(supCsv).Contains("Name,Arabic name,VAT number,Active\r\n") && CsvText(supCsv).Contains("Supplier Two,,300000000000003,Yes") && supCsv.FileName.EndsWith(".csv"),
         "CSV export: UTF-8 for Excel, the column names, one row per supplier");
+    // Supplier Arabic name (owner, 22 October 2026): Administration Center form and CSV.
+    await store.Change(U(2), new("supplier", "save", E(new { name = "Arabic Supplier", nameAr = "شركة المورد التجريبية", vat = "300000000000099", active = true }), null), default);
+    var arCsv = CsvText(await store.ExportCsv(U(2), "suppliers", default));
+    var arKeep = await store.ImportCsv(U(2), "suppliers", new(false, null), CsvFile("Name,Active\r\nArabic Supplier,Yes\r\n"), default);
+    var keptAr = await Scalar("SELECT name_ar FROM itam_ref.supplier WHERE name_en=N'Arabic Supplier'") as string;
+    var arSet = await store.ImportCsv(U(2), "suppliers", new(false, null), CsvFile("Name,Arabic name\r\nArabic Supplier,مورد معدل\r\n"), default);
+    Check(arCsv.Contains("Arabic Supplier,شركة المورد التجريبية,300000000000099,Yes") && J(await store.Admin(U(2), default)).Contains("nameAr")
+        && arKeep.Unchanged == 1 && keptAr == "شركة المورد التجريبية" && arSet.Changed == 1
+        && await Scalar("SELECT name_ar FROM itam_ref.supplier WHERE name_en=N'Arabic Supplier'") as string == "مورد معدل"
+        && await Scalar("SELECT vat_no FROM itam_ref.supplier WHERE name_en=N'Arabic Supplier'") as string == "300000000000099",
+        "Supplier Arabic name: saved in the Administration Center, exported, and changed by CSV; a column left out of the file keeps its value");
     var badLoc = CsvFile("Name,Kind,Region,City,Active\r\nCSV Store A,IT warehouse,Central,Riyadh,Yes\r\nCSV Store B,Shop,Central,,Yes\r\n");
     var c1 = await store.ImportCsv(U(2), "locations", new(true, null), badLoc, default);
     var c2 = await store.ImportCsv(U(2), "locations", new(false, null), badLoc, default);
@@ -839,7 +850,7 @@ try
     await store.Change(U(2), new("supplier", "save", E(new { name = "=1+2", active = true }), null), default);
     var guarded = CsvText(await store.ExportCsv(U(2), "suppliers", default));
     var reimport = await store.ImportCsv(U(2), "suppliers", new(false, null), new("s.csv", "text/csv", System.Text.Encoding.UTF8.GetBytes(guarded)), default);
-    Check(guarded.Contains("'=1+2,,Yes") && reimport.Errors.Count == 0 && reimport.Unchanged == reimport.Rows,
+    Check(guarded.Contains("'=1+2,,,Yes") && reimport.Errors.Count == 0 && reimport.Unchanged == reimport.Rows,
         "CSV export never lets Excel run a cell as a formula; the exported file imports back unchanged");
     var models = await store.ImportCsv(U(2), "models", new(true, null), CsvFile("Manufacturer,Type,Model\r\nNo Such Maker,PC,X1\r\n"), default);
     Check(models.Errors.Count == 1 && models.Errors[0].Error.Contains("Manufacturer"), "CSV import of models: the manufacturer must be in the list first");

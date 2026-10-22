@@ -10,7 +10,7 @@ const mail=e=>{if(!e)return '';const a=el('a',e);a.href='mailto:'+e;return a;};
 
 const FIELDS=s=>[
   {key:'name',label:'Supplier name (English)',required:true,max:200,value:s?.name,hint:'As on the supplier\'s tax invoice.'},
-  {key:'nameAr',label:'Supplier name (Arabic)',max:200,value:s?.nameAr,hint:'As on the tax invoice, in Arabic.'},
+  {key:'nameAr',label:'Supplier name (Arabic)',max:200,dir:'rtl',value:s?.nameAr,hint:'As on the tax invoice, in Arabic.'},
   {key:'vat',label:'VAT number',max:20,value:s?.vat,hint:'15 digits, on the tax invoice.'},
   {key:'cr',label:'CR number',max:20,value:s?.cr,hint:'Commercial registration.'},
   {key:'contact',label:'Contact person',max:200,value:s?.contact},

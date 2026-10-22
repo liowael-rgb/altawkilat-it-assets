@@ -140,6 +140,7 @@ export function edit(title,fields,save,{hint,button,reason=true,done}={}){
     else if(f.type==='file'){input=document.createElement('input');input.type='file';input.accept=f.accept||'application/pdf,image/png,image/jpeg';}
     else{input=document.createElement('input');input.type=f.type||'text';if(f.max)input.maxLength=f.max;if(f.type==='number')input.step='0.01';}
     if(f.type==='checkbox')input.checked=!!f.value;else if(f.value!==undefined&&f.value!==null)input.value=String(f.value);
+    if(f.dir)input.dir=f.dir;
     if(f.required&&f.type!=='checkbox')input.required=true;
     if(f.type==='checkbox'){l.className='inline'+(f.wide?' wide':'');l.textContent='';l.append(input,f.label);}else l.append(input);
     if(f.hint)l.append(el('span',f.hint,'hint'));
