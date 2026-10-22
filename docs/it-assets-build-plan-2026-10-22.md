@@ -508,3 +508,6 @@ Emails and the weekly summary (IT-EM-12, IT-EM-61) will use the same list when t
 - **Owner decision, 22 October 2026: production directly** (ITAM_Production), no separate test site. Until the owner
   declares it live it runs in a test phase: email off or to one test mailbox, access limited to an IT pilot AD group in
   IIS, backups of the database and the keys folder before every update; every production change approved by the owner.
+- **Servers** (owner, 22 October 2026): the same as the shared platform: IIS on ATWK-WEB-1, SQL Server 2025 on UMASQL-1,
+  with IT Assets' own site, application pool, folders and database ITAM_Production. The SQL connection trusts the server
+  certificate as the shared platform does (setting `SqlTrustServerCertificate`), and stays encrypted.

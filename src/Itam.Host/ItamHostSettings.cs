@@ -10,6 +10,8 @@ public sealed class ItamHostSettings
     public string Database { get; set; } = "";
     /// <summary>The SQL Server instance, for example SQL01 or SQL01\INSTANCE.</summary>
     public string SqlServer { get; set; } = "";
+    /// <summary>Trust the SQL Server certificate (as the shared platform on the same server does); the connection stays encrypted.</summary>
+    public bool SqlTrustServerCertificate { get; set; }
     /// <summary>The site's address as users open it, for the links in emails and on labels, for example https://itassets.altawkilat.com.</summary>
     public string SiteUrl { get; set; } = "";
     /// <summary>The folder holding the data-protection keys that encrypt OS and software keys. Back it up with the database:
@@ -20,7 +22,7 @@ public sealed class ItamHostSettings
     public MailSettings Mail { get; set; } = new();
 
     public string ConnectionString() => new SqlConnectionStringBuilder
-    { DataSource = SqlServer, InitialCatalog = Database, IntegratedSecurity = true, Encrypt = true, TrustServerCertificate = false, ApplicationName = "IT Assets" }.ConnectionString;
+    { DataSource = SqlServer, InitialCatalog = Database, IntegratedSecurity = true, Encrypt = true, TrustServerCertificate = SqlTrustServerCertificate, ApplicationName = "IT Assets" }.ConnectionString;
 
     /// <summary>Refuses settings that would point the site at the wrong place.</summary>
     public void Validate()

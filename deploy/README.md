@@ -11,7 +11,15 @@ test site. Every production change is approved by the owner first. Until the own
   `ALTAWKILATIT Assets Pilot`) and deny all other users; the owner widens it at go-live.
 - **Backups**: `ITAM_Production` and the keys folder before every update.
 
-`ITAM_Test` remains possible later for a test or training site; the steps are the same with that name. Nothing here uses or stores a password: SQL Server, Active Directory and the mail relay
+`ITAM_Test` remains possible later for a test or training site; the steps are the same with that name.
+
+**Servers (owner, 22 October 2026): the same servers as the shared platform.** IIS: **ATWK-WEB-1**. SQL Server:
+**UMASQL-1** (SQL Server 2025). IT Assets has its own site, application pool, folders and database (`ITAM_Production`) on
+them and never uses the shared platform's databases, site or settings. Already in place there for the shared platform, so
+usually only to confirm: the ASP.NET Core Hosting Bundle (.NET 10), LDAPS trust to the domain controllers (VTMS reads AD
+the same way), and the server's permission to send through the mail relay (CMS sends from the same server). The SQL
+connection trusts the server certificate as the shared platform does (`SqlTrustServerCertificate`: true); it stays
+encrypted. Nothing here uses or stores a password: SQL Server, Active Directory and the mail relay
 accept the site's own Windows identity (the IIS application pool identity).
 
 ## What IT prepares (once per site)
@@ -28,7 +36,7 @@ accept the site's own Windows identity (the IIS application pool identity).
      database.** Without it, the stored keys cannot be read. A move to another server needs these keys moved by IT.
    - `D:\ITAssets\Backups` – the install script's backups of the site folder.
 5. **SQL Server** (DBA):
-   - Create the database `ITAM_Production` (compatibility level 120 or higher).
+   - Create the database `ITAM_Production` on UMASQL-1 (SQL Server 2025; keep the default compatibility level).
    - The person installing (step 7) needs *db_owner* on it for the install only.
    - After the install, run `deploy\sql\Grant-ItamRuntime.sql` with the pool identity: the site gets the `itam_runtime`
      role only (read and write data; it cannot change the schema).
