@@ -3,7 +3,7 @@ using System.Data.Common;
 
 namespace Itam.App;
 
-public sealed record ItamPoLineInput(int? LineNo, string? Type, int? ManufacturerId, int? ModelId, string? NewModel, string? Specification, int? Quantity, decimal? UnitCost);
+public sealed record ItamPoLineInput(int? LineNo, string? Type, int? ManufacturerId, int? ModelId, string? NewModel, string? Specification, int? Quantity, decimal? UnitCost, string? NewManufacturer = null);
 public sealed record ItamPoInput(string? PoNumber, DateOnly? PoDate, int? SupplierId, string? RaisedBy, string? RequestRef, string? InvoiceNo, string? Note,
     ItamPoLineInput[]? Lines, string? Version = null, string? Reason = null);
 public sealed record ItamDeviceInput(string? SerialNo, string? ServiceTag, string? MacAddress, string? IpAddress, string? Condition, Dictionary<string, string?>? Attributes,
@@ -82,17 +82,17 @@ public sealed partial class ItamStore
             var type = (l.Type ?? "").Trim().ToUpperInvariant();
             if (await Scalar(c, tx, "SELECT 1 FROM itam_ref.asset_type WHERE type_code=@t AND active=1", token, ("@t", type)) is null) throw new ArgumentException($"Line {l.LineNo}: choose the product type.");
             // Software has no manufacturer or model; toner has no model (the same rules as registering).
-            int? maker = ItamTypeFields.ManufacturerUsed(type) ? l.ManufacturerId : null;
-            if (ItamTypeFields.ManufacturerUsed(type) && await Scalar(c, tx, "SELECT 1 FROM itam_ref.manufacturer WHERE manufacturer_id=@m AND active=1", token, ("@m", maker ?? 0)) is null) throw new ArgumentException($"Line {l.LineNo}: choose the manufacturer.");
+            int? maker = ItamTypeFields.ManufacturerUsed(type) ? await Maker(c, tx, s, l.ManufacturerId, l.NewManufacturer, "Added on a purchase order", $"Line {l.LineNo}: ", token) : null;
             int? model;
             if (!ItamTypeFields.ModelUsed(type)) model = null;
             else if (!string.IsNullOrWhiteSpace(l.NewModel))
             {
                 var name = Text(l.NewModel, "Model", 150);
-                model = await Scalar(c, tx, "SELECT model_id FROM itam_ref.model WHERE manufacturer_id=@m AND type_code=@t AND name_en=@n", token, ("@m", l.ManufacturerId), ("@t", type), ("@n", name)) is int m ? m
-                    : Convert.ToInt32(await Scalar(c, tx, "INSERT itam_ref.model(manufacturer_id,type_code,name_en) OUTPUT inserted.model_id VALUES(@m,@t,@n)", token, ("@m", l.ManufacturerId), ("@t", type), ("@n", name)));
+                model = await Scalar(c, tx, "SELECT model_id FROM itam_ref.model WHERE manufacturer_id=@m AND type_code=@t AND name_en=@n", token, ("@m", maker), ("@t", type), ("@n", name)) is int m ? m
+                    : Convert.ToInt32(await Scalar(c, tx, "INSERT itam_ref.model(manufacturer_id,type_code,name_en) OUTPUT inserted.model_id VALUES(@m,@t,@n)", token, ("@m", maker), ("@t", type), ("@n", name)));
+                await Audit(c, tx, s.Id, "model", model.Value.ToString(System.Globalization.CultureInfo.InvariantCulture), "Add", null, new { manufacturer = maker, type, name }, "Added on a purchase order", token);
             }
-            else if (await Scalar(c, tx, "SELECT 1 FROM itam_ref.model WHERE model_id=@m AND manufacturer_id=@f AND type_code=@t", token, ("@m", l.ModelId ?? 0), ("@f", l.ManufacturerId), ("@t", type)) is null)
+            else if (await Scalar(c, tx, "SELECT 1 FROM itam_ref.model WHERE model_id=@m AND manufacturer_id=@f AND type_code=@t", token, ("@m", l.ModelId ?? 0), ("@f", maker), ("@t", type)) is null)
                 throw new ArgumentException($"Line {l.LineNo}: choose the model (of this manufacturer and type).");
             else model = l.ModelId!.Value;
             var qty = l.Quantity is >= 1 and <= 10000 ? l.Quantity.Value : throw new ArgumentException($"Line {l.LineNo}: quantity 1 to 10,000.");

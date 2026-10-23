@@ -8,7 +8,7 @@ namespace Itam.App;
 public sealed record ItamAssetInput(string? Type, int? LocationId, int? ManufacturerId, int? ModelId, string? NewModel,
     string? SerialNo, string? ServiceTag, string? MacAddress, string? IpAddress, string? Condition, DateOnly? PurchaseDate,
     int? SupplierId, string? PoNumber, decimal? UnitCost, string? InvoiceNo, string? Notes, Dictionary<string, string?>? Attributes,
-    string? OsKey, string? SoftwareKey, string? Version = null, string? Reason = null, string? NewSupplier = null, string? NewSupplierVat = null);
+    string? OsKey, string? SoftwareKey, string? Version = null, string? Reason = null, string? NewSupplier = null, string? NewSupplierVat = null, string? NewManufacturer = null);
 
 public sealed record ItamAssetFilter(string? Text, string? Type, string? Status, string? Region, int? LocationId, int Page = 1,
     string? ComputerType = null, string? Processor = null, string? Memory = null, int? ModelId = null, string? User = null, string? SapId = null);
@@ -37,28 +37,42 @@ public sealed partial class ItamStore
         string? Serial, string? ServiceTag, string? Mac, string? Ip, string Condition, DateOnly? PurchaseDate, int? SupplierId,
         string? PoNumber, decimal? UnitCost, string? InvoiceNo, string? Notes, Dictionary<string, string> Attributes);
 
+    /// <summary>The manufacturer chosen, or a new one typed while registering an asset or on a PO (owner, 23 October 2026): added to
+    /// the list and kept in the audit log; a name already in the list is used as it is. label: the start of the messages ("Line 2: ").</summary>
+    internal static async Task<int> Maker(DbConnection c, DbTransaction tx, ItamScope s, int? id, string? newName, string why, string label, CancellationToken token)
+    {
+        if (string.IsNullOrWhiteSpace(newName))
+            return id is int m && await Scalar(c, tx, "SELECT 1 FROM itam_ref.manufacturer WHERE manufacturer_id=@m AND active=1", token, ("@m", m)) is not null ? m
+                : throw new ArgumentException(label + (label.Length == 0 ? "Choose the manufacturer." : "choose the manufacturer."));
+        var name = Text(newName, label + "Manufacturer", 100);
+        var found = (await Rows(c, tx, "SELECT manufacturer_id,active FROM itam_ref.manufacturer WHERE name_en=@n", r => (Id: r.GetInt32(0), Active: r.GetBoolean(1)), token, ("@n", name))).Cast<(int Id, bool Active)?>().SingleOrDefault();
+        if (found is { } f) return f.Active ? f.Id : throw new ArgumentException($"{label}{name} is in the list but not active: the IT Manager can make it active again.");
+        var added = Convert.ToInt32(await Scalar(c, tx, "INSERT itam_ref.manufacturer(name_en) OUTPUT inserted.manufacturer_id VALUES(@n)", token, ("@n", name)));
+        await Audit(c, tx, s.Id, "manufacturer", name, "Add", null, new { name }, why, token);
+        return added;
+    }
+
     /// <summary>Checks a registration or edit against the form 01 rules and the master data.</summary>
     internal async Task<AssetData> Check(DbConnection c, DbTransaction tx, ItamScope s, ItamAssetInput x, string type, int? self, CancellationToken token)
     {
         if (await Scalar(c, tx, "SELECT 1 FROM itam_ref.asset_type WHERE type_code=@t AND active=1", token, ("@t", type)) is null) throw new ArgumentException("Choose the product type.");
         var loc = (await Rows(c, tx, "SELECT region_code,kind,active FROM itam_ref.location WHERE location_id=@l", r => (Region: r.GetString(0), Kind: r.GetString(1), Active: r.GetBoolean(2)), token, ("@l", x.LocationId ?? 0))).SingleOrDefault();
         if (loc.Region is null || !loc.Active) throw new ArgumentException("Choose where the asset is kept (IT warehouse or branch).");
-        int? maker = ItamTypeFields.ManufacturerUsed(type) ? x.ManufacturerId : null;
-        if (ItamTypeFields.ManufacturerUsed(type) && await Scalar(c, tx, "SELECT 1 FROM itam_ref.manufacturer WHERE manufacturer_id=@m AND active=1", token, ("@m", maker ?? 0)) is null) throw new ArgumentException("Choose the manufacturer.");
+        int? maker = ItamTypeFields.ManufacturerUsed(type) ? await Maker(c, tx, s, x.ManufacturerId, x.NewManufacturer, "Added while registering an asset", "", token) : null;
         int? model;
         if (!ItamTypeFields.ModelUsed(type)) model = null;
         else if (!string.IsNullOrWhiteSpace(x.NewModel))
         {
             // A model not yet in the list: added on the spot by the person registering (kept in the audit log).
             var name = Text(x.NewModel, "Model", 150);
-            model = await Scalar(c, tx, "SELECT model_id FROM itam_ref.model WHERE manufacturer_id=@m AND type_code=@t AND name_en=@n", token, ("@m", x.ManufacturerId), ("@t", type), ("@n", name)) is int existing ? existing
-                : Convert.ToInt32(await Scalar(c, tx, "INSERT itam_ref.model(manufacturer_id,type_code,name_en) OUTPUT inserted.model_id VALUES(@m,@t,@n)", token, ("@m", x.ManufacturerId), ("@t", type), ("@n", name)));
-            await Audit(c, tx, s.Id, "model", model.Value.ToString(System.Globalization.CultureInfo.InvariantCulture), "Add", null, new { manufacturer = x.ManufacturerId, type, name }, "Added while registering an asset", token);
+            model = await Scalar(c, tx, "SELECT model_id FROM itam_ref.model WHERE manufacturer_id=@m AND type_code=@t AND name_en=@n", token, ("@m", maker), ("@t", type), ("@n", name)) is int existing ? existing
+                : Convert.ToInt32(await Scalar(c, tx, "INSERT itam_ref.model(manufacturer_id,type_code,name_en) OUTPUT inserted.model_id VALUES(@m,@t,@n)", token, ("@m", maker), ("@t", type), ("@n", name)));
+            await Audit(c, tx, s.Id, "model", model.Value.ToString(System.Globalization.CultureInfo.InvariantCulture), "Add", null, new { manufacturer = maker, type, name }, "Added while registering an asset", token);
         }
         else
         {
             model = x.ModelId ?? 0;
-            if (await Scalar(c, tx, "SELECT 1 FROM itam_ref.model WHERE model_id=@m AND manufacturer_id=@f AND type_code=@t", token, ("@m", model), ("@f", x.ManufacturerId), ("@t", type)) is null)
+            if (await Scalar(c, tx, "SELECT 1 FROM itam_ref.model WHERE model_id=@m AND manufacturer_id=@f AND type_code=@t", token, ("@m", model), ("@f", maker), ("@t", type)) is null)
                 throw new ArgumentException("Choose the model (of this manufacturer and type).");
         }
         var serial = ItamTypeFields.SerialUsed(type) ? Optional(x.SerialNo, "Serial number", 100) : null; var tag = ItamTypeFields.ServiceTagUsed(type) ? Optional(x.ServiceTag, "Service tag", 100) : null;
@@ -295,7 +309,7 @@ public sealed partial class ItamStore
         return new
         {
             asset = a, createdByName = N(a.createdBy), receivedByName = N(a.receivedBy), attributes, fields = ItamTypeFields.For(a.type), keys, history, record = await AssetHistory(c, s, id, a.region, token),
-            canEdit = s.CanEdit(a.type, a.region), phoneOnly = !s.CanEdit(a.type, a.region) && s.CanEditPhoneOnly(a.type), canSeeKeys = s.CanSeeKeys(a.region)
+            canEdit = s.CanEdit(a.type, a.region), canRemove = s.Manager && (await AssetUses(c, null, id, token)).Count == 0, phoneOnly = !s.CanEdit(a.type, a.region) && s.CanEditPhoneOnly(a.type), canSeeKeys = s.CanSeeKeys(a.region)
         };
     }
 

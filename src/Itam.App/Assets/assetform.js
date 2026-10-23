@@ -39,6 +39,8 @@ export function assetForm(box,m,{asset,attributes={},keys=[],phoneOnly=false,sid
   i.location=select(locs.map(l=>[l.id,`${l.region} · ${l.name} (${kindLabel(l.kind)})`]),asset?.locationId??'','Choose');
   if(asset&&asset.status!=='InStore')i.location.disabled=true;
   i.manufacturer=select(L.manufacturers.filter(x=>x.active||x.id===asset?.manufacturerId).map(x=>[x.id,x.name]),asset?.manufacturerId??'','Choose');
+  // A manufacturer not in the list (owner, 23 October 2026): typed here, added to the list when the asset is saved.
+  i.manufacturer.append(option('new','+ A manufacturer not in the list'));i.newManufacturer=text('',{max:100,placeholder:'Type the new manufacturer'});i.newManufacturer.classList.add('x-newmodel');i.newManufacturer.hidden=true;
   i.model=document.createElement('select');i.newModel=text('',{max:150,placeholder:'Type the new model'});i.newModel.classList.add('x-newmodel');
   i.serial=text(asset?.serial,{max:100,mono:true,placeholder:'As printed on the sticker'});i.tag=text(asset?.serviceTag,{max:100,mono:true});
   i.mac=text(asset?.mac,{max:17,mono:true,placeholder:'AA:BB:CC:DD:EE:FF'});i.ip=text(asset?.ip,{max:15,mono:true,placeholder:'10.1.2.3'});
@@ -74,7 +76,7 @@ export function assetForm(box,m,{asset,attributes={},keys=[],phoneOnly=false,sid
     const s2=section('s2','laptop','cyan','Device details','Copy the serial number'+(t?.serviceTag?' and service tag':'')+' from the sticker on the device.');
     // Software has no manufacturer or model; toner has no model (its toner code identifies it).
     const useMf=!t||t.manufacturerUsed,useModel=!t||t.modelUsed;
-    if(useMf){s2.body.append(field('Manufacturer',i.manufacturer,{required:true,hint:'Not in the list? Ask the IT Assets Officer to add it.'}));s2.req.push(['Manufacturer',()=>i.manufacturer.value]);}
+    if(useMf){s2.body.append(field('Manufacturer',i.manufacturer,{required:true,extra:i.newManufacturer,hint:'Not in the list? Choose "+ A manufacturer not in the list" and type it.'}));s2.req.push(['Manufacturer',()=>i.manufacturer.value&&(i.manufacturer.value!=='new'||i.newManufacturer.value.trim())]);}
     if(useModel){s2.body.append(field('Model',i.model,{required:true,extra:i.newModel}));s2.req.push(['Model',()=>i.model.value&&(i.model.value!=='new'||i.newModel.value.trim())]);}
     if(t){
       if(t.serialUsed){s2.body.append(field('Serial number',i.serial,{required:t.serialRequired,hint:'Checked against every asset already registered.'}));if(t.serialRequired)s2.req.push(['Serial number',()=>i.serial.value.trim()]);}
@@ -118,17 +120,18 @@ export function assetForm(box,m,{asset,attributes={},keys=[],phoneOnly=false,sid
       list.replaceChildren(...items.map(([l,ok])=>{const li=el('li',null,ok?'done':'');const d=el('span',null,'x-dot');d.append(svg('check'));li.append(d,l);return li;}));
       const opt=s=>s.selectedIndex>0?s.selectedOptions[0].text:'';const mdl=!t?.modelUsed?(attrInputs.Software||attrInputs.TonerCode)?.value.trim()||'':i.model.value==='new'?i.newModel.value.trim():opt(i.model);
       const first=t?.fields?.[0];const second=t?.serviceTag?['Service tag',i.tag.value.trim().toUpperCase()]:first?[first.label,attrInputs[first.code]?.value.trim()]:['Service tag',''];
-      label.set({type:t?.name||'-',no:t?`${t.code}-····`:'--- ----',model:t?[t.manufacturerUsed?opt(i.manufacturer):'',mdl].filter(Boolean).join(' ')||t.name:'Choose a product type',
+      label.set({type:t?.name||'-',no:t?`${t.code}-····`:'--- ----',model:t?[t.manufacturerUsed?(i.manufacturer.value==='new'?i.newManufacturer.value.trim():opt(i.manufacturer)):'',mdl].filter(Boolean).join(' ')||t.name:'Choose a product type',
         cells:[['Serial',i.serial.value.trim()],second,['Kept at',opt(i.location).split(' (')[0]],t?.mac?['MAC',i.mac.value.trim()]:['Condition',i.condition.value]]});}
     onProgress?.(left,total);return left;
   }
-  i.type.onchange=()=>{models();render();};i.manufacturer.onchange=()=>{models();status();};i.model.onchange=()=>{i.newModel.hidden=i.model.value!=='new';if(!i.newModel.hidden)i.newModel.focus();status();};
+  i.type.onchange=()=>{models();render();};i.manufacturer.onchange=()=>{const isNew=i.manufacturer.value==='new';i.newManufacturer.hidden=!isNew;models();if(isNew){i.model.value='new';i.newModel.hidden=false;i.newManufacturer.focus();}status();};i.model.onchange=()=>{i.newModel.hidden=i.model.value!=='new';if(!i.newModel.hidden)i.newModel.focus();status();};
   box.addEventListener('input',status);box.addEventListener('change',status);
   i.tag.addEventListener('input',()=>{i.tag.value=i.tag.value.toUpperCase();});
   models();render();
   const v=x=>x.value.trim()===''?null:x.value.trim();
   const read=()=>{const t=i.type.value;const attrs={};for(const [k,x] of Object.entries(attrInputs))attrs[k]=x.value.trim()===''?null:x.value.trim();
-    return {type:t,locationId:Number(i.location.value)||null,manufacturerId:L.types.find(x=>x.code===t)?.manufacturerUsed===false?null:Number(i.manufacturer.value)||null,
+    return {type:t,locationId:Number(i.location.value)||null,manufacturerId:L.types.find(x=>x.code===t)?.manufacturerUsed===false||i.manufacturer.value==='new'?null:Number(i.manufacturer.value)||null,
+      newManufacturer:L.types.find(x=>x.code===t)?.manufacturerUsed===false||i.manufacturer.value!=='new'?null:v(i.newManufacturer),
       modelId:L.types.find(x=>x.code===t)?.modelUsed===false?null:i.model.value&&i.model.value!=='new'?Number(i.model.value):null,newModel:L.types.find(x=>x.code===t)?.modelUsed===false?null:i.model.value==='new'?v(i.newModel):null,
       serialNo:v(i.serial),serviceTag:v(i.tag),macAddress:v(i.mac),ipAddress:v(i.ip),condition:i.condition.value||null,purchaseDate:v(i.purchase),
       supplierId:i.supplier.value==='new'?null:Number(i.supplier.value)||null,newSupplier:i.supplier.value==='new'?v(i.newSupplier):null,newSupplierVat:i.supplier.value==='new'?v(i.newSupplierVat):null,poNumber:v(i.po),unitCost:i.cost.value===''?null:Number(i.cost.value),invoiceNo:v(i.invoice),notes:v(i.notes),attributes:attrs,

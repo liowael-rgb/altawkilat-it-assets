@@ -19,18 +19,20 @@ function addLine(l){
   const L=m.lists;const row={received:l?.received||0,no:l?.no};
   row.type=sel(L.types.filter(t=>t.active||t.code===l?.type).map(t=>[t.code,t.name]),l?.type??'','Choose');row.type.disabled=row.received>0;
   row.mf=sel(L.manufacturers.filter(x=>x.active||x.id===l?.manufacturerId).map(x=>[x.id,x.name]),l?.manufacturerId??'','Choose');
+  // A manufacturer not in the list (owner, 23 October 2026): added to the list when the PO is saved.
+  row.mf.append(option('new','+ A manufacturer not in the list'));row.newMf=inp('','text',100);row.newMf.placeholder='New manufacturer';row.newMf.hidden=true;
   row.model=document.createElement('select');row.newModel=inp('','text',150);row.newModel.placeholder='New model';
   row.spec=inp(l?.specification,'text',500);row.qty=inp(l?.quantity??1,'number');row.qty.min=String(Math.max(1,row.received));row.cost=inp(l?.unitCost??'','number');row.cost.step='0.01';row.cost.min='0';
   const models=()=>{const keep=row.model.value||l?.modelId;row.model.replaceChildren(option('','Choose'),...L.models.filter(x=>x.type===row.type.value&&x.manufacturer===Number(row.mf.value)&&(x.active||x.id===l?.modelId)).map(x=>option(x.id,x.name)),option('new','+ A model not in the list'));
     if(keep&&[...row.model.options].some(o=>o.value===String(keep)))row.model.value=String(keep);row.newModel.hidden=row.model.value!=='new';};
   // Software has no manufacturer or model; toner has no model.
-  const kinds=()=>{const t=L.types.find(x=>x.code===row.type.value);row.noMf=!!t&&!t.manufacturerUsed;row.noModel=!!t&&!t.modelUsed;row.mf.hidden=row.noMf;row.model.hidden=row.noModel;if(row.noModel)row.newModel.hidden=true;};
-  row.type.onchange=()=>{models();kinds();};row.mf.onchange=models;row.model.onchange=()=>{row.newModel.hidden=row.model.value!=='new';};models();kinds();
+  const kinds=()=>{const t=L.types.find(x=>x.code===row.type.value);row.noMf=!!t&&!t.manufacturerUsed;row.noModel=!!t&&!t.modelUsed;row.mf.hidden=row.noMf;row.newMf.hidden=row.noMf||row.mf.value!=='new';row.model.hidden=row.noModel;if(row.noModel)row.newModel.hidden=true;};
+  row.type.onchange=()=>{models();kinds();};row.mf.onchange=()=>{row.newMf.hidden=row.mf.value!=='new';models();if(row.mf.value==='new'&&!row.noModel){row.model.value='new';row.newModel.hidden=false;row.newMf.focus();}};row.model.onchange=()=>{row.newModel.hidden=row.model.value!=='new';};models();kinds();
   for(const x of [row.qty,row.cost])x.oninput=totals;
   row.tr=el('tr');const td=x=>{const t=el('td');t.append(...[].concat(x));return t;};
   const rm=el('button','Remove','link');rm.type='button';rm.disabled=row.received>0;rm.title=row.received>0?`${row.received} devices received on this line`:'';
   rm.onclick=()=>{lines.splice(lines.indexOf(row),1);row.tr.remove();number();totals();};
-  row.noCell=el('td');row.tr.append(row.noCell,td(row.type),td(row.mf),td([row.model,row.newModel]),td(row.spec),td(row.qty),td(row.cost),td(rm));
+  row.noCell=el('td');row.tr.append(row.noCell,td(row.type),td([row.mf,row.newMf]),td([row.model,row.newModel]),td(row.spec),td(row.qty),td(row.cost),td(rm));
   lines.push(row);$('lines').append(row.tr);number();totals();
 }
 function number(){let n=0;for(const r of lines){n=Math.max(n,r.no||0);}for(const r of lines){if(!r.no)r.no=++n;r.noCell.textContent=String(r.no)+(r.received?` (${r.received} received)`:'');}}
@@ -43,7 +45,7 @@ try{
   $('po-form').onsubmit=async e=>{e.preventDefault();
     const v=x=>x.value.trim()===''?null:x.value.trim();
     const data={poNumber:v(H.number),poDate:v(H.date),supplierId:Number(H.supplier.value)||null,raisedBy:v(H.raised),requestRef:v(H.request),invoiceNo:v(H.invoice),note:v(H.note),
-      lines:lines.map(r=>({lineNo:r.no,type:r.type.value||null,manufacturerId:r.noMf?null:Number(r.mf.value)||null,modelId:r.noModel?null:r.model.value&&r.model.value!=='new'?Number(r.model.value):null,newModel:r.noModel?null:r.model.value==='new'?v(r.newModel):null,
+      lines:lines.map(r=>({lineNo:r.no,type:r.type.value||null,manufacturerId:r.noMf||r.mf.value==='new'?null:Number(r.mf.value)||null,newManufacturer:!r.noMf&&r.mf.value==='new'?v(r.newMf):null,modelId:r.noModel?null:r.model.value&&r.model.value!=='new'?Number(r.model.value):null,newModel:r.noModel?null:r.model.value==='new'?v(r.newModel):null,
         specification:v(r.spec),quantity:Number(r.qty.value)||null,unitCost:r.cost.value===''?null:Number(r.cost.value)})),version:cur?.po.version,reason:$('po-reason').value};
     try{const body=form(data,H.file.files[0]);
       if(cur){await api('/pos/'+id,{method:'PUT',body});location.assign('/po.html?id='+id+'&saved=1');}

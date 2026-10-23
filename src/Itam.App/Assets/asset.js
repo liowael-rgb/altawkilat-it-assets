@@ -13,6 +13,10 @@ async function load(note){
   const acts=$('head-actions');acts.replaceChildren();
   if(d.canEdit||d.phoneOnly){const b=el('button',null,'primary');b.type='button';b.append(svg('edit'),'Edit details');b.onclick=editMode;acts.append(b);}
   const all=el('a');all.href='/';all.append(el('button','All assets'));acts.append(all);
+  // A wrong entry (owner, 23 October 2026): the IT Manager removes an asset that was never used; the audit log keeps a copy.
+  if(d.canRemove)acts.append(btn('Remove (wrong entry)',()=>edit(`Remove ${a.assetNo}?`,[{key:'reason',label:'Why is it wrong?',type:'textarea',required:true,wide:true,max:500,hint:'For example: registered twice, or the wrong device. The audit log keeps a full copy of the record and this reason.'}],
+    async x=>{const r=await api(`/assets/${a.id}/remove`,{method:'POST',json:{reason:x.reason}});location.replace('/?removed='+encodeURIComponent(r.assetNo));},
+    {reason:false,button:'Remove the asset',hint:'Only for an asset registered by mistake and never used. This cannot be undone.'}),'danger'));
   // End of life (step 5): the server checks the region and the asset's state.
   if(['InUse','InStore'].includes(a.status)&&m.can.loss)acts.append(btn('Report loss',()=>reportLoss(a.assetNo),'','loss'));
   if(a.status==='InStore'&&m.can.disposals)acts.append(btn('Ask for disposal',()=>requestDisposal(a.assetNo),'','disposals'));

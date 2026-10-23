@@ -167,6 +167,7 @@ public static class ItamApi
         api.MapPost("/maintenance/{id:int}/expected", (HttpContext ctx, ItamStore store, int id, ItamMaintenanceExpected input) => Guard(ctx, async u => { await store.ExpectedMaintenance(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
         api.MapGet("/maintenance/{id:int}/quotation", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => { var f = await store.MaintenanceQuotation(u, id, ctx.RequestAborted); return Results.File(f.Content, f.MediaType, f.FileName); }));
         api.MapPost("/assets/{id:int}/it-repair", (HttpContext ctx, ItamStore store, int id, ItamItRepair input) => Guard(ctx, async u => { await store.ItRepair(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));
+        api.MapPost("/assets/{id:int}/remove", (HttpContext ctx, ItamStore store, int id, ItamRemoveInput input) => Guard(ctx, async u => Results.Ok(await store.RemoveAsset(u, id, input, ctx.RequestAborted))));
         api.MapGet("/assets/{id:int}", (HttpContext ctx, ItamStore store, int id) => Guard(ctx, async u => Results.Ok(await store.Asset(u, id, ctx.RequestAborted))));
         api.MapPost("/assets", (HttpContext ctx, ItamStore store, ItamAssetInput input) => Guard(ctx, async u => Results.Ok(await store.Register(u, input, ctx.RequestAborted))));
         api.MapPut("/assets/{id:int}", (HttpContext ctx, ItamStore store, int id, ItamAssetInput input) => Guard(ctx, async u => { await store.Update(u, id, input, ctx.RequestAborted); return Results.Ok(new { ok = true }); }));

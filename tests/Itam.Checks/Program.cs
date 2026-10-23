@@ -926,6 +926,43 @@ try
             "AD job: a failed or empty AD read changes nothing and shows the error");
     }
     Console.WriteLine("PASS AD job");
+
+    // ---- New manufacturer while registering or on a PO; removing a wrong entry (owner, 23 October 2026) ------------------
+    var nm1 = NewId(await store.Register(U(1), A("MON", 1, 0, "NEWMF-1") with { ManufacturerId = null, ModelId = null, NewManufacturer = "Brand New Maker", NewModel = "BN-27" }, default));
+    var nm2 = NewId(await store.Register(U(1), A("MON", 1, 0, "NEWMF-2") with { ManufacturerId = 99999, ModelId = null, NewManufacturer = " Brand New Maker ", NewModel = "BN-27" }, default));
+    var bnMaker = await Scalar("SELECT manufacturer_id FROM itam_ref.manufacturer WHERE name_en=N'Brand New Maker'");
+    Check(Convert.ToInt32(await Scalar("SELECT COUNT(*) FROM itam_ref.manufacturer WHERE name_en=N'Brand New Maker'")) == 1
+        && Convert.ToInt32(await Scalar($"SELECT COUNT(DISTINCT manufacturer_id) FROM itam_data.asset WHERE asset_id IN({nm1},{nm2})")) == 1
+        && await Scalar($"SELECT COUNT(*) FROM itam_ref.model WHERE manufacturer_id={bnMaker} AND name_en=N'BN-27'") is 1
+        && await Scalar("SELECT reason FROM itam_access.audit WHERE entity=N'manufacturer' AND entity_key=N'Brand New Maker' AND action=N'Add'") as string == "Added while registering an asset",
+        "Register: a manufacturer not in the list is added with its model (once, then reused) and kept in the audit log");
+    await Exec("INSERT itam_ref.manufacturer(name_en,active) VALUES(N'Old Maker',0)");
+    Check(await Throws<ArgumentException>(() => store.Register(U(1), A("MON", 1, 0, "NEWMF-3") with { ManufacturerId = null, NewManufacturer = "Old Maker", NewModel = "X" }, default))
+        && await Throws<ArgumentException>(() => store.Register(U(1), A("MON", 1, 0, "NEWMF-4") with { ManufacturerId = null, NewModel = "X" }, default)),
+        "Register: an inactive manufacturer is not used again by name; a manufacturer is still required");
+    var poNew = NewId(await store.CreatePo(U(1), new ItamPoInput("PO-NEWMF", new DateOnly(2026, 10, 20), 1, "Procurement", null, null, null,
+        [new(1, "MON", null, null, "PM-32", null, 2, 400m, "PO Maker"), new(2, "SOF", null, null, null, "Licence", 1, 50m, "Ignored Maker")]), new("po.pdf", "application/pdf", poPdf), default));
+    var poMaker = await Scalar("SELECT manufacturer_id FROM itam_ref.manufacturer WHERE name_en=N'PO Maker'");
+    Check(poMaker is int && await Scalar($"SELECT manufacturer_id FROM itam_data.po_line WHERE po_id={poNew} AND line_no=1") is int pm && pm == (int)poMaker
+        && await Scalar("SELECT 1 FROM itam_ref.manufacturer WHERE name_en=N'Ignored Maker'") is null
+        && await Scalar("SELECT reason FROM itam_access.audit WHERE entity=N'model' AND reason=N'Added on a purchase order'") is not null,
+        "PO: a manufacturer and model not in the list are added from the PO line (not for software), kept in the audit log");
+
+    var wrongId = NewId(await store.Register(U(1), A("MON", 1, 2, "WRONG-ENTRY-1"), default));
+    var wrongNo = await Scalar($"SELECT asset_no FROM itam_data.asset WHERE asset_id={wrongId}") as string;
+    var canRemoveWrong = J(await store.Asset(U(2), wrongId, default)).Contains("\"canRemove\":true");
+    var cannotRemoveUsed = J(await store.Asset(U(2), hpc, default)).Contains("\"canRemove\":false");
+    Check(canRemoveWrong && cannotRemoveUsed && !J(await store.Asset(U(1), wrongId, default)).Contains("\"canRemove\":true")
+        && await Throws<ItamAccessDenied>(() => store.RemoveAsset(U(1), wrongId, new("registered twice"), default))
+        && await Throws<ArgumentException>(() => store.RemoveAsset(U(2), wrongId, new(" "), default))
+        && await Throws<ArgumentException>(() => store.RemoveAsset(U(2), hpc, new("wrong"), default)),
+        "Remove a wrong entry: the IT Manager only, with a reason, and never an asset that was used (delivered here)");
+    await store.RemoveAsset(U(2), wrongId, new("Registered twice by mistake"), default);
+    var removed = await Scalar($"SELECT before_json FROM itam_access.audit WHERE entity=N'asset' AND entity_key=N'{wrongNo}' AND action=N'Remove' AND reason=N'Registered twice by mistake'") as string;
+    Check(await Scalar($"SELECT 1 FROM itam_data.asset WHERE asset_id={wrongId}") is null && await Scalar($"SELECT 1 FROM itam_data.asset_event WHERE asset_id={wrongId}") is null
+        && removed is not null && removed.Contains("WRONG-ENTRY-1") && removed.Contains(wrongNo!) && await Throws<ArgumentException>(() => store.Asset(U(2), wrongId, default)),
+        "Remove a wrong entry: the asset and its details are gone; the audit log keeps the full record and the reason");
+    Console.WriteLine("PASS new manufacturer and remove a wrong entry");
     // Review copies of the emails (only when ITAM_MAIL_SAMPLES names a folder): the latest email of each template, as sent,
     // with the logo embedded so each file opens on its own. Invented check data only.
     if (Environment.GetEnvironmentVariable("ITAM_MAIL_SAMPLES") is { Length: > 0 } sampleDir)

@@ -1,4 +1,4 @@
-import {$,el,api,shell,option,fail,statusTag} from '/itam.js';
+import {$,el,api,shell,option,fail,statusTag,message} from '/itam.js';
 let page=1;
 async function load(){
   const q=new URLSearchParams({page});for(const k of ['q','type','status','region','location','model','computerType','processor','memory','user','sap']){const v=$(k).value.trim();if(v)q.set(k,v);}
@@ -28,5 +28,6 @@ try{
     $('prev').onclick=()=>{page--;load();};$('next').onclick=()=>{page++;load();};
     const p=new URLSearchParams(location.search);for(const k of ['q','status','type','region','computerType'])if(p.get(k))$(k).value=p.get(k);
     await load();
+    if(p.get('removed'))message(`${p.get('removed')} was removed. The audit log keeps a copy of the record.`);
   }
 }catch(e){fail(e);}
