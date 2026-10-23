@@ -419,7 +419,9 @@ public sealed partial class ItamStore
         }
         var notSignedMine = assets.Count(a => !((dynamic)a).signed);
         var movements = await Rows(c, null, MoveSelect + "WHERE m.requested_by=@e OR m.employee_id=@e OR m.sender_id=@e OR m.receiver_id=@e ORDER BY m.movement_id DESC", MapMove, token, ("@e", s.Id));
-        return new { me = s.Id, assets, documents, requests = mine, waiting, team, notSigned = notSignedMine, inkApprovals = await PendingApprovals(c, s, token), approvalDays = ApprovalDays, movements, purposes = MovementPurposes };
+        // The employee's branch: the branch named as their Office in AD, to start a gate pass from it.
+        var myBranchId = await Scalar(c, null, "SELECT TOP 1 g.location_id FROM itam_access.employee e JOIN itam_ref.location g ON g.name_en=e.branch AND g.kind=N'Branch' AND g.active=1 WHERE e.employee_id=@e", token, ("@e", s.Id)) as int?;
+        return new { me = s.Id, assets, documents, requests = mine, waiting, team, notSigned = notSignedMine, inkApprovals = await PendingApprovals(c, s, token), approvalDays = ApprovalDays, movements, purposes = MovementPurposes, myBranchId };
     }
 
     internal static async Task<int> RequestApprovalsCount(DbConnection c, ItamScope s, CancellationToken token)

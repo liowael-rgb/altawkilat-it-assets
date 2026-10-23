@@ -128,7 +128,12 @@ async function newMovement(kindParam){
         carriedBy:warehouse?'Other':carried.value,carrierName:carrier.value||null,carrierMobile:mobile.value||null,receiverId:personId(receiver),senderId:personId(sender)};
       const r=await api('/movements',{method:'POST',json:body});location.assign('/movement.html?id='+r.id+'&created=1');}catch(e){fail(e);}},'primary','check');
   const acts=el('div',null,'actions');acts.append(save,btn('Cancel',()=>history.back()));
-  $('view').replaceChildren(card(warehouse?'Warehouse transfer':'Gate pass',null,g),card('Assets',null,assetsBox),acts);find();
+  $('view').replaceChildren(card(warehouse?'Warehouse transfer':'Gate pass',null,g),card('Assets',null,assetsBox),acts);
+  // From My IT Assets (owner, 23 October 2026): start from the employee's branch in AD, and with the asset already chosen.
+  if(!warehouse&&md.myBranchId&&[...from.options].some(o=>o.value===String(md.myBranchId)))from.value=String(md.myBranchId);
+  const want=Number(q.get('asset'));
+  if(want&&!warehouse){try{const a=(await query('')).find(x=>x.id===want);if(a){picked.set(a.id,a);drawChosen();}else message('That asset cannot go on a gate pass now (it may already be on one).','error');}catch(e){fail(e);}}
+  find();
 }
 
 try{m=await shell(q.get('new')?'movements':'movements');

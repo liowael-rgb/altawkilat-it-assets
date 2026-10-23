@@ -992,6 +992,10 @@ try
     Check(await Scalar("SELECT kind FROM itam_ref.location WHERE name_en=N'Taif Branch'") as string == "Branch" && await Scalar($"SELECT city FROM itam_ref.location WHERE location_id={csvBranchId}") as string == "Riyadh"
         && await store.Change(U(2), new("location", "save", E(new { name = "Taif IT Store", kind = "ITWarehouse", region = "West", active = true }), null), default).ContinueWith(t => t.IsCompletedSuccessfully),
         "Branch: an AD office is saved as a branch; a branch saved before keeps its name; an IT warehouse is named freely");
+    var taif = Convert.ToInt32(await Scalar("SELECT location_id FROM itam_ref.location WHERE name_en=N'Taif Branch'"));
+    Check(JsonSerializer.SerializeToElement(await store.MyItAssets(U(10), default)).GetProperty("myBranchId").GetInt32() == taif
+        && JsonSerializer.SerializeToElement(await store.MyItAssets(U(12), default)).GetProperty("myBranchId").ValueKind == JsonValueKind.Null,
+        "Gate pass from My IT Assets: it starts from the employee's branch in AD (none when the AD office is not a branch)");
     await Exec($"UPDATE itam_access.employee SET branch=NULL,region=NULL WHERE employee_id IN('{G(9)}','{G(10)}')");
     Console.WriteLine("PASS branches from AD");
     // Review copies of the emails (only when ITAM_MAIL_SAMPLES names a folder): the latest email of each template, as sent,

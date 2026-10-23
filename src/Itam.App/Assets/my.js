@@ -14,7 +14,8 @@ const assetCells=a=>[pdf(a.assetNo,`/api/deliveries/${a.deliveryId}/note.pdf`),a
 
 async function load(note){
   d=await api('/my');
-  $('head-actions').replaceChildren(btn('Ask for a device',ask,'primary','plus'),btn('Ask for ink',()=>location.assign('/ink.html'),'','ink'));
+  // Request a gate pass next to Ask for a device (owner, 23 October 2026): to take my assets out of the building or to another branch.
+  $('head-actions').replaceChildren(btn('Ask for a device',ask,'primary','plus'),btn('Request a gate pass',()=>location.assign('/movement.html?new=gate'),'','movements'),btn('Ask for ink',()=>location.assign('/ink.html'),'','ink'));
   const parts=[];
   if(d.waiting.length||d.inkApprovals){
     const c=card('Waiting for your decision','As the direct manager, or as the IT Manager for every request (or a backup during leave). A rejection needs a reason.');
@@ -25,7 +26,7 @@ async function load(note){
     parts.push(c);
   }
   parts.push(card('My assets',d.notSigned?`${d.notSigned} delivery note${d.notSigned>1?'s are':' is'} waiting for your signature: sign the printed note and give it to IT.`:'The IT assets in your custody. Open the Asset No. for its delivery note.',
-    table(['Asset No.','Type','Model','Serial / service tag','Computer name','Delivered','Delivery note'],d.assets,assetCells,null,{empty:'No IT assets in your custody.'})));
+    table(['Asset No.','Type','Model','Serial / service tag','Computer name','Delivered','Delivery note'],d.assets,assetCells,a=>[['Gate pass',()=>location.assign('/movement.html?new=gate&asset='+a.assetId)]],{empty:'No IT assets in your custody.'})));
   parts.push(card('My requests','Device requests for you, or that you made for a member of your team. Ink requests are on the Ink page.',
     table(['Request','For','What','Status','Asked'],d.requests,r=>[el('span',r.no,'mono'),r.employeeId===d.me?'Me':r.employee,two(what(r),r.description),two(reqTag(r),r.rejectReason||r.cancelledReason||''),when(r.requestedAt)],
       null,{empty:'No requests yet. Use Ask for a device.',onRow:go})));
