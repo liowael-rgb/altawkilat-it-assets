@@ -8,7 +8,7 @@ using QRCoder;
 namespace Itam.App;
 
 public sealed record ItamDeliveryInput(Guid? EmployeeId, DateOnly? DeliveredOn, string? OwnerType, string? ComputerName, string? Notes);
-public sealed record ItamReturnInput(DateTime? ReceivedAt, string? Condition, int? LocationId, string? Notes);
+public sealed record ItamReturnInput(DateTime? ReceivedAt, string? Condition, int? LocationId, string? Notes, string? Kind = null);
 public sealed record ItamAssessmentInput(string? Review, string? Recommendation);
 public sealed record ItamTaskDone(string? Note);
 
@@ -154,6 +154,39 @@ public sealed partial class ItamStore
         await tx.CommitAsync(token);
     }
 
+    public sealed record ReturnPlace(int Id, string Name, string Region);
+    public sealed record ReturnPlaceSet(string? AdBranch, string? AdRegion, string RegionCode, bool RegionFromAd, ReturnPlace? Branch, string? BranchProblem, List<ReturnPlace> Warehouses, string? WarehouseProblem);
+
+    /// <summary>Where a returned asset can be kept, from the employee's AD details: the branch with the name of the employee's AD
+    /// office, and the IT warehouses of the employee's AD region (or of the asset's region when AD gives no known region).</summary>
+    static async Task<ReturnPlaceSet> ReturnPlacesFor(DbConnection c, DbTransaction? tx, DeliveryRow d, CancellationToken token)
+    {
+        var (adBranch, adRegion) = (await Rows(c, tx, "SELECT branch,region FROM itam_access.employee WHERE employee_id=@e", r => (S(r, 0), S(r, 1)), token, ("@e", d.EmployeeId))).SingleOrDefault();
+        var fromAd = await Scalar(c, tx, "SELECT TOP 1 region_code FROM itam_ref.region WHERE (region_code=@r OR name_en=@r) AND active=1", token, ("@r", adRegion?.Trim() ?? "")) as string;
+        var region = fromAd ?? d.Region;
+        static ReturnPlace Place(DbDataReader r) => new(r.GetInt32(0), r.GetString(1), r.GetString(2));
+        var branch = string.IsNullOrWhiteSpace(adBranch) ? null
+            : (await Rows(c, tx, "SELECT location_id,name_en,region_code FROM itam_ref.location WHERE kind=N'Branch' AND active=1 AND name_en=@b", Place, token, ("@b", adBranch.Trim()))).FirstOrDefault();
+        var warehouses = await Rows(c, tx, "SELECT location_id,name_en,region_code FROM itam_ref.location WHERE kind=N'ITWarehouse' AND active=1 AND region_code=@r ORDER BY name_en", Place, token, ("@r", region));
+        return new(adBranch, adRegion, region, fromAd is not null, branch,
+            branch is not null ? null : string.IsNullOrWhiteSpace(adBranch) ? "The employee has no branch (Office) in AD: choose IT warehouse, or fix the Office in AD."
+                : $"The employee's branch in AD, \"{adBranch.Trim()}\", is not in the list of branches: add it in the Administration Center (same name), or choose IT warehouse.",
+            warehouses, warehouses.Count > 0 ? null : $"There is no active IT warehouse in {region}: add it in the Administration Center, or choose Branch.");
+    }
+
+    /// <summary>The places offered on the receive form.</summary>
+    public async Task<object> ReturnPlaces(ItamUser user, int deliveryId, CancellationToken token)
+    {
+        await using var c = await Open(token);
+        var s = await Scope(c, null, user, token);
+        var d = await LoadDelivery(c, null, deliveryId, false, token);
+        Require(s.CanHandover(d.Region), "You cannot receive this asset back.");
+        var p = await ReturnPlacesFor(c, null, d, token);
+        return new { adBranch = p.AdBranch, adRegion = p.AdRegion, region = p.RegionCode, regionFromAd = p.RegionFromAd,
+            branch = p.Branch is { } b ? new { id = b.Id, name = b.Name, region = b.Region } : null, branchProblem = p.BranchProblem,
+            warehouses = p.Warehouses.Select(w => new { id = w.Id, name = w.Name, region = w.Region }), warehouseProblem = p.WarehouseProblem };
+    }
+
     /// <summary>Receive the asset back physically (form 05): receipt note = delivery number + -R; the asset is In Store where it
     /// is received; the computer name is freed; the infrastructure removal task is created.</summary>
     public async Task<object> ReturnAsset(ItamUser user, int deliveryId, ItamReturnInput x, CancellationToken token)
@@ -170,6 +203,19 @@ public sealed partial class ItamStore
         if (at > UtcNow.AddMinutes(5)) throw new ArgumentException("The receipt date cannot be in the future.");
         if (DateOnly.FromDateTime(at.AddHours(3)) < d.On) throw new ArgumentException("The receipt date cannot be before the delivery date.");
         var condition = ReturnConditions.Any(r => r.Code == x.Condition) ? x.Condition! : throw new ArgumentException("Choose the condition (Working, Damaged or Faulty).");
+        // Where it is kept follows the employee's AD details (owner, 23 October 2026): IT chooses IT warehouse or branch; the
+        // branch is the employee's branch in AD, the IT warehouse is the one of the employee's region in AD.
+        var places = await ReturnPlacesFor(c, tx, d, token);
+        var place = x.Kind switch
+        {
+            "Branch" => places.Branch ?? throw new ArgumentException(places.BranchProblem!),
+            "ITWarehouse" => places.Warehouses.Count == 0 ? throw new ArgumentException(places.WarehouseProblem!)
+                : x.LocationId is int wanted ? places.Warehouses.FirstOrDefault(w => w.Id == wanted) ?? throw new ArgumentException($"Choose an IT warehouse of {places.RegionCode} (the employee's region).")
+                : places.Warehouses.Count == 1 ? places.Warehouses[0] : throw new ArgumentException($"{places.RegionCode} has several IT warehouses: choose one."),
+            _ => throw new ArgumentException("Choose IT warehouse or branch."),
+        };
+        if (x.Kind == "Branch" && x.LocationId is int b && b != place.Id) throw new ArgumentException($"The employee's branch in AD is {place.Name}.");
+        x = x with { LocationId = place.Id };
         var loc = (await Rows(c, tx, "SELECT region_code,kind,name_en FROM itam_ref.location WHERE location_id=@l AND active=1", r => (Region: r.GetString(0), Kind: r.GetString(1), Name: r.GetString(2)), token, ("@l", x.LocationId ?? 0))).SingleOrDefault();
         if (loc.Region is null) throw new ArgumentException("Choose the IT warehouse or branch receiving the asset.");
         Require(s.CanHandover(loc.Region), $"You can receive assets into your regions only ({string.Join(", ", s.Regions)}).");

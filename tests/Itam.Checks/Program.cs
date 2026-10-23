@@ -215,12 +215,28 @@ try
     await store.UploadSigned(U(1), dn1Id, scan, default);
     Check(await Throws<ArgumentException>(() => store.UploadSigned(U(1), dn1Id, scan, default)), "The signed copy is kept unchanged once uploaded");
     Check(await Throws<ArgumentException>(() => store.Assess(U(1), dn1Id, new("x", "Reuse"), null, default)), "No technical assessment while the employee still has the asset");
-    var ret = JsonSerializer.SerializeToElement(await store.ReturnAsset(U(1), dn1Id, new(null, "Faulty", 2, "Broken screen"), default));
+    // Where a returned asset is kept follows the employee's AD details (owner, 23 October 2026).
+    var noAd = J(await store.ReturnPlaces(U(1), dn1Id, default));
+    Check(noAd.Contains("\"regionFromAd\":false") && noAd.Contains("Riyadh WH") && !noAd.Contains("Jeddah WH") && noAd.Contains("no branch (Office) in AD")
+        && await Throws<ArgumentException>(() => store.ReturnAsset(U(1), dn1Id, new(null, "Faulty", 1, null), default))
+        && await Throws<ArgumentException>(() => store.ReturnAsset(U(1), dn1Id, new(null, "Faulty", null, null, "Branch"), default)),
+        "Receive back: IT warehouse or branch must be chosen; without an AD region the IT warehouses of the asset's region are offered; no AD branch, no branch");
+    await Exec($"UPDATE itam_access.employee SET region=N'West',branch=N'Jeddah Branch' WHERE employee_id=(SELECT employee_id FROM itam_data.delivery WHERE delivery_id={dn1Id})");
+    var westAd = J(await store.ReturnPlaces(U(1), dn1Id, default));
+    await Exec("INSERT itam_ref.location(name_en,kind,region_code,city) VALUES(N'Jeddah Branch','Branch','West',N'Jeddah')");
+    var jeddahBranch = Convert.ToInt32(await Scalar("SELECT location_id FROM itam_ref.location WHERE name_en=N'Jeddah Branch'"));
+    var withBranch = J(await store.ReturnPlaces(U(1), dn1Id, default));
+    Check(westAd.Contains("\"regionFromAd\":true") && westAd.Contains("Jeddah WH") && !westAd.Contains("Riyadh WH") && westAd.Contains("is not in the list of branches") && withBranch.Contains($"\"branch\":{{\"id\":{jeddahBranch}")
+        && await Throws<ArgumentException>(() => store.ReturnAsset(U(1), dn1Id, new(null, "Faulty", 1, null, "ITWarehouse"), default))
+        && await Throws<ArgumentException>(() => store.ReturnAsset(U(1), dn1Id, new(null, "Faulty", 2, null, "Branch"), default)),
+        "Receive back: the IT warehouse of the employee's AD region and the branch with the AD office name; another place is refused");
+    var ret = JsonSerializer.SerializeToElement(await store.ReturnAsset(U(1), dn1Id, new(null, "Faulty", 2, "Broken screen", "ITWarehouse"), default));
+    await Exec($"UPDATE itam_access.employee SET region=NULL,branch=NULL WHERE employee_id=(SELECT employee_id FROM itam_data.delivery WHERE delivery_id={dn1Id})");
     Check(ret.GetProperty("receiptNo").GetString() == dn1.GetProperty("deliveryNo").GetString() + "-R"
         && await Scalar($"SELECT status+'|'+stock_location+'|'+CAST(location_id AS varchar(9)) FROM itam_data.asset WHERE asset_id={hpc}") as string == "InStore|ITWarehouse|2"
         && await Scalar($"SELECT COUNT(*) FROM itam_data.asset_attribute WHERE asset_id={hpc} AND attr_code='ComputerName'") is 0,
         "Receipt note -R: the asset is In Store where it is received; computer name freed");
-    Check(await Throws<ArgumentException>(() => store.ReturnAsset(U(1), dn1Id, new(null, "Working", 1, null), default)), "A delivery is received back once");
+    Check(await Throws<ArgumentException>(() => store.ReturnAsset(U(1), dn1Id, new(null, "Working", null, null, "ITWarehouse"), default)), "A delivery is received back once");
     await store.Deliver(U(1), hpc2, Dl(G(10), "ATWK-H01"), default);
     Check(await Scalar($"SELECT COUNT(*) FROM itam_data.delivery WHERE computer_name='ATWK-H01'") is 2, "The freed computer name can be used again");
     var adTask = (int)(await Scalar($"SELECT task_id FROM itam_data.task WHERE delivery_id={dn1Id} AND kind='RemoveFromAd'"))!;
@@ -234,7 +250,7 @@ try
         && System.Text.Encoding.ASCII.GetString((await store.ReceiptNote(U(1), dn1Id, default)).Content, 0, 5) == "%PDF-",
         "Technical assessment TA-: Dispose starts Pending disposal approval; receipt and assessment PDFs");
     var phoneDn = JsonSerializer.SerializeToElement(await store.Deliver(U(1), phoneId, Dl(G(9), null), default)).GetProperty("id").GetInt32();
-    await store.ReturnAsset(U(1), phoneDn, new(null, "Working", 1, null), default);
+    await store.ReturnAsset(U(1), phoneDn, new(null, "Working", null, null, "ITWarehouse"), default);
     var cucm = (int)(await Scalar($"SELECT task_id FROM itam_data.task WHERE delivery_id={phoneDn} AND kind='RemoveFromCucm'"))!;
     Check(await Throws<ItamAccessDenied>(() => store.TaskDone(U(3), cucm, new(null), default)), "The Team Leader cannot confirm the CUCM removal (System Administrator and Voice Administrator do)");
     await store.TaskDone(U(6), cucm, new(null), default);
@@ -536,7 +552,7 @@ try
     Check(await Throws<ItamAccessDenied>(() => store.ReportLoss(U(12), new(lpcNo, eDay, "Office", "Gone"), null, default)), "Only the holder or IT of the region reports a loss");
     var lc = NewId(await store.ReportLoss(U(10), new(lpcNo, eDay, "Abha office", "Not found after the weekend"), null, default));
     Check(await Scalar($"SELECT status FROM itam_data.asset WHERE asset_id={lpc}") as string == "Lost" && await Scalar($"SELECT received_at_utc FROM itam_data.delivery WHERE delivery_id={lDl}") is null
-        && await Throws<ArgumentException>(() => store.ReturnAsset(U(1), lDl, new(null, "Working", 1, null), default)) && await Throws<ArgumentException>(() => store.ReportLoss(U(1), new(lpcNo, eDay, "x", "y"), null, default)),
+        && await Throws<ArgumentException>(() => store.ReturnAsset(U(1), lDl, new(null, "Working", null, null, "ITWarehouse"), default)) && await Throws<ArgumentException>(() => store.ReportLoss(U(1), new(lpcNo, eDay, "x", "y"), null, default)),
         "Loss LC-n: the asset is Lost, the custody stays open, no receipt; one open case per asset");
     Check(await Throws<ItamAccessDenied>(() => store.AssignLoss(U(3), lc, new(G(3)), default)) && await Throws<ArgumentException>(() => store.AssignLoss(U(2), lc, new(G(10)), default))
         && await Throws<ArgumentException>(() => store.DecideLoss(U(2), lc, new("NotLiable", "x", null), scan, default)), "Only the IT Manager assigns; never the holder; no decision before the findings");
@@ -615,7 +631,7 @@ try
     Check(await Throws<ArgumentException>(() => store.CompleteClearance(U(5), cl, new("HR form"), default)) && await Throws<ArgumentException>(() => store.UserDisabled(U(5), cl, new(null), default)),
         "No clearance while assets are held; the AD user stays active until the clearance is completed");
     while (await Scalar($"SELECT TOP 1 delivery_id FROM itam_data.delivery WHERE employee_id='{G(12)}' AND received_at_utc IS NULL") is int openDl)
-        await store.ReturnAsset(U(1), openDl, new(null, "Working", 1, null), default);
+        await store.ReturnAsset(U(1), openDl, new(null, "Working", null, null, "ITWarehouse"), default);
     Check(await Throws<ItamAccessDenied>(() => store.CompleteClearance(U(1), cl, new("HR form"), default)), "Only the System Administrator or the IT Manager completes a clearance");
     await store.CompleteClearance(U(2), cl, new("HR clearance form signed"), default);
     Check(await Scalar($"SELECT disable_status FROM itam_data.clearance WHERE clearance_id={cl}") as string == "Waiting" && await Throws<ItamAccessDenied>(() => store.UserDisabled(U(1), cl, new(null), default)),

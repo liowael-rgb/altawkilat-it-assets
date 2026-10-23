@@ -90,10 +90,10 @@ static class DemoSeed
         await store.Deliver(officer, await AssetBy("serial_no", "DEMOMN0101"), new(G(10), today, "Personal", null, "Second screen"), default);
         var d4 = DeliveryId(await store.Deliver(officer, await AssetBy("mac_address", "00:11:22:33:44:55"), new(G(12), today.AddDays(-20), "Department", null, "Reception desk"), default));
         await store.UploadSigned(officer, d4, new ItamUpload("signed.pdf", "application/pdf", scanPdf), default);
-        await store.ReturnAsset(officer, d4, new(DateTime.UtcNow.AddDays(-2), "Working", await Loc("Dammam IT Warehouse (demo)"), "Department moved"), default);
+        await store.ReturnAsset(officer, d4, new(DateTime.UtcNow.AddDays(-2), "Working", null, "Department moved", "Branch"), default);
         var d5 = DeliveryId(await store.Deliver(officer, await AssetBy("service_tag", "DEMOTAG01"), new(G(11), today.AddDays(-40), "Personal", "ATWK-DEMO-009", null), default));
         await store.UploadSigned(officer, d5, new ItamUpload("signed.pdf", "application/pdf", scanPdf), default);
-        await store.ReturnAsset(officer, d5, new(DateTime.UtcNow.AddDays(-1), "Faulty", await Loc("Riyadh IT Warehouse (demo)"), "Does not start"), default);
+        await store.ReturnAsset(officer, d5, new(DateTime.UtcNow.AddDays(-1), "Faulty", null, "Does not start", "Branch"), default);
         await store.Assess(officer, d5, new("Motherboard failure; repair costs more than the device is worth.", "Dispose"), null, default);
 
         // Ink and invoices (step 3a): a department printer with its toner code; requests in every state; an order, a toner

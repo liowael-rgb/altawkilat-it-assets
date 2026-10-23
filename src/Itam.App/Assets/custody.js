@@ -68,15 +68,22 @@ function signed(d,reload){
     async x=>{if(!x.file)throw Error('Choose the scan of the signed delivery note.');await api(`/deliveries/${d.id}/signed`,{method:'POST',body:form({},x.file)});reload('Signed copy uploaded.');},{reason:false,button:'Upload'});
 }
 
-function receive(m,asset,h,d,reload){
-  const onlySpecialist=!m.viewsAll&&m.roles.some(r=>r.code==='SupportSpecialist');
-  const locs=m.lists.locations.filter(l=>l.active&&(!onlySpecialist||m.regions.includes(l.region)));
+async function receive(m,asset,h,d,reload){
+  // IT chooses IT warehouse or branch; the place follows the employee's AD details (owner, 23 October 2026): the branch is the
+  // employee's branch (Office) in AD, the IT warehouse is the one of the employee's region in AD.
+  let p;try{p=await api(`/deliveries/${d.id}/return-places`);}catch(e){fail(e);return;}
+  const into=[['','Choose']];
+  for(const w of p.warehouses)into.push(['ITWarehouse:'+w.id,`IT warehouse: ${w.name} (${w.region})`]);
+  if(p.branch)into.push(['Branch:'+p.branch.id,`Branch: ${p.branch.name} (${p.branch.region})`]);
+  const ad=`From AD: branch ${p.adBranch?'"'+p.adBranch+'"':'(none)'}, region ${p.adRegion?'"'+p.adRegion+'"':'(none)'}.`;
+  const notes=[ad,p.regionFromAd?null:`The employee's region is not known from AD, so the IT warehouses of ${p.region} (where the asset is registered) are offered.`,p.branchProblem,p.warehouseProblem].filter(Boolean).join(' ');
   edit(`Receive ${asset.assetNo} back from ${d.employee}`,[
     {key:'at',label:'Received on',type:'datetime-local',hint:'Empty = now.'},
     {key:'condition',label:'Condition',type:'select',options:[['','Choose'],...h.conditions.map(c=>[c.code,c.label])],required:true},
-    {key:'location',label:'Kept at (IT warehouse or branch)',type:'select',options:[['','Choose'],...locs.map(l=>[l.id,`${l.region} · ${l.name}`])],required:true},
+    {key:'into',label:'Receive into',type:'select',options:into,required:true,wide:true,hint:notes},
     {key:'notes',label:'Notes',type:'textarea',wide:true,max:1000}],
-    async x=>{const r=await api(`/deliveries/${d.id}/return`,{method:'POST',json:{receivedAt:x.at?new Date(x.at).toISOString():null,condition:x.condition,locationId:Number(x.location)||null,notes:x.notes}});
+    async x=>{const [kind,id]=(x.into||'').split(':');if(!kind)throw Error('Choose IT warehouse or branch.');
+      const r=await api(`/deliveries/${d.id}/return`,{method:'POST',json:{receivedAt:x.at?new Date(x.at).toISOString():null,condition:x.condition,kind,locationId:Number(id)||null,notes:x.notes}});
       window.open(`/api/deliveries/${d.id}/receipt.pdf`,'_blank');reload(`Received back on ${r.receiptNo}. The asset is In Store.`);},
     {reason:false,button:'Receive back',hint:'Only the physical return of the device. A loss or a sale is not a receipt.'});
 }
