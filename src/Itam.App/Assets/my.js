@@ -2,6 +2,7 @@
 // requests, what waits for my decision as a manager (request and cost approvals), and my team. Delivery notes are signed on
 // paper (no electronic Accept, owner 22 October 2026). Costs, keys and supplier details are not shown here.
 import {$,el,api,shell,fail,message,date,when,money,card,table,edit,form,svg,timeLeft} from '/itam.js';
+import {bilingual,steps,dialogSteps} from '/ar.js';
 let m,d;
 const open=href=>window.open(href,'_blank');
 const btn=(text,fn,cls,icon)=>{const b=el('button',null,cls||'');b.type='button';if(icon)b.append(svg(icon));b.append(text);b.onclick=fn;return b;};
@@ -17,6 +18,12 @@ async function load(note){
   // Request a gate pass next to Ask for a device (owner, 23 October 2026): to take my assets out of the building or to another branch.
   $('head-actions').replaceChildren(btn('Ask for a device',ask,'primary','plus'),btn('Request a gate pass',()=>location.assign('/movement.html?new=gate'),'','movements'),btn('Ask for ink',()=>location.assign('/ink.html'),'','ink'));
   const parts=[];
+  // How it works (owner, 23 October 2026: more explanation, in English and Arabic).
+  parts.push(steps('How it works',['Your devices: the IT assets in your custody. When IT gives you a device, sign the printed delivery note and give it back to IT.',
+    'Ask for a device: a new device or a replacement. Your direct manager approves, then IT gives you one from stock or buys it.',
+    'Request a gate pass: to take your device out of the building, or to move it to another branch. An IT approver agrees, then you show the printed pass to Security.',
+    'Ask for ink: toner for your printer. A senior manager approves, then the Ink Officer of your region delivers it.',
+    'Leaving the company? Give back every device in your custody to IT and get the receipt note.','Questions? Contact the IT Helpdesk.']));
   if(d.waiting.length||d.inkApprovals){
     const c=card('Waiting for your decision','As the direct manager, or as the IT Manager for every request (or a backup during leave). A rejection needs a reason.');
     if(d.waiting.length)c.append(table(['Request','Employee','What','Step','Cost','Time left'],d.waiting,
@@ -69,6 +76,10 @@ function ask(){
     {key:'description',label:'What is needed and why',type:'textarea',required:true,wide:true,max:2000}],
     async x=>{const r=await api('/requests',{method:'POST',body:form({employeeId:x.who||null,type:x.type,replacedAssetId:Number(x.replaced)||null,description:x.description},x.file)});
       await load(`${r.requestNo} sent to the direct manager for approval.`);},{reason:false,button:'Send the request',hint:'Your direct manager approves the request first; then IT handles it.'});
+  dialogSteps(['Choose New for a device you do not have yet, or Replacement for a device you have that is broken or too old.',
+    'Write what you need and why (for example: a laptop for site visits). Your direct manager gets an email to approve or reject.',
+    'After approval, the IT Assets Officer gives a device from stock, or prices it and asks your manager to approve the cost.',
+    'You get an email at every step. A request not decided in 3 days is cancelled automatically.']);
   function fill(i){const rep=i.type.value==='Replacement';i.replaced.closest('label').hidden=!rep;i.file.closest('label').hidden=!rep;
     const keep=i.replaced.value;i.replaced.replaceChildren();const list=assetsOf(i.who?.value||'');
     for(const [v,t] of [['','Choose'],...list.map(a=>[a.assetId,`${a.assetNo} · ${a.type} · ${a.model||''}`])]){const o=document.createElement('option');o.value=v;o.textContent=t;i.replaced.append(o);}
@@ -82,4 +93,5 @@ function decide(r,approve){
       done:()=>load(`${r.no} ${approve?'approved':'rejected'}.`)});
 }
 
+bilingual();
 try{m=await shell('my');await load();}catch(e){fail(e);}

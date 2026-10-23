@@ -557,3 +557,23 @@
 .x-signout{margin-left:auto;padding:6px;border:0;border-radius:8px;background:none;color:var(--faint);cursor:pointer}
 .x .x-me .x-signout{height:auto;box-shadow:none}
 .x .x-me .x-signout:hover{background:var(--fill);color:var(--bad)}
+/* Arabic under the English on the employee pages (owner, 23 Oct 2026): ar.js adds one Arabic line per known English text. */
+.ar{display:block;margin-top:1px;font-family:'Segoe UI','Tahoma','Arial',sans-serif;font-size:.93em;font-weight:500;line-height:1.55;color:var(--sub);text-align:left}
+.ar-i{display:inline;margin-left:.45em;font-size:.92em}
+.x-app .ar,.x-me .ar{display:block;margin:0;font-size:11px}
+h1>.ar{font-size:.6em;font-weight:600;color:var(--sub);margin-top:2px}
+h2>.ar,h3>.ar{font-size:.82em;font-weight:600}
+th>.ar{font-weight:600;text-transform:none;letter-spacing:0}
+.eyebrow>.ar{display:inline;margin-inline-start:.5em;letter-spacing:0;text-transform:none}
+.x-nav>span>.ar,.x-nav .ar{display:block;font-size:11.5px;font-weight:500;margin:0}
+button>.ar-i,a>.ar-i{color:inherit;opacity:.85}
+.tag>.ar-i{opacity:.85}
+.x-howto ol{margin:8px 0 0;padding-inline-start:22px;display:grid;gap:10px}
+.x-howto li{line-height:1.55}
+.x-howto li>.ar{margin-top:2px}
+.x-howto-in{margin:0;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--fill);box-shadow:none}
+.x-howto-in h2{margin:0;font-size:13px}
+.x-signin-card button.primary{flex-direction:column;gap:0;height:auto;min-height:46px;padding:6px 18px}
+.x-signin-card button.primary>.ar-i{margin:0;font-size:13px}
+.x-signin-help .ar{text-align:center}
+.x-signin-show .ar{display:inline;margin-left:.45em}

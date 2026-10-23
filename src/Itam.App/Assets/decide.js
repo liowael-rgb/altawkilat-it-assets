@@ -2,6 +2,8 @@
 // sends the decision as a signed-in request, which the server accepts only from the eligible approver and only while the
 // record is still at the step the email was for. Approve needs no other click; Reject asks for a reason.
 import {$,el,api,shell,fail,card,dl,when} from '/itam.js';
+import {bilingual} from '/ar.js';
+bilingual();
 import {btn} from '/eol.js';
 const q=new URLSearchParams(location.search);const k=q.get('k'),id=Number(q.get('id')),stage=q.get('s'),act=q.get('a');
 const visible=()=>new Promise(r=>{if(document.visibilityState==='visible')return r();document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')r();},{once:true});});

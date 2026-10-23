@@ -1,6 +1,8 @@
 // One movement (plan v1.9 step 4): a gate pass (branch transfer or other exit) or an IT warehouse transfer, with what the
 // signed-in person may do now; and the form for a new one (?new=gate or ?new=warehouse).
 import {$,el,api,shell,fail,message,date,when,card,table,edit,form,option,svg,dl,people,adCard,withSide} from '/itam.js';
+import {bilingual,steps} from '/ar.js';
+bilingual();
 const q=new URLSearchParams(location.search);let id=Number(q.get('id'));let m,d;
 const open=href=>window.open(href,'_blank');
 const btn=(text,fn,cls,icon)=>{const b=el('button',null,cls||'');b.type='button';if(icon)b.append(svg(icon));b.append(text);b.onclick=fn;return b;};
@@ -128,7 +130,11 @@ async function newMovement(kindParam){
         carriedBy:warehouse?'Other':carried.value,carrierName:carrier.value||null,carrierMobile:mobile.value||null,receiverId:personId(receiver),senderId:personId(sender)};
       const r=await api('/movements',{method:'POST',json:body});location.assign('/movement.html?id='+r.id+'&created=1');}catch(e){fail(e);}},'primary','check');
   const acts=el('div',null,'actions');acts.append(save,btn('Cancel',()=>history.back()));
-  $('view').replaceChildren(card(warehouse?'Warehouse transfer':'Gate pass',null,g),card('Assets',null,assetsBox),acts);
+  $('view').replaceChildren(...(warehouse?[]:[steps('How it works',['Choose the purpose and the asset (your own devices are listed below).',
+      'Moving to another branch: name the employee who receives it there. For other purposes: write the destination and when it comes back.',
+      'The IT Helpdesk Team Leader, System Administrator or IT Manager approves. Then print the pass; Security checks it against the labels on the devices.',
+      'The pass can be used for 3 days from the exit date. When the devices are back, confirm the return on the pass.'])]),
+    card(warehouse?'Warehouse transfer':'Gate pass',null,g),card('Assets',null,assetsBox),acts);
   // From My IT Assets (owner, 23 October 2026): start from the employee's branch in AD, and with the asset already chosen.
   if(!warehouse&&md.myBranchId&&[...from.options].some(o=>o.value===String(md.myBranchId)))from.value=String(md.myBranchId);
   const want=Number(q.get('asset'));

@@ -1,6 +1,8 @@
 // IT Assets shared page code: API calls with the anti-forgery token, the page frame (white side menu and top bar, the
 // approved desktop design), the form dialog, tables and formats. English screens; no inline styles (CSP).
 export const $=id=>document.getElementById(id);
+/** The English text of an element, without the Arabic line ar.js adds under it. */
+export const plain=e=>[...e.childNodes].filter(n=>!n.classList?.contains('ar')).map(n=>n.textContent).join('').trim();
 export function el(tag,text,cls){const e=document.createElement(tag);if(text!==undefined&&text!==null)e.textContent=String(text);if(cls)e.className=cls;return e;}
 export function option(v,t){const o=document.createElement('option');o.value=v;o.textContent=t;return o;}
 let csrf='';let mePromise=null;
@@ -223,11 +225,11 @@ function enhanceTable(wrap){
   if([...(wrap.closest('.card')||wrap.parentNode).querySelectorAll('input[type=search],input[type=text]')].some(i=>!i.closest('.x-tsearch')&&!t.contains(i))){wrap.dataset.search='own';return;}
   wrap.dataset.search='on';
   const heads=[...(t.tHead?.rows[0]?.cells||[])];
-  const card=wrap.closest('.card');const key=location.pathname+'|'+(card?.querySelector('h2')?.textContent||'')+'|'+heads.map(h=>h.textContent).join(',');
+  const card=wrap.closest('.card');const key=location.pathname+'|'+(card?.querySelector('h2')?.textContent||'')+'|'+heads.map(plain).join(',');
   const bar=el('div',null,'x-tsearch');const q=el('label',null,'x-tq');const input=document.createElement('input');input.type='search';input.placeholder='Search this list';input.setAttribute('aria-label','Search this list');
   q.append(svg('search'),input);
   const col=document.createElement('select');col.setAttribute('aria-label','Search in');col.append(option('','In all columns'));
-  heads.forEach((h,i)=>{const name=h.textContent.trim();if(name)col.append(option(String(i),'In '+name));});
+  heads.forEach((h,i)=>{const name=plain(h);if(name)col.append(option(String(i),'In '+name));});
   const count=el('span',null,'x-tcount');const clear=el('button','Clear','x-tclear');clear.type='button';clear.hidden=true;
   bar.append(q,col,count,clear);wrap.parentNode.insertBefore(bar,wrap);
   let none=null;
@@ -237,7 +239,7 @@ function enhanceTable(wrap){
     if(!n&&words.length){if(!none){none=el('tr',null,'x-nomatch');const td=el('td','No row matches the search.');td.colSpan=heads.length||1;none.append(td);}body.append(none);}else none?.remove();
     tableSearch.set(key,{q:input.value,c});};
   input.addEventListener('input',apply);col.addEventListener('change',apply);clear.onclick=()=>{input.value='';col.value='';apply();input.focus();};
-  heads.forEach((h,i)=>{if(!h.textContent.trim())return;h.classList.add('x-sortable');h.title='Sort by '+h.textContent.trim();
+  heads.forEach((h,i)=>{if(!plain(h))return;h.classList.add('x-sortable');h.title='Sort by '+plain(h);
     h.onclick=()=>{const dir=h.dataset.sort==='asc'?'desc':'asc';heads.forEach(x=>delete x.dataset.sort);h.dataset.sort=dir;
       const rows=data().map(r=>[r,sortKey(r.cells[i]?.textContent)]);rows.sort((a,b)=>compare(a[1],b[1])*(dir==='asc'?1:-1));for(const [r] of rows)body.append(r);for(const tot of body.querySelectorAll('tr.x-total'))body.append(tot);if(none?.isConnected)body.append(none);};});
   const saved=tableSearch.get(key);if(saved){input.value=saved.q;col.value=saved.c;}apply();

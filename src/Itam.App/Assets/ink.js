@@ -1,6 +1,8 @@
 // Ink page (build step 3a): ask for ink, the ink officer sends it to the approving manager, and IT orders from the supplier
 // and delivers. No delivery note to sign: the request document with its approval goes in the payment pack.
 import {$,el,api,shell,fail,message,date,when,card,table,edit,people,option,svg,adDrawer} from '/itam.js';
+import {bilingual,dialogSteps} from '/ar.js';
+bilingual();
 // The employee's name opens the Active Directory details (requester panel) in a side drawer.
 const who=r=>{const e=d?.employees?.[r.employeeId];if(!e)return r.employee;const b=el('button',r.employee,'x-person-link');b.type='button';b.title='Active Directory details';b.onclick=x=>{x.stopPropagation();adDrawer(e);};return b;};
 let m,d,filter=new URLSearchParams(location.search).get('filter')||'Submitted';
@@ -109,6 +111,9 @@ async function ask(){
   const isIt=d.canHandle;
   edit('Ask for ink: find your printer',[{key:'q',label:'Printer Asset No., serial number or toner code',required:true,wide:true,hint:'The Asset No. is on the IT label of the printer (for example PNT-4811). No label? Type the serial number (S/N) from the sticker on the printer.'}],
     async x=>{const list=await api('/printers?q='+encodeURIComponent(x.q||''));setTimeout(()=>list.length?details(list,isIt):newPrinter(isIt,x.q),0);},{reason:false,button:'Find'});
+  dialogSteps(['Find your printer by its Asset No. (on the label), serial number or toner code, or choose it from the list.',
+    'Choose the senior manager who approves (for example your Head of Department). They get an email.',
+    'After approval, the Ink Officer of your region delivers the toner from the shelf or orders it from the supplier. Follow it under My ink requests.']);
 }
 async function details(list,isIt){
   if(isIt)await people('');
