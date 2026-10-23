@@ -24,6 +24,7 @@ public sealed partial class ItamStore
         new("leavers", "Leavers holding assets", "Employees marked Resigned with assets still to collect.", "End of life", false),
         new("maintenance", "Maintenance cost", "Maintenance orders with the quotation and the final cost.", "Maintenance", true),
         new("ink", "Ink use", "Ink requests with the toner, quantity and delivery.", "Ink", true),
+        new("ink-printers", "Ink requests by printer", "Each printer with its ink requests, toners delivered and the last request.", "Ink", true),
         new("pos", "Purchase orders received", "Each PO line: ordered, received and the cost.", "Purchases", true),
         new("movements", "Gate passes and transfers", "Branch transfers, exit passes and warehouse transfers.", "Movements", true),
         new("sales", "Sales", "Devices sold to employees, with the price.", "End of life", true),
@@ -33,7 +34,7 @@ public sealed partial class ItamStore
 
     static bool CanReport(ItamScope s, string key) => key switch
     {
-        "maintenance" => s.MaintenanceView, "ink" => s.InkView || s.InvoiceToners, "pos" => s.PoView, "movements" => s.CanHandoverAny || s.ViewsAll,
+        "maintenance" => s.MaintenanceView, "ink" or "ink-printers" => s.InkView || s.InvoiceToners, "pos" => s.PoView, "movements" => s.CanHandoverAny || s.ViewsAll,
         "sales" => s.SalesView && s.CanViewAny, "disposals" => s.DisposalView, "loss" => s.LossViewAny, "leavers" => s.CollectView || s.MarkResigned,
         "unsigned" => s.CanHandoverAny, _ => s.CanViewAny
     };
@@ -193,6 +194,33 @@ public sealed partial class ItamStore
                 cols = ["Request", "Requested", "Employee", "Department", "Region", "Printer", "Toner", "Quantity", "Status", "Delivered on", .. s.InvoiceToners ? new[] { "Unit cost (SAR)" } : []];
                 rows = raw.Where(x => InDatesT(x.At) && (string.IsNullOrEmpty(region) || x.Region == region) && (s.InkView || s.InvoiceToners || s.CanInk(x.Region)))
                     .Select(x => s.InvoiceToners ? x.Row : x.Row[..10]).ToList();
+                break;
+            }
+            case "ink-printers":
+            {
+                // Ink requests by printer (owner, 23 October 2026): one row per printer (a printer not in IT Assets by its serial number).
+                var raw = await Rows(c, null, "SELECT COALESCE(pa.asset_no,N'S/N '+q.new_serial),CASE WHEN pa.asset_id IS NULL THEN ISNULL(nm.name_en+N' '+nmo.name_en,q.new_model) ELSE CONCAT(mf.name_en,' ',mo.name_en) END," +
+                    "COALESCE(pl.value,q.employee_location),g.name_en,q.region_code,q.requested_at_utc,q.toner,q.quantity,q.status,dv.delivered_on,dv.unit_cost,e.display_name,pa.serial_no " +
+                    "FROM itam_data.ink_request q JOIN itam_access.employee e ON e.employee_id=q.employee_id LEFT JOIN itam_data.asset pa ON pa.asset_id=q.printer_asset_id " +
+                    "LEFT JOIN itam_ref.manufacturer mf ON mf.manufacturer_id=pa.manufacturer_id LEFT JOIN itam_ref.model mo ON mo.model_id=pa.model_id LEFT JOIN itam_ref.location g ON g.location_id=pa.location_id " +
+                    "LEFT JOIN itam_data.asset_attribute pl ON pl.asset_id=pa.asset_id AND pl.attr_code=N'PrinterLocation' LEFT JOIN itam_ref.model nmo ON nmo.model_id=q.new_model_id LEFT JOIN itam_ref.manufacturer nm ON nm.manufacturer_id=nmo.manufacturer_id " +
+                    "LEFT JOIN itam_data.ink_delivery dv ON dv.request_id=q.request_id ORDER BY q.request_id",
+                    r => (Printer: r.GetString(0), Model: S(r, 1)?.Trim(), Where: S(r, 2), KeptAt: S(r, 3), Region: S(r, 4), At: Utc(r, 5), Toner: r.GetString(6), Qty: r.GetInt32(7), Status: r.GetString(8),
+                        Delivered: Day(r, 9), Cost: r.IsDBNull(10) ? (decimal?)null : r.GetDecimal(10), Employee: r.GetString(11), Serial: S(r, 12)), token);
+                var mine = raw.Where(x => InDatesT(x.At) && (string.IsNullOrEmpty(region) || x.Region == region) && (s.InkView || s.InvoiceToners || s.CanInk(x.Region))).ToList();
+                cols = ["Printer", "Serial No.", "Model", "Printer location", "Kept at", "Region", "Requests", "Delivered", "Toners delivered", "Rejected or cancelled", "Toners used", "First request", "Last request", "Last delivered", "Last asked by",
+                    .. s.InvoiceToners ? new[] { "Toner cost (SAR)" } : []];
+                rows = mine.GroupBy(x => x.Printer).Select(g =>
+                {
+                    var last = g.MaxBy(x => x.At);
+                    var delivered = g.Where(x => x.Status == "Delivered").ToList();
+                    return (object?[])[g.Key, g.First().Serial, last.Model, last.Where, last.KeptAt, last.Region, g.Count(), delivered.Count, delivered.Sum(x => x.Qty), g.Count(x => x.Status is "Rejected" or "Cancelled"),
+                        string.Join(", ", g.Select(x => x.Toner).Distinct()), g.Min(x => x.At), last.At, delivered.Max(x => x.Delivered), last.Employee,
+                        .. s.InvoiceToners ? new object?[] { delivered.Sum(x => (x.Cost ?? 0) * x.Qty) } : []];
+                }).OrderByDescending(r => (int)r[8]!).ThenBy(r => (string)r[0]!).ToList();
+                if (rows.Count > 0)
+                    rows.Add(["Total", null, null, null, null, null, rows.Sum(r => (int)r[6]!), rows.Sum(r => (int)r[7]!), rows.Sum(r => (int)r[8]!), rows.Sum(r => (int)r[9]!), null, null, null, null, null,
+                        .. s.InvoiceToners ? new object?[] { rows.Sum(r => (decimal)r[15]!) } : []]);
                 break;
             }
             case "pos":

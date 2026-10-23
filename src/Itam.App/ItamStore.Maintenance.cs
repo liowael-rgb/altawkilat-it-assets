@@ -262,6 +262,12 @@ public sealed partial class ItamStore
         var orders = await Rows(c, null, OrderSelect + "WHERE o.asset_id=@a ORDER BY o.order_id DESC", MapOrder, token, ("@a", assetId));
         var itRepairs = await Rows(c, null, "SELECT v.at_utc,e.display_name,v.detail FROM itam_data.asset_event v LEFT JOIN itam_access.employee e ON e.employee_id=v.actor_id WHERE v.asset_id=@a AND v.kind=N'IT repair' ORDER BY v.event_id DESC",
             r => new { at = Utc(r, 0), by = S(r, 1), details = S(r, 2) }, token, ("@a", assetId));
-        return new { deliveries, orders, itRepairs, canItRepair = s.ItRepair(region), canOrder = MaintenanceManage(s) };
+        // Ink requests of this printer (owner, 23 October 2026), newest first.
+        var ink = await Rows(c, null, "SELECT q.request_no,q.requested_at_utc,e.display_name,q.toner,q.quantity,q.status,o.order_no,dv.delivered_on,q.reject_reason,q.cancelled_reason " +
+            "FROM itam_data.ink_request q JOIN itam_access.employee e ON e.employee_id=q.employee_id LEFT JOIN itam_data.supplier_order o ON o.order_id=q.order_id " +
+            "LEFT JOIN itam_data.ink_delivery dv ON dv.request_id=q.request_id WHERE q.printer_asset_id=@a ORDER BY q.request_id DESC",
+            r => new { no = r.GetString(0), at = Utc(r, 1), employee = r.GetString(2), toner = r.GetString(3), quantity = r.GetInt32(4), status = r.GetString(5), statusLabel = InkStatusLabel(r.GetString(5)),
+                order = S(r, 6), deliveredOn = Day(r, 7), why = S(r, 8) ?? S(r, 9) }, token, ("@a", assetId));
+        return new { deliveries, orders, itRepairs, ink, canItRepair = s.ItRepair(region), canOrder = MaintenanceManage(s) };
     }
 }

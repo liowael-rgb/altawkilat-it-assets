@@ -65,6 +65,10 @@ public sealed partial class ItamStore
             roles = await Rows(c, null, "SELECT a.assignment_id,a.employee_id,e.display_name,e.enabled,a.role_code,a.region_code,a.created_at_utc FROM itam_access.role_assignment a JOIN itam_access.employee e ON e.employee_id=a.employee_id ORDER BY a.role_code,e.display_name,a.region_code",
                 r => new { id = r.GetInt32(0), employee = r.GetGuid(1), name = r.GetString(2), enabled = r.GetBoolean(3), role = r.GetString(4), roleLabel = ItamRoles.Label(r.GetString(4)), region = S(r, 5), since = Utc(r, 6) }, token),
             roleCodes = ItamRoles.All.Select(r => new { code = r, label = ItamRoles.Label(r) }),
+            // The offices in Active Directory (the employees' Office), for choosing a branch; the region most of its employees have in AD.
+            adOffices = await Rows(c, null, "SELECT e.branch,COUNT(*),(SELECT TOP 1 rg.region_code FROM itam_access.employee x JOIN itam_ref.region rg ON rg.region_code=x.region OR rg.name_en=x.region " +
+                "WHERE x.enabled=1 AND x.branch=e.branch GROUP BY rg.region_code ORDER BY COUNT(*) DESC) FROM itam_access.employee e WHERE e.enabled=1 AND e.branch IS NOT NULL AND LTRIM(e.branch)<>N'' GROUP BY e.branch ORDER BY e.branch",
+                r => new { name = r.GetString(0), people = r.GetInt32(1), region = S(r, 2) }, token),
             csv = CsvLists.Where(l => l.Key != "audit" || s.AuditView).Select(l => new { key = l.Key, title = l.Title, columns = l.Columns, import = l.Import && (l.Key == "roles" ? s.RolesManage : s.MasterData) }),
             audit = s.AuditView ? await Rows(c, null, "SELECT TOP 300 at_utc,actor_id,entity,entity_key,action,after_json,reason FROM itam_access.audit ORDER BY audit_id DESC",
                 r => (object)new { at = Utc(r, 0), who = N(r.GetGuid(1)), entity = r.GetString(2), key = r.GetString(3), action = r.GetString(4), detail = S(r, 5), reason = S(r, 6) }, token) : [],
@@ -139,6 +143,12 @@ public sealed partial class ItamStore
             {
                 var kind = d.Kind is "ITWarehouse" or "Branch" ? d.Kind : throw new ArgumentException("Choose IT warehouse or branch.");
                 if (await Scalar(c, tx, "SELECT 1 FROM itam_ref.region WHERE region_code=@r", token, ("@r", d.Region ?? "")) is null) throw new ArgumentException("Choose the region.");
+                // A branch is an office in Active Directory (owner, 23 October 2026): its name is the employees' Office in AD, so the
+                // receive-back and the ink forms find it. A branch already saved under its name may keep it.
+                if (kind == "Branch" && await Scalar(c, tx, "SELECT TOP 1 1 FROM itam_access.employee WHERE enabled=1 AND branch=@n", token, ("@n", name)) is null
+                    && await Scalar(c, tx, "SELECT TOP 1 1 FROM itam_access.employee WHERE enabled=1 AND branch IS NOT NULL AND LTRIM(branch)<>N''", token) is not null
+                    && await Scalar(c, tx, "SELECT 1 FROM itam_ref.location WHERE location_id=@i AND kind=N'Branch' AND name_en=@n", token, ("@i", d.Id ?? 0), ("@n", name)) is null)
+                    throw new ArgumentException($"Branch \"{name}\" is not an office in Active Directory: choose the branch from the AD offices (the Office field of the employees).");
                 if (await Scalar(c, tx, "SELECT location_id FROM itam_ref.location WHERE name_en=@n AND location_id<>@i", token, ("@n", name), ("@i", d.Id ?? 0)) is not null) throw new ArgumentException($"{name} is already in the list.");
                 if (d.Id is int id && await Scalar(c, tx, "SELECT region_code FROM itam_ref.location WHERE location_id=@i", token, ("@i", id)) is string oldRegion && oldRegion != d.Region
                     && await Scalar(c, tx, "SELECT 1 FROM itam_data.asset WHERE location_id=@i", token, ("@i", id)) is not null)

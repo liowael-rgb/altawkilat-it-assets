@@ -539,6 +539,20 @@ try
     Check(await Scalar($"SELECT status FROM itam_data.movement WHERE movement_id={ex}") as string == "Completed" && await store.ExpireMovements(default) == 1
         && await Scalar($"SELECT status FROM itam_data.movement WHERE movement_id={ex2}") as string == "Expired" && await Throws<ArgumentException>(() => store.DispatchMovement(U(10), ex2, new(null), default)),
         "Return confirmed closes the pass; an approved pass not dispatched within its validity expires and cannot be used");
+    // Ink history of each printer and the report by printer (owner, 23 October 2026).
+    {
+        var pNo = await Scalar($"SELECT asset_no FROM itam_data.asset WHERE asset_id={printer}") as string;
+        var asked = Convert.ToInt32(await Scalar($"SELECT COUNT(*) FROM itam_data.ink_request WHERE printer_asset_id={printer}"));
+        var given = Convert.ToInt32(await Scalar($"SELECT ISNULL(SUM(quantity),0) FROM itam_data.ink_request WHERE printer_asset_id={printer} AND status=N'Delivered'"));
+        var page = JsonSerializer.SerializeToElement(await store.Asset(U(2), printer, default)).GetProperty("record").GetProperty("ink");
+        var byPrinter = await store.Report(U(2), "ink-printers", null, null, null, default);
+        var row = byPrinter.Rows.FirstOrDefault(r => (string?)r[0] == pNo);
+        Check(asked > 0 && page.GetArrayLength() == asked && page[0].GetProperty("statusLabel").GetString()!.Length > 0
+            && row is not null && Convert.ToInt32(row[6]) == asked && Convert.ToInt32(row[8]) == given && (string?)byPrinter.Rows[^1][0] == "Total"
+            && byPrinter.Columns.Contains("Toners delivered") && (await store.ReportExcel(U(2), "ink-printers", null, null, null, default)).Content.Length > 0
+            && await Throws<ItamAccessDenied>(() => store.Report(U(6), "ink-printers", null, null, null, default)),
+            "Ink: each printer shows its ink requests; the report by printer counts requests and toners delivered, exports to Excel, and is for ink roles only");
+    }
     Console.WriteLine("PASS ink and invoices");
 
     // ---- End of life (step 5): loss, disposal, sale, leavers, AD comparison, licenses ----------------------------------------------
@@ -853,6 +867,7 @@ try
     Check(c1.Errors.Count == 1 && c1.Errors[0].Row == 3 && c1.Errors[0].Error.Contains("Kind") && !c1.Saved && !c2.Saved
         && await Scalar("SELECT 1 FROM itam_ref.location WHERE name_en=N'CSV Store A'") is null,
         "CSV import: a wrong row is listed with its Excel row number, and nothing is saved");
+    await Exec($"UPDATE itam_access.employee SET branch=N'CSV Store, B' WHERE employee_id='{G(8)}'"); // the branch is an office in AD
     var goodLoc = CsvFile("Region;Name;Kind;City\r\nCentral;CSV Store A;IT warehouse;Riyadh\r\nCentral;\"CSV Store, B\";Branch;\r\n");
     var c3 = await store.ImportCsv(U(2), "locations", new(true, null), goodLoc, default);
     var noneYet = await Scalar("SELECT COUNT(*) FROM itam_ref.location WHERE name_en LIKE N'CSV Store%'");
@@ -963,6 +978,22 @@ try
         && removed is not null && removed.Contains("WRONG-ENTRY-1") && removed.Contains(wrongNo!) && await Throws<ArgumentException>(() => store.Asset(U(2), wrongId, default)),
         "Remove a wrong entry: the asset and its details are gone; the audit log keeps the full record and the reason");
     Console.WriteLine("PASS new manufacturer and remove a wrong entry");
+
+    // ---- Branches are chosen from the offices in Active Directory (owner, 23 October 2026) -----------------------------------
+    await Exec($"UPDATE itam_access.employee SET branch=N'Taif Branch',region=N'West' WHERE employee_id IN('{G(9)}','{G(10)}')");
+    var offices = J(await store.Admin(U(2), default));
+    var csvBranchId = Convert.ToInt32(await Scalar("SELECT location_id FROM itam_ref.location WHERE name_en=N'CSV Store, B'"));
+    Check(offices.Contains("{\"name\":\"Taif Branch\",\"people\":2,\"region\":\"West\"}")
+        && await Throws<ArgumentException>(() => store.Change(U(2), new("location", "save", E(new { name = "Not An Office", kind = "Branch", region = "West", active = true }), null), default))
+        && (await store.ImportCsv(U(2), "locations", new(true, null), CsvFile("Name,Kind,Region\r\nNot An Office,Branch,West\r\n"), default)).Errors.Count == 1,
+        "Branch: a name that is not an office in AD is refused (form and CSV import)");
+    await store.Change(U(2), new("location", "save", E(new { name = "Taif Branch", kind = "Branch", region = "West", city = "Taif", active = true }), null), default);
+    await store.Change(U(2), new("location", "save", E(new { id = csvBranchId, name = "CSV Store, B", kind = "Branch", region = "Central", city = "Riyadh", active = true }), null), default);
+    Check(await Scalar("SELECT kind FROM itam_ref.location WHERE name_en=N'Taif Branch'") as string == "Branch" && await Scalar($"SELECT city FROM itam_ref.location WHERE location_id={csvBranchId}") as string == "Riyadh"
+        && await store.Change(U(2), new("location", "save", E(new { name = "Taif IT Store", kind = "ITWarehouse", region = "West", active = true }), null), default).ContinueWith(t => t.IsCompletedSuccessfully),
+        "Branch: an AD office is saved as a branch; a branch saved before keeps its name; an IT warehouse is named freely");
+    await Exec($"UPDATE itam_access.employee SET branch=NULL,region=NULL WHERE employee_id IN('{G(9)}','{G(10)}')");
+    Console.WriteLine("PASS branches from AD");
     // Review copies of the emails (only when ITAM_MAIL_SAMPLES names a folder): the latest email of each template, as sent,
     // with the logo embedded so each file opens on its own. Invented check data only.
     if (Environment.GetEnvironmentVariable("ITAM_MAIL_SAMPLES") is { Length: > 0 } sampleDir)

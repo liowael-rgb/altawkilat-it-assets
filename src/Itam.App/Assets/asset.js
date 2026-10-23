@@ -61,7 +61,8 @@ try{m=await shell('assets');const fresh=new URLSearchParams(location.search).get
 function historyCard(){
   const h=d.record;const box=el('div');const seg=el('div',null,'x-seg');
   const receipts=h.deliveries.filter(x=>x.receivedAt);const open=h.orders.find(x=>['WaitingApproval','Approved','WithSupplier'].includes(x.status));
-  const TABS=[['delivery','Delivery',h.deliveries.length],['receipt','Receipt',receipts.length],['maintenance','Maintenance',h.orders.length+h.itRepairs.length],['all','All events',d.history.length]];
+  const TABS=[['delivery','Delivery',h.deliveries.length],['receipt','Receipt',receipts.length],['maintenance','Maintenance',h.orders.length+h.itRepairs.length],
+    ...(d.asset.type==='PNT'?[['ink','Ink requests',h.ink.length]]:[]),['all','All events',d.history.length]];
   const doc=(text,href)=>{const a=el('a',text,'mono');a.href=href;a.target='_blank';return a;};
   const two=(x,y)=>{const s=el('span');s.append(typeof x==='string'?el('span',x):x);if(y)s.append(el('small',y,'x-sub'));return s;};
   const draw=()=>{
@@ -83,11 +84,19 @@ function historyCard(){
             two(x.dispatchedOn?'Sent '+date(x.dispatchedOn):'Not sent',x.returnedOn?'Back '+date(x.returnedOn):'Expected '+date(x.expectedReturn)),
             x.outcome?two(x.outcome,[x.repairDetails,x.invoiceNo?'Invoice '+x.invoiceNo:''].filter(Boolean).join(' · ')):''],null,{empty:'No maintenance orders.'}),
         el('h3','Repairs by IT'),table(['When','By','Repair done'],h.itRepairs,x=>[when(x.at),x.by||'',x.details||''],null,{empty:'No repairs by IT recorded.'}));}
+    else if(tab==='ink'){
+      // Ink requests of this printer (owner, 23 October 2026): every request, with the toner, the state and the delivery.
+      const delivered=h.ink.filter(x=>x.status==='Delivered');const toners=delivered.reduce((n,x)=>n+x.quantity,0);
+      const sum=el('p',h.ink.length?`${h.ink.length} requests · ${toners} toners delivered${delivered.length?' · last delivered '+date(delivered.map(x=>x.deliveredOn).sort().slice(-1)[0]):''}.`:'','hint');
+      const rep=el('a','Ink requests by printer (report)');rep.href='/reports.html?r=ink-printers';
+      box.replaceChildren(sum,table(['Request','Asked','By','Toner','Qty','State','Order','Delivered'],h.ink,
+        x=>[el('span',x.no,'mono'),when(x.at),x.employee,x.toner,String(x.quantity),two(el('span',x.statusLabel,'tag '+(x.status==='Delivered'?'ok':x.status==='Rejected'||x.status==='Cancelled'?'off':'warn')),x.why),x.order||'',date(x.deliveredOn)],
+        null,{empty:'No ink requests for this printer.'}),rep);}
     else{const t=table(['When','Who','What','Details'],d.history,x=>[when(x.at),x.who,x.kind,x.detail||'']);t.classList.add('x-history');box.replaceChildren(t);}
   };
   for(const [k,t,n] of TABS){const b=el('button',t);b.dataset.k=k;b.type='button';b.append(el('span',String(n),'x-segc'+(k==='maintenance'&&open?' hot':'')));b.onclick=()=>{tab=k;draw();};seg.append(b);}
   const bar=el('div',null,'x-filterbar');bar.append(seg);draw();
-  return card('History','Delivery notes, receipts back from employees and maintenance of this asset; All events shows every change.',bar,box);
+  return card('History','Delivery notes, receipts back from employees and maintenance of this asset'+(d.asset.type==='PNT'?', and its ink requests':'')+'; All events shows every change.',bar,box);
 }
 function itRepair(){
   edit(`Record an IT repair on ${d.asset.assetNo}`,[{key:'details',label:'Repair done by IT',type:'textarea',wide:true,required:true,max:1000,hint:'What was wrong and what IT did, for example "Replaced the keyboard from IT stock".'}],

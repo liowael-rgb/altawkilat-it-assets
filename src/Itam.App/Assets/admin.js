@@ -46,9 +46,20 @@ const render={
   regions:()=>[card('Regions','IT Support Specialists work per region; an asset belongs to the region of where it is kept.',
     table(['Code','Name','Order','Active'],L().regions,t=>[t.code,t.name,String(t.sort),yes(t.active)],d.can.masterData?t=>[['Edit',()=>ref('region',t,[['code','Code',true,true],['name','Name'],['sort','Order','number']])]]:null),
     d.can.masterData&&add('Add a region',()=>ref('region',null,[['code','Code'],['name','Name'],['sort','Order','number']])))],
-  locations:()=>{const form=x=>edit(x?x.name:'Add an IT warehouse or branch',[{key:'name',label:'Name',value:x?.name,required:true},{key:'kind',label:'Kind',type:'select',options:[['ITWarehouse','IT warehouse'],['Branch','Branch']],value:x?.kind},
+  locations:()=>{
+    // A branch is chosen from the offices in Active Directory (owner, 23 October 2026), so its name is the employees' Office in AD.
+    const offices=d.adOffices||[];const used=new Set(L().locations.filter(l=>l.kind==='Branch').map(l=>l.name.toLowerCase()));
+    const form=x=>{const opts=offices.filter(o=>!used.has(o.name.toLowerCase())||o.name===x?.name);
+      const legacy=x?.kind==='Branch'&&!offices.some(o=>o.name===x.name);
+      edit(x?x.name:'Add an IT warehouse or branch',[
+      {key:'kind',label:'Kind',type:'select',options:[['ITWarehouse','IT warehouse'],['Branch','Branch']],value:x?.kind,onchange:i=>{const b=i.kind.value==='Branch';i.name.closest('label').hidden=b;i.office.closest('label').hidden=!b;}},
+      {key:'name',label:'Name of the IT warehouse',value:x?.kind==='ITWarehouse'?x.name:'',max:200},
+      {key:'office',label:'Branch (office in Active Directory)',type:'select',options:[['','Choose'],...(legacy?[[x.name,x.name+' (not in AD)']]:[]),...opts.map(o=>[o.name,`${o.name} · ${o.people} employees${o.region?' · '+o.region:''}`])],value:x?.kind==='Branch'?x.name:'',
+        hint:offices.length?'The Office field of the employees in AD. Not in the list? Fix the Office in AD; the list follows within 15 minutes.':'No offices from AD yet: run Read AD now (Employees).',
+        onchange:i=>{const o=offices.find(y=>y.name===i.office.value);if(o?.region&&!x)i.region.value=o.region;}},
       {key:'region',label:'Region',type:'select',options:L().regions.map(r=>[r.code,r.name]),value:x?.region},{key:'city',label:'City',value:x?.city},{key:'active',label:'Active',type:'checkbox',value:x?x.active:true}],
-      (v,r)=>change('location',{id:x?.id,...v},r),{done:reload()});
+      (v,r)=>{const name=v.kind==='Branch'?v.office:v.name;if(!name)throw Error(v.kind==='Branch'?'Choose the branch from AD.':'Type the name of the IT warehouse.');
+        return change('location',{id:x?.id,name,kind:v.kind,region:v.region,city:v.city,active:v.active},r);},{done:reload()});};
     return [card('IT warehouses and branches','Where assets are kept. Stock can be kept at a branch in cities without an IT warehouse.',
       table(['Name','Kind','Region','City','Active'],L().locations,x=>[x.name,kindLabel(x.kind),x.region,x.city||'',yes(x.active)],d.can.masterData?x=>[['Edit',()=>form(x)]]:null),d.can.masterData&&add('Add',()=>form(null)))];},
   suppliers:()=>{const form=x=>edit(x?x.name:'Add a supplier',[{key:'name',label:'Name (English)',value:x?.name,required:true},{key:'nameAr',label:'Name (Arabic)',max:200,dir:'rtl',value:x?.nameAr,hint:'As on the tax invoice.'},{key:'vat',label:'VAT number (15 digits)',value:x?.vat},{key:'active',label:'Active',type:'checkbox',value:x?x.active:true}],
